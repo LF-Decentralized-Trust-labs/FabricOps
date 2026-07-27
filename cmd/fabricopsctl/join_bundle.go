@@ -121,12 +121,13 @@ type joinBundlePlanMSP struct {
 }
 
 type joinBundlePlanChannel struct {
-	Name               string                    `json:"name"`
-	Peers              []joinBundlePeerRef       `json:"peers,omitempty"`
-	AnchorPeers        []joinBundleAnchorPeer    `json:"anchorPeers,omitempty"`
-	Chaincodes         []joinBundlePlanChaincode `json:"chaincodes,omitempty"`
-	FounderActions     []joinBundlePlanAction    `json:"founderActions"`
-	ParticipantActions []joinBundlePlanAction    `json:"participantActions"`
+	Name               string                       `json:"name"`
+	Peers              []joinBundlePeerRef          `json:"peers,omitempty"`
+	AnchorPeers        []joinBundleAnchorPeer       `json:"anchorPeers,omitempty"`
+	Membership         *joinBundleChannelMembership `json:"membership,omitempty"`
+	Chaincodes         []joinBundlePlanChaincode    `json:"chaincodes,omitempty"`
+	FounderActions     []joinBundlePlanAction       `json:"founderActions"`
+	ParticipantActions []joinBundlePlanAction       `json:"participantActions"`
 }
 
 type joinBundlePlanChaincode struct {
@@ -150,6 +151,7 @@ type joinBundleConfigUpdateRecipe struct {
 	Channel                 string                        `json:"channel"`
 	Org                     joinBundleConfigUpdateOrg     `json:"org"`
 	Orderer                 joinBundleConfigUpdateOrderer `json:"orderer"`
+	Membership              *joinBundleChannelMembership  `json:"membership,omitempty"`
 	WorkDir                 string                        `json:"workDir"`
 	Files                   joinBundleConfigUpdateFiles   `json:"files"`
 	RequiredTools           []string                      `json:"requiredTools"`
@@ -272,9 +274,15 @@ type joinBundleOrderer struct {
 }
 
 type joinBundleChannel struct {
-	Name        string                 `json:"name"`
-	Peers       []joinBundlePeerRef    `json:"peers,omitempty"`
-	AnchorPeers []joinBundleAnchorPeer `json:"anchorPeers,omitempty"`
+	Name        string                       `json:"name"`
+	Peers       []joinBundlePeerRef          `json:"peers,omitempty"`
+	AnchorPeers []joinBundleAnchorPeer       `json:"anchorPeers,omitempty"`
+	Membership  *joinBundleChannelMembership `json:"membership,omitempty"`
+}
+
+type joinBundleChannelMembership struct {
+	ApplicationPolicy    string   `json:"applicationPolicy,omitempty"`
+	RequiredSignerMSPIDs []string `json:"requiredSignerMSPIDs,omitempty"`
 }
 
 type joinBundleOrgChannel struct {
@@ -729,6 +737,7 @@ func buildJoinBundlePlan(bundle joinBundle, channelFilters []string) (joinBundle
 			Name:               channel.Name,
 			Peers:              channel.Peers,
 			AnchorPeers:        channel.AnchorPeers,
+			Membership:         copyJoinBundleChannelMembership(channel.Membership),
 			Chaincodes:         chaincodes,
 			FounderActions:     joinBundleFounderActions(bundle, channel),
 			ParticipantActions: joinBundleParticipantActions(bundle, channel, chaincodes),
@@ -815,6 +824,7 @@ func buildJoinBundleConfigUpdateRecipe(
 			Address:             orderer.ClientAddress,
 			TLSHostnameOverride: tlsHostnameOverride,
 		},
+		Membership:          copyJoinBundleChannelMembership(channel.Membership),
 		WorkDir:             workDir,
 		Files:               files,
 		RequiredTools:       []string{"peer", "configtxlator", "jq"},
@@ -984,7 +994,15 @@ func renderJoinBundleConfigUpdateNextSteps(out *strings.Builder, recipe joinBund
 	for _, file := range recipe.InspectBeforeSubmitting {
 		fmt.Fprintf(out, "  - $WORKDIR/%s\n", file)
 	}
-	out.WriteString("\nCollect required founder-admin signatures:\n")
+	if recipe.Membership != nil {
+		if policy := strings.TrimSpace(recipe.Membership.ApplicationPolicy); policy != "" {
+			fmt.Fprintf(out, "\nApplication policy hint: %s\n", policy)
+		}
+		if signers := joinBundleTrimmedStrings(recipe.Membership.RequiredSignerMSPIDs); len(signers) > 0 {
+			fmt.Fprintf(out, "\nExpected founder signer MSP IDs: %s\n", strings.Join(signers, ", "))
+		}
+	}
+	out.WriteString("\nCollect required founder-admin signatures according to the channel policy:\n")
 	out.WriteString("  peer channel signconfigtx -f \"$CONFIG_UPDATE_ENVELOPE_PB\"\n\n")
 	out.WriteString("Submit with an authorized founder admin after signatures are complete:\n")
 	fmt.Fprintf(
@@ -1275,6 +1293,19 @@ func joinBundlePlanChaincodesForChannel(
 }
 
 func joinBundleFounderActions(bundle joinBundle, channel joinBundleChannel) []joinBundlePlanAction {
+	signatureSummary := fmt.Sprintf(
+		"Collect required signatures and submit the channel config update for %s",
+		channel.Name,
+	)
+	if channel.Membership != nil {
+		if signers := joinBundleTrimmedStrings(channel.Membership.RequiredSignerMSPIDs); len(signers) > 0 {
+			signatureSummary = fmt.Sprintf(
+				"Collect founder signatures from %s and submit the channel config update for %s",
+				strings.Join(signers, ", "),
+				channel.Name,
+			)
+		}
+	}
 	actions := []joinBundlePlanAction{
 		{
 			Name: "add-org-msp",
@@ -1297,11 +1328,8 @@ func joinBundleFounderActions(bundle joinBundle, channel joinBundleChannel) []jo
 		})
 	}
 	actions = append(actions, joinBundlePlanAction{
-		Name: "submit-channel-config-update",
-		Summary: fmt.Sprintf(
-			"Collect required signatures and submit the channel config update for %s",
-			channel.Name,
-		),
+		Name:    "submit-channel-config-update",
+		Summary: signatureSummary,
 	})
 	return actions
 }
@@ -1358,10 +1386,23 @@ func renderJoinBundlePlanText(plan joinBundlePlan) string {
 	)
 	for _, channel := range plan.Channels {
 		fmt.Fprintf(&b, "\nChannel %s\n", channel.Name)
+		printJoinBundlePlanMembership(&b, channel.Membership)
 		printJoinBundlePlanActions(&b, "Founder", channel.FounderActions)
 		printJoinBundlePlanActions(&b, "Participant", channel.ParticipantActions)
 	}
 	return b.String()
+}
+
+func printJoinBundlePlanMembership(out *strings.Builder, membership *joinBundleChannelMembership) {
+	if membership == nil {
+		return
+	}
+	if policy := strings.TrimSpace(membership.ApplicationPolicy); policy != "" {
+		fmt.Fprintf(out, "Membership policy: %s\n", policy)
+	}
+	if signers := joinBundleTrimmedStrings(membership.RequiredSignerMSPIDs); len(signers) > 0 {
+		fmt.Fprintf(out, "Required founder signer MSP IDs: %s\n", strings.Join(signers, ", "))
+	}
 }
 
 func printJoinBundlePlanActions(out *strings.Builder, title string, actions []joinBundlePlanAction) {
@@ -1377,6 +1418,18 @@ func joinBundlePeerNamesSummary(peers []joinBundlePeerRef) string {
 		names = append(names, peer.Name)
 	}
 	return strings.Join(names, ", ")
+}
+
+func joinBundleTrimmedStrings(values []string) []string {
+	trimmed := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		trimmed = append(trimmed, value)
+	}
+	return trimmed
 }
 
 func validateJoinBundle(bundle joinBundle) (joinBundleValidationResult, error) {
@@ -1493,6 +1546,7 @@ func validateJoinBundle(bundle joinBundle) (joinBundleValidationResult, error) {
 		for j, anchor := range channel.AnchorPeers {
 			validateJoinBundleAnchorPeer(fmt.Sprintf("%s.anchorPeers[%d]", path, j), anchor, peerNames, addViolation)
 		}
+		validateJoinBundleChannelMembership(path+".membership", channel.Membership, addViolation)
 	}
 
 	for i, chaincode := range bundle.Chaincodes {
@@ -1607,6 +1661,33 @@ func validateJoinBundleAnchorPeer(
 	}
 	if anchor.Port <= 0 || anchor.Port > 65535 {
 		addViolation("%s.port must be between 1 and 65535", path)
+	}
+}
+
+func validateJoinBundleChannelMembership(
+	path string,
+	membership *joinBundleChannelMembership,
+	addViolation func(string, ...any),
+) {
+	if membership == nil {
+		return
+	}
+	if len(strings.TrimSpace(membership.ApplicationPolicy)) > 256 {
+		addViolation("%s.applicationPolicy must be at most 256 characters", path)
+	}
+	seenSigners := map[string]struct{}{}
+	for i, mspID := range membership.RequiredSignerMSPIDs {
+		mspID = strings.TrimSpace(mspID)
+		signerPath := fmt.Sprintf("%s.requiredSignerMSPIDs[%d]", path, i)
+		if mspID == "" {
+			addViolation("%s is required", signerPath)
+			continue
+		}
+		if _, ok := seenSigners[mspID]; ok {
+			addViolation("%s required signer MSP %q is declared more than once", path, mspID)
+			continue
+		}
+		seenSigners[mspID] = struct{}{}
 	}
 }
 
@@ -2014,9 +2095,42 @@ func buildParticipantJoinBundleChannels(
 			Name:        channel.Name,
 			Peers:       peers,
 			AnchorPeers: anchors,
+			Membership:  participantJoinBundleChannelMembership(channel.Membership),
 		})
 	}
 	return channels, nil
+}
+
+func participantJoinBundleChannelMembership(
+	membership *fabricopsv1alpha1.ParticipantChannelMembership,
+) *joinBundleChannelMembership {
+	if membership == nil {
+		return nil
+	}
+	rendered := &joinBundleChannelMembership{
+		ApplicationPolicy:    strings.TrimSpace(membership.ApplicationPolicy),
+		RequiredSignerMSPIDs: joinBundleTrimmedStrings(membership.RequiredSignerMSPIDs),
+	}
+	if rendered.ApplicationPolicy == "" && len(rendered.RequiredSignerMSPIDs) == 0 {
+		return nil
+	}
+	return rendered
+}
+
+func copyJoinBundleChannelMembership(
+	membership *joinBundleChannelMembership,
+) *joinBundleChannelMembership {
+	if membership == nil {
+		return nil
+	}
+	rendered := &joinBundleChannelMembership{
+		ApplicationPolicy:    strings.TrimSpace(membership.ApplicationPolicy),
+		RequiredSignerMSPIDs: joinBundleTrimmedStrings(membership.RequiredSignerMSPIDs),
+	}
+	if rendered.ApplicationPolicy == "" && len(rendered.RequiredSignerMSPIDs) == 0 {
+		return nil
+	}
+	return rendered
 }
 
 func participantJoinBundleAnchorPeers(

@@ -151,6 +151,14 @@ func validateChannelExternalOrgs(
 	seenNames := map[string]struct{}{}
 	seenMSPIDs := map[string]struct{}{}
 	localMSPs := orgMSPNames(orgs)
+	localChannelMSPs := map[string]struct{}{}
+	for orgName := range localChannelOrgNames {
+		org, ok := orgs[orgName]
+		if !ok {
+			continue
+		}
+		localChannelMSPs[org.Organization.MSPName] = struct{}{}
+	}
 
 	for i, externalOrg := range channel.ExternalOrgs {
 		path := fmt.Sprintf("channel %q externalOrgs[%d]", channel.Name, i)
@@ -185,6 +193,28 @@ func validateChannelExternalOrgs(
 				problems = append(problems, fmt.Sprintf("%s adminOrg %q is not a local org", path, adminOrg))
 			} else if _, ok := localChannelOrgNames[adminOrg]; !ok {
 				problems = append(problems, fmt.Sprintf("%s adminOrg %q is not a local org on channel %q", path, adminOrg, channel.Name))
+			}
+		}
+		seenRequiredSigners := map[string]struct{}{}
+		for j, signerMSPID := range externalOrg.RequiredSignerMSPIDs {
+			signerPath := fmt.Sprintf("%s.requiredSignerMSPIDs[%d]", path, j)
+			signerMSPID = strings.TrimSpace(signerMSPID)
+			if signerMSPID == "" {
+				problems = append(problems, signerPath+" is required")
+				continue
+			}
+			if _, ok := seenRequiredSigners[signerMSPID]; ok {
+				problems = append(
+					problems,
+					fmt.Sprintf("%s required signer MSP %q is declared more than once", path, signerMSPID),
+				)
+			}
+			seenRequiredSigners[signerMSPID] = struct{}{}
+			if _, ok := localChannelMSPs[signerMSPID]; !ok {
+				problems = append(
+					problems,
+					fmt.Sprintf("%s required signer MSP %q is not a local channel org MSP", path, signerMSPID),
+				)
 			}
 		}
 		if externalOrg.Orderer != nil {

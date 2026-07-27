@@ -194,6 +194,18 @@ func TestBuildParticipantJoinBundleExportsParticipantOwnedOrg(t *testing.T) {
 	if len(bundle.Channels) != 1 || bundle.Channels[0].Name != "settlement" {
 		t.Fatalf("Channels = %#v, want settlement", bundle.Channels)
 	}
+	if bundle.Channels[0].Membership == nil {
+		t.Fatalf("Channels[0].Membership = nil, want membership hints")
+	}
+	if bundle.Channels[0].Membership.ApplicationPolicy != "/Channel/Application/Admins" {
+		t.Fatalf("Channels[0].Membership.ApplicationPolicy = %q", bundle.Channels[0].Membership.ApplicationPolicy)
+	}
+	if !slices.Equal(bundle.Channels[0].Membership.RequiredSignerMSPIDs, []string{"BankAMSP", "BankCMSP"}) {
+		t.Fatalf(
+			"Channels[0].Membership.RequiredSignerMSPIDs = %#v, want BankAMSP/BankCMSP",
+			bundle.Channels[0].Membership.RequiredSignerMSPIDs,
+		)
+	}
 	if len(bundle.Channels[0].AnchorPeers) != 1 {
 		t.Fatalf("len(Channels[0].AnchorPeers) = %d, want 1", len(bundle.Channels[0].AnchorPeers))
 	}
@@ -426,6 +438,48 @@ func TestBuildJoinBundlePlanSummarizesFounderAndParticipantActions(t *testing.T)
 	}
 }
 
+func TestBuildJoinBundlePlanPreservesMembershipHints(t *testing.T) {
+	participant := joinBundleTestParticipant()
+	client := fake.NewClientBuilder().
+		WithScheme(cliScheme).
+		WithObjects(joinBundleTestParticipantObjects()...).
+		Build()
+	bundle, err := buildParticipantJoinBundle(context.Background(), client, participant)
+	if err != nil {
+		t.Fatalf("buildParticipantJoinBundle() error = %v", err)
+	}
+
+	plan, err := buildJoinBundlePlan(bundle, []string{"settlement"})
+	if err != nil {
+		t.Fatalf("buildJoinBundlePlan() error = %v", err)
+	}
+
+	if len(plan.Channels) != 1 {
+		t.Fatalf("len(Channels) = %d, want 1", len(plan.Channels))
+	}
+	membership := plan.Channels[0].Membership
+	if membership == nil {
+		t.Fatal("plan channel membership = nil, want exported membership hints")
+	}
+	if membership.ApplicationPolicy != "/Channel/Application/Admins" {
+		t.Fatalf("ApplicationPolicy = %q, want /Channel/Application/Admins", membership.ApplicationPolicy)
+	}
+	if !slices.Equal(membership.RequiredSignerMSPIDs, []string{"BankAMSP", "BankCMSP"}) {
+		t.Fatalf("RequiredSignerMSPIDs = %#v, want BankAMSP/BankCMSP", membership.RequiredSignerMSPIDs)
+	}
+
+	text := renderJoinBundlePlanText(plan)
+	for _, want := range []string{
+		"Membership policy: /Channel/Application/Admins",
+		"Required founder signer MSP IDs: BankAMSP, BankCMSP",
+		"Collect founder signatures from BankAMSP, BankCMSP",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("renderJoinBundlePlanText() = %q, want %q", text, want)
+		}
+	}
+}
+
 func TestBuildJoinBundlePlanRejectsUnknownChannelFilter(t *testing.T) {
 	bundle := joinBundleTestBundle(t)
 
@@ -570,6 +624,65 @@ func TestBuildJoinBundleConfigUpdateRecipeRendersUnsignedEnvelopeScript(t *testi
 	}
 	if !strings.Contains(script, "ORDERER0_TLS_CA") {
 		t.Fatalf("script does not contain orderer TLS CA\nscript:\n%s", script)
+	}
+}
+
+func TestBuildJoinBundleConfigUpdateRecipePreservesMembershipHints(t *testing.T) {
+	bundle := joinBundleTestBundle(t)
+	bundle.Channels[0].Membership = &joinBundleChannelMembership{
+		ApplicationPolicy:    "/Channel/Application/Admins",
+		RequiredSignerMSPIDs: []string{"BankAMSP", "BankCMSP"},
+	}
+
+	recipe, err := buildJoinBundleConfigUpdateRecipe(bundle, joinBundleRenderUpdateOptions{
+		channel: "settlement",
+		orderer: "OrdererOrg/orderer0",
+	})
+	if err != nil {
+		t.Fatalf("buildJoinBundleConfigUpdateRecipe() error = %v", err)
+	}
+	if recipe.Membership == nil {
+		t.Fatal("recipe.Membership = nil, want membership hints")
+	}
+	if recipe.Membership.ApplicationPolicy != "/Channel/Application/Admins" {
+		t.Fatalf("ApplicationPolicy = %q, want /Channel/Application/Admins", recipe.Membership.ApplicationPolicy)
+	}
+	if !slices.Equal(recipe.Membership.RequiredSignerMSPIDs, []string{"BankAMSP", "BankCMSP"}) {
+		t.Fatalf("RequiredSignerMSPIDs = %#v, want BankAMSP/BankCMSP", recipe.Membership.RequiredSignerMSPIDs)
+	}
+
+	script, err := renderJoinBundleConfigUpdateScript(recipe)
+	if err != nil {
+		t.Fatalf("renderJoinBundleConfigUpdateScript() error = %v", err)
+	}
+	for _, want := range []string{
+		"Application policy hint: /Channel/Application/Admins",
+		"Expected founder signer MSP IDs: BankAMSP, BankCMSP",
+		"Collect required founder-admin signatures according to the channel policy",
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("script does not contain %q\nscript:\n%s", want, script)
+		}
+	}
+}
+
+func TestValidateJoinBundleRejectsInvalidMembershipHints(t *testing.T) {
+	bundle := joinBundleTestBundle(t)
+	bundle.Channels[0].Membership = &joinBundleChannelMembership{
+		RequiredSignerMSPIDs: []string{"BankAMSP", " ", "BankAMSP"},
+	}
+
+	_, err := validateJoinBundle(bundle)
+	if err == nil {
+		t.Fatal("validateJoinBundle() error = nil, want membership validation error")
+	}
+	for _, want := range []string{
+		"channels[0].membership.requiredSignerMSPIDs[1] is required",
+		`channels[0].membership required signer MSP "BankAMSP" is declared more than once`,
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("validateJoinBundle() error = %v, want %q", err, want)
+		}
 	}
 }
 
@@ -900,6 +1013,10 @@ func joinBundleTestParticipant() *fabricopsv1alpha1.FabricParticipant {
 					Peers: []string{"peer0"},
 					AnchorPeers: []fabricopsv1alpha1.ParticipantAnchorPeer{
 						{Name: "peer0", Host: "peer0.bankb.fabricops.io", Port: 7051},
+					},
+					Membership: &fabricopsv1alpha1.ParticipantChannelMembership{
+						ApplicationPolicy:    "/Channel/Application/Admins",
+						RequiredSignerMSPIDs: []string{"BankAMSP", "BankCMSP"},
 					},
 				},
 			},

@@ -25,6 +25,7 @@ import (
 	"hash/fnv"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -80,9 +81,10 @@ type chaincodeOperationOptions struct {
 }
 
 type operationPeerTarget struct {
-	orgName  string
-	status   fabricopsv1alpha1.OrgStatus
-	endpoint fabricopsv1alpha1.PeerEndpointStatus
+	orgName      string
+	status       fabricopsv1alpha1.OrgStatus
+	endpoint     fabricopsv1alpha1.PeerEndpointStatus
+	tlsRootCARef *fabricopsv1alpha1.ParticipantArtifactKeyRef
 }
 
 type operationResult struct {
@@ -286,14 +288,16 @@ func runParticipantChaincodeOperationWithOptions(
 		return err
 	}
 	options.function = function
+	statuses := participantOperationOrgStatuses(participant)
 	targets, submitter, err := selectOperationTargets(
-		[]fabricopsv1alpha1.OrgStatus{participant.Status.LocalOrgStatus},
+		statuses,
 		options.org,
 		options.peers,
 	)
 	if err != nil {
 		return err
 	}
+	targets = decorateParticipantOperationTargets(participant, targets)
 	if err := validateSelectedOperationTargets(operation, submitter, targets); err != nil {
 		return err
 	}
@@ -600,7 +604,23 @@ func ensureParticipantOperationTLSSecret(
 	if err != nil {
 		return err
 	}
-	return ensureOperationTLSSecretWithOrdererRoot(ctx, client, name, submitter, ordererRoot, targets)
+	data := map[string][]byte{
+		"orderer-ca.crt": ordererRoot,
+	}
+	for i, target := range targets {
+		var root []byte
+		var err error
+		if target.tlsRootCARef != nil {
+			root, err = loadParticipantOperationArtifact(ctx, client, participant.Namespace, target.tlsRootCARef)
+		} else {
+			root, err = loadSecretKey(ctx, client, target.status.Namespace, target.endpoint.Name+"-tls", tlsCACertKey)
+		}
+		if err != nil {
+			return err
+		}
+		data[fmt.Sprintf("peer-%d-ca.crt", i)] = root
+	}
+	return createOperationTLSSecret(ctx, client, name, submitter.Namespace, data)
 }
 
 func ensureOperationTLSSecretWithOrdererRoot(
@@ -621,11 +641,20 @@ func ensureOperationTLSSecretWithOrdererRoot(
 		}
 		data[fmt.Sprintf("peer-%d-ca.crt", i)] = root
 	}
+	return createOperationTLSSecret(ctx, client, name, submitter.Namespace, data)
+}
 
+func createOperationTLSSecret(
+	ctx context.Context,
+	client ctrlclient.Client,
+	name string,
+	namespace string,
+	data map[string][]byte,
+) error {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: submitter.Namespace,
+			Namespace: namespace,
 			Labels: map[string]string{
 				"app.kubernetes.io/name":      "fabricops",
 				"app.kubernetes.io/component": "operation",
@@ -1054,6 +1083,47 @@ func mspIDForParticipantOrg(participant *fabricopsv1alpha1.FabricParticipant, or
 		return "", fmt.Errorf("org %q was not found in FabricParticipant spec", orgName)
 	}
 	return org.MSPName, nil
+}
+
+func participantOperationOrgStatuses(
+	participant *fabricopsv1alpha1.FabricParticipant,
+) []fabricopsv1alpha1.OrgStatus {
+	statuses := []fabricopsv1alpha1.OrgStatus{participant.Status.LocalOrgStatus}
+	remoteByOrg := map[string][]fabricopsv1alpha1.PeerEndpointStatus{}
+	for _, peer := range participant.Spec.Network.Peers {
+		remoteByOrg[peer.Org] = append(remoteByOrg[peer.Org], fabricopsv1alpha1.PeerEndpointStatus{
+			Name:                peer.Name,
+			Address:             peer.Address,
+			TLSHostnameOverride: peer.TLSHostnameOverride,
+		})
+	}
+	orgNames := make([]string, 0, len(remoteByOrg))
+	for orgName := range remoteByOrg {
+		orgNames = append(orgNames, orgName)
+	}
+	slices.Sort(orgNames)
+	for _, orgName := range orgNames {
+		statuses = append(statuses, fabricopsv1alpha1.OrgStatus{
+			Name:          orgName,
+			PeerEndpoints: remoteByOrg[orgName],
+		})
+	}
+	return statuses
+}
+
+func decorateParticipantOperationTargets(
+	participant *fabricopsv1alpha1.FabricParticipant,
+	targets []operationPeerTarget,
+) []operationPeerTarget {
+	for i := range targets {
+		for _, peer := range participant.Spec.Network.Peers {
+			if strings.EqualFold(targets[i].orgName, peer.Org) && targets[i].endpoint.Name == peer.Name {
+				targets[i].tlsRootCARef = peer.TLSRootCARef
+				break
+			}
+		}
+	}
+	return targets
 }
 
 func selectParticipantOperationOrderer(

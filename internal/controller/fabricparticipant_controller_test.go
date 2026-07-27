@@ -364,6 +364,11 @@ var _ = Describe("FabricParticipant Controller", func() {
 	It("reports failed status for invalid imported artifacts", func() {
 		participant := fabricParticipantFixture("participant-invalid")
 		participant.Spec.Network.Orderers[0].TLSRootCARef = nil
+		participant.Spec.Network.Peers = []fabricopsv1alpha1.ParticipantPeerEndpoint{{
+			Org:     "BankA",
+			Name:    "peer0",
+			Address: "peer0.banka.fabricops.io:7051",
+		}}
 		participant.Spec.Channels[0].Peers = []string{"peer9"}
 		Expect(k8sClient.Create(ctx, participant)).To(Succeed())
 		DeferCleanup(func() {
@@ -385,6 +390,7 @@ var _ = Describe("FabricParticipant Controller", func() {
 			To(Succeed())
 		Expect(updated.Status.Phase).To(Equal(fabricopsv1alpha1.PhaseFailed))
 		Expect(updated.Status.Message).To(ContainSubstring("tlsRootCARef is required"))
+		Expect(updated.Status.Message).To(ContainSubstring("spec.network.peers[0].tlsRootCARef is required"))
 		Expect(updated.Status.Message).To(ContainSubstring("unknown local peers: peer9"))
 
 		ready := apiMeta.FindStatusCondition(updated.Status.Conditions, conditionReady)
@@ -395,6 +401,46 @@ var _ = Describe("FabricParticipant Controller", func() {
 		var namespace corev1.Namespace
 		err = k8sClient.Get(ctx, types.NamespacedName{Name: participantOrgNamespace(participant)}, &namespace)
 		Expect(apierrors.IsNotFound(err)).To(BeTrue())
+	})
+
+	It("reports missing remote artifact status for imported peer TLS roots", func() {
+		participant := fabricParticipantFixture("participant-peer-artifact")
+		participant.Spec.Network.Peers = []fabricopsv1alpha1.ParticipantPeerEndpoint{{
+			Org:     "BankA",
+			Name:    "peer0",
+			Address: "peer0.banka.fabricops.io:7051",
+			TLSRootCARef: &fabricopsv1alpha1.ParticipantArtifactKeyRef{
+				ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: participant.Name + "-banka-peer0-artifacts"},
+					Key:                  "tls-ca.pem",
+				},
+			},
+		}}
+		Expect(k8sClient.Create(ctx, participant)).To(Succeed())
+		DeferCleanup(func() {
+			Expect(k8sClient.Delete(ctx, participant)).To(Succeed())
+		})
+		DeferCleanup(cleanupParticipantNamespace, ctx, participant)
+		createParticipantRemoteArtifacts(ctx, participant)
+
+		reconciler := &FabricParticipantReconciler{
+			Client: k8sClient,
+			Scheme: k8sClient.Scheme(),
+		}
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: participant.Name, Namespace: resourceNamespace},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		var updated fabricopsv1alpha1.FabricParticipant
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: participant.Name, Namespace: resourceNamespace}, &updated)).
+			To(Succeed())
+		Expect(updated.Status.RemoteArtifactsReady).To(BeFalse())
+		remote := apiMeta.FindStatusCondition(updated.Status.Conditions, conditionRemoteArtifactsReady)
+		Expect(remote).NotTo(BeNil())
+		Expect(remote.Status).To(Equal(metav1.ConditionFalse))
+		Expect(remote.Message).To(ContainSubstring("spec.network.peers[0].tlsRootCARef.configMapKeyRef"))
+		Expect(remote.Message).To(ContainSubstring(participant.Name + "-banka-peer0-artifacts"))
 	})
 })
 

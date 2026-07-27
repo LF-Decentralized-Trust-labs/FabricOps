@@ -93,6 +93,32 @@ func validateParticipantNetwork(tls bool, network fabricopsv1alpha1.ParticipantN
 			problems = append(problems, validateParticipantArtifactRef(path+".tlsRootCARef", orderer.TLSRootCARef, false)...)
 		}
 	}
+
+	seenPeers := map[string]struct{}{}
+	for i, peer := range network.Peers {
+		path := fmt.Sprintf("spec.network.peers[%d]", i)
+		orgName := strings.TrimSpace(peer.Org)
+		peerName := strings.TrimSpace(peer.Name)
+		if orgName == "" {
+			problems = append(problems, path+".org is required")
+		}
+		if peerName == "" {
+			problems = append(problems, path+".name is required")
+		}
+		if orgName != "" && peerName != "" {
+			key := strings.ToLower(orgName + "/" + peerName)
+			if _, ok := seenPeers[key]; ok {
+				problems = append(problems, fmt.Sprintf("imported peer %q is declared more than once", orgName+"/"+peerName))
+			}
+			seenPeers[key] = struct{}{}
+		}
+		problems = append(problems, validateParticipantEndpoint(path+".address", peer.Address, true)...)
+		if tls {
+			problems = append(problems, validateParticipantArtifactRef(path+".tlsRootCARef", peer.TLSRootCARef, true)...)
+		} else if peer.TLSRootCARef != nil {
+			problems = append(problems, validateParticipantArtifactRef(path+".tlsRootCARef", peer.TLSRootCARef, false)...)
+		}
+	}
 	return problems
 }
 

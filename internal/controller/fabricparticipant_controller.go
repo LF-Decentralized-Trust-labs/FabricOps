@@ -530,6 +530,12 @@ func (r *FabricParticipantReconciler) participantRemoteArtifactStatus(
 				status.ready = false
 			}
 		}
+		for i, peer := range participant.Spec.Network.Peers {
+			path := fmt.Sprintf("spec.network.peers[%d].tlsRootCARef", i)
+			if !r.participantArtifactRefReady(ctx, participant.Namespace, path, peer.TLSRootCARef, &missing) {
+				status.ready = false
+			}
+		}
 	}
 
 	for i, channel := range participant.Spec.Channels {

@@ -619,6 +619,17 @@ spec:
                                 pattern: ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$
                                 type: string
                             type: object
+                          requiredSignerMSPIDs:
+                            description: |-
+                              RequiredSignerMSPIDs lists founder-side MSP IDs expected to sign the
+                              channel config update before submission. When omitted, FabricOps attempts
+                              the update with the selected AdminOrg only. When this list names
+                              additional MSPs, FabricOps prepares the admission inputs and waits for a
+                              manual multi-admin signature handoff instead of launching an update Job.
+                            items:
+                              type: string
+                            maxItems: 16
+                            type: array
                         required:
                         - applicationOrgRef
                         - mspID
@@ -1159,6 +1170,10 @@ spec:
                             type: string
                           ready:
                             type: boolean
+                          requiredSignerMSPIDs:
+                            items:
+                              type: string
+                            type: array
                           updateJobName:
                             type: string
                         required:
@@ -2198,6 +2213,100 @@ spec:
                       - org
                       type: object
                     minItems: 1
+                    type: array
+                  peers:
+                    description: |-
+                      Peers lists optional remote peer endpoints from already-admitted orgs.
+                      `fabricopsctl invoke/query --participant` can use these endpoints for
+                      explicit cross-cluster endorsement target selection. FabricOps does not
+                      reconcile these remote peers as Kubernetes workloads.
+                    items:
+                      properties:
+                        address:
+                          description: Address is the host:port endpoint used by Fabric
+                            client operations.
+                          maxLength: 253
+                          minLength: 1
+                          type: string
+                        name:
+                          maxLength: 63
+                          minLength: 1
+                          pattern: ^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$
+                          type: string
+                        org:
+                          maxLength: 63
+                          minLength: 1
+                          pattern: ^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$
+                          type: string
+                        tlsHostnameOverride:
+                          description: |-
+                            TLSHostnameOverride records local-test override intent. Fabric peer CLI
+                            paths do not support a per-peer TLS hostname override, so production and
+                            e2e addresses should match the peer certificate SANs.
+                          maxLength: 253
+                          type: string
+                        tlsRootCARef:
+                          description: |-
+                            TLSRootCARef points at the PEM encoded TLS root CA for this peer.
+                            Required when spec.global.tls is true.
+                          properties:
+                            configMapKeyRef:
+                              description: |-
+                                ConfigMapKeyRef points at a key in a ConfigMap in the FabricParticipant
+                                namespace.
+                              properties:
+                                key:
+                                  description: The key to select.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the ConfigMap or its
+                                    key must be defined
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            secretKeyRef:
+                              description: |-
+                                SecretKeyRef points at a key in a Secret in the FabricParticipant
+                                namespace.
+                              properties:
+                                key:
+                                  description: The key of the secret to select from.  Must
+                                    be a valid secret key.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the Secret or its key
+                                    must be defined
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                          type: object
+                      required:
+                      - address
+                      - name
+                      - org
+                      type: object
                     type: array
                 required:
                 - name

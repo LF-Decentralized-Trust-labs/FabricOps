@@ -2148,6 +2148,79 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(validateFabricNetworkTopology(&network)).To(BeEmpty())
 		})
 
+		It("should reject external org required signers outside local channel MSPs", func() {
+			network := fabricopsv1alpha1.FabricNetwork{
+				Spec: fabricopsv1alpha1.FabricNetworkSpec{
+					Global: fabricopsv1alpha1.GlobalConfig{
+						FabricVersion: "3.1.0",
+						TLS:           true,
+					},
+					Orgs: []fabricopsv1alpha1.Org{
+						{
+							Organization: fabricopsv1alpha1.OrgMeta{
+								Name:    "Orderer",
+								Domain:  "orderer.example.com",
+								MSPName: "OrdererMSP",
+							},
+							CA: fabricopsv1alpha1.CAConfig{DB: "sqlite"},
+							Orderers: []fabricopsv1alpha1.OrdererGroup{
+								{
+									GroupName: "group1",
+									Type:      "raft",
+									Instances: 1,
+									Prefix:    componentOrderer,
+								},
+							},
+						},
+						{
+							Organization: fabricopsv1alpha1.OrgMeta{
+								Name:    "BankA",
+								Domain:  "banka.example.com",
+								MSPName: "BankAMSP",
+							},
+							CA: fabricopsv1alpha1.CAConfig{DB: "sqlite"},
+							Peer: &fabricopsv1alpha1.PeerConfig{
+								Instances: 1,
+								DB:        "CouchDB",
+								Prefix:    componentPeer,
+							},
+						},
+					},
+					Channels: []fabricopsv1alpha1.Channel{
+						{
+							Name: "settlement",
+							Orgs: []fabricopsv1alpha1.ChannelOrg{
+								{
+									Name:  "BankA",
+									Peers: []string{"peer0"},
+								},
+							},
+							ExternalOrgs: []fabricopsv1alpha1.ChannelExternalOrg{
+								{
+									Name:  "BankB",
+									MSPID: "BankBMSP",
+									ApplicationOrgRef: fabricopsv1alpha1.ChannelArtifactKeyRef{
+										ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: "bankb-application-org",
+											},
+											Key: "org.json",
+										},
+									},
+									RequiredSignerMSPIDs: []string{"BankAMSP", "BankCMSP", "BankAMSP", ""},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			problems := validateFabricNetworkTopology(&network)
+			Expect(problems).To(ContainElement(`channel "settlement" externalOrgs[0] required signer MSP "BankCMSP" is not a local channel org MSP`))
+			Expect(problems).To(ContainElement(`channel "settlement" externalOrgs[0] required signer MSP "BankAMSP" is declared more than once`))
+			Expect(problems).To(ContainElement(`channel "settlement" externalOrgs[0].requiredSignerMSPIDs[3] is required`))
+		})
+
 		It("should admit declared external orgs through founder-side channel updates", func() {
 			var network fabricopsv1alpha1.FabricNetwork
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &network)).To(Succeed())
@@ -2318,6 +2391,128 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(channels).NotTo(BeNil())
 			Expect(channels.Status).To(Equal(metav1.ConditionTrue))
 			Expect(channels.Reason).To(Equal("ChannelsReady"))
+		})
+
+		It("should wait for manual signatures before multi-admin external org admission", func() {
+			var network fabricopsv1alpha1.FabricNetwork
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &network)).To(Succeed())
+			bankC := fabricopsv1alpha1.Org{
+				Organization: fabricopsv1alpha1.OrgMeta{
+					Name:    "BankC",
+					Domain:  "bankc.example.com",
+					MSPName: "BankCMSP",
+				},
+				CA: fabricopsv1alpha1.CAConfig{DB: "sqlite"},
+				Peer: &fabricopsv1alpha1.PeerConfig{
+					Instances: 1,
+					DB:        "CouchDB",
+					Prefix:    componentPeer,
+				},
+			}
+			network.Spec.Orgs = append(network.Spec.Orgs, bankC)
+			network.Spec.Channels = []fabricopsv1alpha1.Channel{
+				{
+					Name: "federated-manual",
+					Orgs: []fabricopsv1alpha1.ChannelOrg{
+						{Name: "BankA", Peers: []string{"peer0"}},
+						{Name: "BankC", Peers: []string{"peer0"}},
+					},
+					ExternalOrgs: []fabricopsv1alpha1.ChannelExternalOrg{
+						{
+							Name:  "BankB",
+							MSPID: "BankBMSP",
+							ApplicationOrgRef: fabricopsv1alpha1.ChannelArtifactKeyRef{
+								ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "bankb-application-org",
+									},
+									Key: "org.json",
+								},
+							},
+							RequiredSignerMSPIDs: []string{"BankAMSP", "BankCMSP"},
+						},
+					},
+				},
+			}
+			Expect(validateFabricNetworkTopology(&network)).To(BeEmpty())
+
+			applicationOrg := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "bankb-application-org",
+					Namespace: resourceNamespace,
+				},
+				Data: map[string]string{
+					"org.json": `{
+  "mod_policy": "Admins",
+  "policies": {},
+  "values": {
+    "MSP": {
+      "value": {
+        "config": {
+          "name": "BankBMSP"
+        }
+      }
+    }
+  },
+  "version": "0"
+}`,
+				},
+			}
+			Expect(k8sClient.Create(ctx, applicationOrg)).To(Succeed())
+			DeferCleanup(func() {
+				Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, applicationOrg))).To(Succeed())
+			})
+
+			controllerReconciler := &FabricNetworkReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+			ordererOrg := network.Spec.Orgs[0]
+			adminOrg := network.Spec.Orgs[1]
+			ordererNamespace := orgNamespaceName(&network, ordererOrg)
+			adminNamespace := orgNamespaceName(&network, adminOrg)
+			Expect(controllerReconciler.ensureNamespace(ctx, buildOrgNamespace(&network, ordererOrg))).To(Succeed())
+			Expect(controllerReconciler.ensureNamespace(ctx, buildOrgNamespace(&network, adminOrg))).To(Succeed())
+
+			ordererTLS := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      identitySecretName("orderer0", secretKindTLS),
+					Namespace: ordererNamespace,
+				},
+				Type: corev1.SecretTypeOpaque,
+				Data: map[string][]byte{
+					tlsCACertKey:     []byte("ORDERER_TLS_CA"),
+					tlsServerCertKey: []byte("ORDERER_TLS_CERT"),
+					tlsServerKeyKey:  []byte("ORDERER_TLS_KEY"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, ordererTLS)).To(Succeed())
+			DeferCleanup(func() {
+				Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, ordererTLS))).To(Succeed())
+			})
+
+			channel := network.Spec.Channels[0]
+			externalOrg := channel.ExternalOrgs[0]
+			status, err := controllerReconciler.reconcileExternalOrgUpdate(ctx, &network, channel, externalOrg)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(status.Ready).To(BeFalse())
+			Expect(status.AdminOrg).To(Equal("BankA"))
+			Expect(status.RequiredSignerMSPIDs).To(Equal([]string{"BankAMSP", "BankCMSP"}))
+			Expect(status.Message).To(Equal("BankB: Waiting for manual channel config update signatures from BankAMSP, BankCMSP"))
+
+			var normalizedOrg corev1.ConfigMap
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: adminNamespace,
+				Name:      "federated-manual-bankb-application-org",
+			}, &normalizedOrg)).To(Succeed())
+			Expect(normalizedOrg.Data[externalOrgApplicationKey]).To(ContainSubstring(`"name": "BankBMSP"`))
+
+			var updateJob batchv1.Job
+			err = k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: adminNamespace,
+				Name:      "federated-manual-bankb-external-org-update",
+			}, &updateJob)
+			Expect(errors.IsNotFound(err)).To(BeTrue())
 		})
 
 		It("should generate channel config and a channel block Job after components are ready", func() {

@@ -614,6 +614,17 @@ spec:
                                 pattern: ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$
                                 type: string
                             type: object
+                          requiredSignerMSPIDs:
+                            description: |-
+                              RequiredSignerMSPIDs lists founder-side MSP IDs expected to sign the
+                              channel config update before submission. When omitted, FabricOps attempts
+                              the update with the selected AdminOrg only. When this list names
+                              additional MSPs, FabricOps prepares the admission inputs and waits for a
+                              manual multi-admin signature handoff instead of launching an update Job.
+                            items:
+                              type: string
+                            maxItems: 16
+                            type: array
                         required:
                         - applicationOrgRef
                         - mspID
@@ -1154,6 +1165,10 @@ spec:
                             type: string
                           ready:
                             type: boolean
+                          requiredSignerMSPIDs:
+                            items:
+                              type: string
+                            type: array
                           updateJobName:
                             type: string
                         required:

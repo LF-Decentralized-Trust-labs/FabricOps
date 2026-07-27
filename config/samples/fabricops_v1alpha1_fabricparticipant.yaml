@@ -31,6 +31,14 @@ spec:
           configMapKeyRef:
             name: orderer0-artifacts
             key: tls-ca.pem
+    peers:
+      - org: BankA
+        name: peer0
+        address: peer0.banka.fabricops.io:7051
+        tlsRootCARef:
+          configMapKeyRef:
+            name: banka-peer0-artifacts
+            key: tls-ca.pem
   channels:
     - name: settlement
       blockRef:

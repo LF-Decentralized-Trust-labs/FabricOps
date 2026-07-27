@@ -43,6 +43,14 @@ spec:
           configMapKeyRef:
             name: orderer0-artifacts
             key: tls-ca.pem
+    peers:
+      - org: BankA
+        name: peer0
+        address: __FOUNDER_PEER_ADDRESS__
+        tlsRootCARef:
+          configMapKeyRef:
+            name: banka-peer0-artifacts
+            key: tls-ca.pem
   channels:
     - name: settlement
       blockRef:

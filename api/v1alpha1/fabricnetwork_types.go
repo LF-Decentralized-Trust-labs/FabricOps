@@ -268,6 +268,14 @@ type ChannelExternalOrg struct {
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern="^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$"
 	AdminOrg string `json:"adminOrg,omitempty"`
+	// RequiredSignerMSPIDs lists founder-side MSP IDs expected to sign the
+	// channel config update before submission. When omitted, FabricOps attempts
+	// the update with the selected AdminOrg only. When this list names
+	// additional MSPs, FabricOps prepares the admission inputs and waits for a
+	// manual multi-admin signature handoff instead of launching an update Job.
+	// +optional
+	// +kubebuilder:validation:MaxItems=16
+	RequiredSignerMSPIDs []string `json:"requiredSignerMSPIDs,omitempty"`
 	// Orderer optionally selects the local orderer endpoint used to fetch and
 	// submit the channel config update. When omitted, the first local orderer is
 	// used.
@@ -563,6 +571,7 @@ type ChannelExternalOrgStatus struct {
 	UpdateJobName               string                      `json:"updateJobName,omitempty"`
 	AdminOrg                    string                      `json:"adminOrg,omitempty"`
 	Orderer                     string                      `json:"orderer,omitempty"`
+	RequiredSignerMSPIDs        []string                    `json:"requiredSignerMSPIDs,omitempty"`
 	AnchorPeers                 []ChannelExternalAnchorPeer `json:"anchorPeers,omitempty"`
 	Ready                       bool                        `json:"ready"`
 	Message                     string                      `json:"message,omitempty"`

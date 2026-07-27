@@ -150,6 +150,15 @@ func (r *FabricNetworkReconciler) reconcileExternalOrgUpdate(
 		return externalStatus, err
 	}
 
+	if requiredSigners := externalOrgManualSignatureMSPIDs(adminOrg, externalOrg); len(requiredSigners) > 0 {
+		externalStatus.Message = fmt.Sprintf(
+			"%s: Waiting for manual channel config update signatures from %s",
+			externalOrg.Name,
+			strings.Join(requiredSigners, ", "),
+		)
+		return externalStatus, nil
+	}
+
 	if err := r.ensureJob(ctx, buildExternalOrgUpdateJob(net, channel, adminOrg, namespace, adminPeer, orderer, externalOrg)); err != nil {
 		return externalStatus, err
 	}
@@ -184,6 +193,7 @@ func channelExternalOrgStatus(
 		ApplicationOrgConfigMapName: channelExternalOrgApplicationConfigMapName(channel.Name, externalOrg),
 		UpdateJobName:               channelExternalOrgUpdateJobName(channel.Name, externalOrg),
 		AnchorPeers:                 append([]fabricopsv1alpha1.ChannelExternalAnchorPeer(nil), externalOrg.AnchorPeers...),
+		RequiredSignerMSPIDs:        externalOrgRequiredSignerMSPIDs(externalOrg),
 		Message:                     message,
 	}
 	if adminOrg != nil {
@@ -193,6 +203,39 @@ func channelExternalOrgStatus(
 		status.Orderer = orderer.org.Organization.Name + "/" + orderer.name
 	}
 	return status
+}
+
+func externalOrgRequiredSignerMSPIDs(externalOrg fabricopsv1alpha1.ChannelExternalOrg) []string {
+	signers := make([]string, 0, len(externalOrg.RequiredSignerMSPIDs))
+	seen := map[string]struct{}{}
+	for _, signer := range externalOrg.RequiredSignerMSPIDs {
+		signer = strings.TrimSpace(signer)
+		if signer == "" {
+			continue
+		}
+		if _, ok := seen[signer]; ok {
+			continue
+		}
+		seen[signer] = struct{}{}
+		signers = append(signers, signer)
+	}
+	return signers
+}
+
+func externalOrgManualSignatureMSPIDs(
+	adminOrg fabricopsv1alpha1.Org,
+	externalOrg fabricopsv1alpha1.ChannelExternalOrg,
+) []string {
+	requiredSigners := externalOrgRequiredSignerMSPIDs(externalOrg)
+	if len(requiredSigners) == 0 {
+		return nil
+	}
+
+	adminMSPID := strings.TrimSpace(adminOrg.Organization.MSPName)
+	if len(requiredSigners) == 1 && requiredSigners[0] == adminMSPID {
+		return nil
+	}
+	return requiredSigners
 }
 
 func channelExternalOrgAdminPeer(

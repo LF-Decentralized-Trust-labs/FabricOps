@@ -161,7 +161,7 @@ Kubernetes engine, can use the same CLI surface after applying the
 `FabricNetwork` or `FabricParticipant`: `wait` for readiness or a named
 condition such as `LocalInfrastructureReady`, `status` for diagnostics,
 `connection-profile` for client material, `join-bundle` for public membership
-artifacts, `join-bundle validate` for offline artifact checks,
+artifacts and signer hints, `join-bundle validate` for offline artifact checks,
 `join-bundle plan` for founder/participant join planning,
 `join-bundle participant` for participant-owned org exports,
 `join-bundle render-org` for channel Application org JSON,
@@ -198,10 +198,15 @@ channels:
         anchorPeers:
           - host: peer0.bankb.fabricops.io
             port: 7051
+        requiredSignerMSPIDs:
+          - BankAMSP
 ```
 
-FabricOps runs a founder-admin channel config update Job, records the result in
-a ConfigMap, and reports progress under `.status.channelStatus[*].externalOrgs`.
+FabricOps runs a founder-admin channel config update Job when the selected
+founder admin MSP can satisfy the declared signer requirement by itself. If
+`requiredSignerMSPIDs` names additional founder MSPs, FabricOps stages the
+admission inputs and reports a manual signature handoff under
+`.status.channelStatus[*].externalOrgs`.
 See [Federated Join Operations](docs/federated-join.md) for the founder and
 participant runbooks, DNS/TLS requirements, and two-cluster e2e acceptance
 criteria.
@@ -240,7 +245,7 @@ FabricOps supports:
 - A namespaced `FabricNetwork` CRD at `fabricops.io/v1alpha1`
 - Per-org Kubernetes namespaces with compact network-scoped names
 - Founder-side external org admission through channel config update Jobs
-- Preview `FabricParticipant` CRD for federated-join imported artifacts, participant-local org reconciliation, peer channel joins, participant-side chaincode install/approval, and participant-scoped invoke/query
+- Preview `FabricParticipant` CRD for federated-join imported artifacts, participant-local org reconciliation, peer channel joins, participant-side chaincode install/approval, and participant-scoped invoke/query with imported remote peer targets
 - Fabric CA, orderer, peer, and CCaaS chaincode workloads
 - Fabric CA registrar bootstrap, admin enrollment, and workload enrollment Secrets
 - Fabric CA-backed MSP/TLS material for admins, orderers, and peers

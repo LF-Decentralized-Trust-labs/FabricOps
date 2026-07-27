@@ -44,10 +44,13 @@ const (
 	participantName           = "bankb-participant"
 	sampleNamespace           = "default"
 	founderOrdererNamespace   = "fo-federated-founder-orderer"
+	founderPeerNamespace      = "fo-federated-founder-banka"
 	participantPeerNamespace  = "fo-fp-bankb-participant-bankb"
 	ordererServiceName        = "orderer0"
+	founderPeerService        = "peer0"
 	participantPeerService    = "peer0"
 	ordererTLSSecretName      = "orderer0-tls"
+	founderPeerTLSSecretName  = "peer0-tls"
 	ordererTLSKey             = "ca.crt"
 	channelBlockConfigMapName = "settlement-channel-block"
 	channelBlockKey           = "settlement.block"
@@ -65,6 +68,7 @@ var (
 	participantCluster       string
 	managerImage             string
 	ordererNodePort          string
+	founderPeerNodePort      string
 	peerNodePort             string
 	founderContext           string
 	participantContext       string
@@ -86,6 +90,7 @@ var _ = BeforeSuite(func() {
 	participantCluster = envOrDefault("KIND_FEDERATED_PARTICIPANT_CLUSTER", "fabricops-fed-participant")
 	managerImage = envOrDefault("IMG", "controller:latest")
 	ordererNodePort = envOrDefault("E2E_FEDERATED_ORDERER_NODE_PORT", "30050")
+	founderPeerNodePort = envOrDefault("E2E_FEDERATED_FOUNDER_PEER_NODE_PORT", "30052")
 	peerNodePort = envOrDefault("E2E_FEDERATED_PEER_NODE_PORT", "30051")
 	founderContext = "kind-" + founderCluster
 	participantContext = "kind-" + participantCluster
@@ -121,31 +126,43 @@ var _ = Describe("Federated join handoff", Ordered, func() {
 		installFabricOps(participantContext)
 
 		tempDir := GinkgoT().TempDir()
-		ordererAddress := kindNodeIPAddress(founderCluster) + ":" + ordererNodePort
+		founderHost := kindNodeIPAddress(founderCluster)
+		ordererAddress := founderHost + ":" + ordererNodePort
+		founderPeerAddress := founderHost + ":" + founderPeerNodePort
 		participantPeerHost := kindNodeIPAddress(participantCluster)
 		participantPeerAddress := participantPeerHost + ":" + peerNodePort
 		founderManifestPath := filepath.Join(tempDir, "founder.yaml")
 		participantManifestPath := filepath.Join(tempDir, "participant.yaml")
 		ordererTLSPath := filepath.Join(tempDir, "orderer0-tls-ca.pem")
+		founderPeerTLSPath := filepath.Join(tempDir, "banka-peer0-tls-ca.pem")
 		channelBlockPath := filepath.Join(tempDir, channelBlockKey)
 		participantBundlePath := filepath.Join(tempDir, "bankb-join-bundle.json")
 		participantOrgPath := filepath.Join(tempDir, "bankb-org.json")
 
 		By("creating the founder network with BankA and the ordering service")
-		renderFounderManifest(founderManifestPath, ordererAddress)
+		renderFounderManifest(founderManifestPath, ordererAddress, founderPeerAddress)
 		runKubectl(founderContext, 3*time.Minute, "apply", "-f", founderManifestPath)
 		runFabricOpsctl(25*time.Minute, "wait", "-n", sampleNamespace, "--context", founderContext, "--timeout", "20m", founderName)
 
-		By("exposing the founder orderer through a local kind NodePort")
+		By("exposing the founder orderer and peer through local kind NodePorts")
 		exposeFounderOrdererNodePort()
+		exposeFounderPeerNodePort()
 
 		By("exporting founder artifacts for the participant cluster")
 		writeFile(ordererTLSPath, secretDataValue(founderContext, founderOrdererNamespace, ordererTLSSecretName, ordererTLSKey))
+		writeFile(founderPeerTLSPath, secretDataValue(founderContext, founderPeerNamespace, founderPeerTLSSecretName, ordererTLSKey))
 		writeFile(channelBlockPath, configMapValue(founderContext, founderOrdererNamespace, channelBlockConfigMapName, channelBlockKey))
 		createConfigMapFromFile(participantContext, sampleNamespace, "orderer0-artifacts", "tls-ca.pem", ordererTLSPath)
+		createConfigMapFromFile(participantContext, sampleNamespace, "banka-peer0-artifacts", "tls-ca.pem", founderPeerTLSPath)
 
 		By("applying the participant manifest before the channel block is imported")
-		renderParticipantManifest(participantManifestPath, ordererAddress, participantPeerAddress, participantPeerHost)
+		renderParticipantManifest(
+			participantManifestPath,
+			ordererAddress,
+			participantPeerAddress,
+			participantPeerHost,
+			founderPeerAddress,
+		)
 		runKubectl(participantContext, 3*time.Minute, "apply", "-f", participantManifestPath)
 		runFabricOpsctl(
 			25*time.Minute,
@@ -250,6 +267,27 @@ func exposeFounderOrdererNodePort() {
 	)
 }
 
+func exposeFounderPeerNodePort() {
+	GinkgoHelper()
+
+	patch := fmt.Sprintf(
+		`{"spec":{"type":"NodePort","ports":[{"name":"peer","port":7051,"protocol":"TCP","targetPort":7051,"nodePort":%s},{"name":"chaincode","port":7052,"protocol":"TCP","targetPort":7052}]}}`,
+		founderPeerNodePort,
+	)
+	runKubectl(
+		founderContext,
+		2*time.Minute,
+		"patch",
+		"service",
+		founderPeerService,
+		"-n",
+		founderPeerNamespace,
+		"--type=merge",
+		"-p",
+		patch,
+	)
+}
+
 func exposeParticipantPeerNodePort() {
 	GinkgoHelper()
 
@@ -271,21 +309,29 @@ func exposeParticipantPeerNodePort() {
 	)
 }
 
-func renderFounderManifest(path string, ordererAddress string) {
+func renderFounderManifest(path string, ordererAddress string, founderPeerAddress string) {
 	GinkgoHelper()
 
 	template, err := os.ReadFile(filepath.Join(federatedSampleDirectory, "founder.yaml"))
 	Expect(err).NotTo(HaveOccurred())
 	rendered := strings.ReplaceAll(string(template), "__ORDERER_ADDRESS__", ordererAddress)
+	rendered = strings.ReplaceAll(rendered, "__FOUNDER_PEER_ADDRESS__", founderPeerAddress)
 	writeFile(path, []byte(rendered))
 }
 
-func renderParticipantManifest(path string, ordererAddress string, peerAddress string, peerHost string) {
+func renderParticipantManifest(
+	path string,
+	ordererAddress string,
+	peerAddress string,
+	peerHost string,
+	founderPeerAddress string,
+) {
 	GinkgoHelper()
 
 	template, err := os.ReadFile(filepath.Join(federatedSampleDirectory, "participant.yaml"))
 	Expect(err).NotTo(HaveOccurred())
 	rendered := strings.ReplaceAll(string(template), "__ORDERER_ADDRESS__", ordererAddress)
+	rendered = strings.ReplaceAll(rendered, "__FOUNDER_PEER_ADDRESS__", founderPeerAddress)
 	rendered = strings.ReplaceAll(rendered, "__PEER_ADDRESS__", peerAddress)
 	rendered = strings.ReplaceAll(rendered, "__PEER_HOST__", peerHost)
 	rendered = strings.ReplaceAll(rendered, "__PEER_PORT__", peerNodePort)
@@ -501,6 +547,60 @@ func invokeAndQueryFederatedSettlement(smokeID string) {
 		participantName,
 	)
 	Expect(output).To(ContainSubstring(smokeID))
+
+	participantSmokeID := smokeID + "-participant"
+	runFabricOpsctlEventually(
+		8*time.Minute,
+		"invoke",
+		"--participant",
+		"-n",
+		sampleNamespace,
+		"--context",
+		participantContext,
+		"--org",
+		"BankB",
+		"--peer",
+		"BankB/peer0",
+		"--peer",
+		"BankA/peer0",
+		"--channel",
+		"settlement",
+		"--chaincode",
+		"settlement",
+		"--function",
+		"createSettlement",
+		"--args",
+		jsonStringArray(participantSmokeID, "BankB", "BankA", "75", "USD"),
+		"-o",
+		"json",
+		participantName,
+	)
+
+	output = runFabricOpsctlEventually(
+		8*time.Minute,
+		"query",
+		"--participant",
+		"-n",
+		sampleNamespace,
+		"--context",
+		participantContext,
+		"--org",
+		"BankB",
+		"--peer",
+		"BankB/peer0",
+		"--channel",
+		"settlement",
+		"--chaincode",
+		"settlement",
+		"--function",
+		"readSettlement",
+		"--args",
+		jsonStringArray(participantSmokeID),
+		"-o",
+		"json",
+		participantName,
+	)
+	Expect(output).To(ContainSubstring(participantSmokeID))
 }
 
 type conditionProbe struct {

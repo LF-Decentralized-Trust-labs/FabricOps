@@ -45,6 +45,9 @@ spec:
         instances: 1
         db: leveldb
         prefix: peer
+        externalEndpoints:
+          - name: peer0
+            address: __FOUNDER_PEER_ADDRESS__
 
   channels:
     - name: settlement

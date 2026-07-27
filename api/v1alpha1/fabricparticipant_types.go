@@ -59,6 +59,12 @@ type ParticipantNetwork struct {
 	// Orderers lists reachable ordering endpoints from the existing network.
 	// +kubebuilder:validation:MinItems=1
 	Orderers []ParticipantOrdererEndpoint `json:"orderers"`
+	// Peers lists optional remote peer endpoints from already-admitted orgs.
+	// `fabricopsctl invoke/query --participant` can use these endpoints for
+	// explicit cross-cluster endorsement target selection. FabricOps does not
+	// reconcile these remote peers as Kubernetes workloads.
+	// +optional
+	Peers []ParticipantPeerEndpoint `json:"peers,omitempty"`
 }
 
 type ParticipantOrdererEndpoint struct {
@@ -87,6 +93,31 @@ type ParticipantOrdererEndpoint struct {
 	// +kubebuilder:validation:MaxLength=253
 	AdminAddress string `json:"adminAddress,omitempty"`
 	// TLSRootCARef points at the PEM encoded TLS root CA for this orderer.
+	// Required when spec.global.tls is true.
+	// +optional
+	TLSRootCARef *ParticipantArtifactKeyRef `json:"tlsRootCARef,omitempty"`
+}
+
+type ParticipantPeerEndpoint struct {
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$"
+	Org string `json:"org"`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$"
+	Name string `json:"name"`
+	// Address is the host:port endpoint used by Fabric client operations.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	Address string `json:"address"`
+	// TLSHostnameOverride records local-test override intent. Fabric peer CLI
+	// paths do not support a per-peer TLS hostname override, so production and
+	// e2e addresses should match the peer certificate SANs.
+	// +optional
+	// +kubebuilder:validation:MaxLength=253
+	TLSHostnameOverride string `json:"tlsHostnameOverride,omitempty"`
+	// TLSRootCARef points at the PEM encoded TLS root CA for this peer.
 	// Required when spec.global.tls is true.
 	// +optional
 	TLSRootCARef *ParticipantArtifactKeyRef `json:"tlsRootCARef,omitempty"`
