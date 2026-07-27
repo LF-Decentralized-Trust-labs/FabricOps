@@ -4,7 +4,7 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 CHAINCODE_DIR="${CHAINCODE_DIR:-$SCRIPT_DIR}"
 
-IMAGE=${IMAGE:-ghcr.io/dpereowei/fabricops-node-settlement:0.1.1}
+IMAGE=${IMAGE:-ghcr.io/dpereowei/fabricops-node-settlement:0.1.3}
 PLATFORM=${PLATFORM:-linux/amd64}
 PUSH=${PUSH:-false}
 

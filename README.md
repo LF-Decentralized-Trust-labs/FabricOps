@@ -23,14 +23,14 @@ Requirements:
 Install the latest published release bundle:
 
 ```bash
-kubectl apply -f https://github.com/dpereowei/fabricops/releases/download/v0.1.2/install.yaml
+kubectl apply -f https://github.com/dpereowei/fabricops/releases/download/v0.1.3/install.yaml
 kubectl rollout status deployment/fabricops-controller-manager -n fabricops-system --timeout=120s
 ```
 
 The bundle installs the `FabricNetwork` CRD, RBAC, ServiceAccount, manager Deployment, and metrics Service. The manager image is pinned to the release tag:
 
 ```text
-ghcr.io/dpereowei/fabricops:0.1.2
+ghcr.io/dpereowei/fabricops:0.1.3
 ```
 
 ### Install With Helm
@@ -39,7 +39,7 @@ Install the release chart directly from the GitHub release:
 
 ```bash
 helm upgrade --install fabricops \
-  https://github.com/dpereowei/fabricops/releases/download/v0.1.2/fabricops-0.1.2.tgz \
+  https://github.com/dpereowei/fabricops/releases/download/v0.1.3/fabricops-0.1.3.tgz \
   --namespace fabricops-system \
   --create-namespace \
   --wait
@@ -51,7 +51,7 @@ Override the manager image if needed:
 
 ```bash
 helm upgrade --install fabricops \
-  https://github.com/dpereowei/fabricops/releases/download/v0.1.2/fabricops-0.1.2.tgz \
+  https://github.com/dpereowei/fabricops/releases/download/v0.1.3/fabricops-0.1.3.tgz \
   --namespace fabricops-system \
   --create-namespace \
   --set manager.image.repository=ghcr.io/dpereowei/fabricops \
@@ -65,7 +65,7 @@ If you want to review the Kubernetes objects before applying them:
 
 ```bash
 helm template fabricops \
-  https://github.com/dpereowei/fabricops/releases/download/v0.1.2/fabricops-0.1.2.tgz \
+  https://github.com/dpereowei/fabricops/releases/download/v0.1.3/fabricops-0.1.3.tgz \
   --namespace fabricops-system > fabricops-install.yaml
 
 kubectl apply -f fabricops-install.yaml
@@ -77,7 +77,7 @@ kubectl rollout status deployment/fabricops-controller-manager -n fabricops-syst
 After installing the operator, apply the sample `FabricNetwork`:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/dpereowei/fabricops/v0.1.2/config/samples/fabricops_v1alpha1_fabricnetwork.yaml
+kubectl apply -f https://raw.githubusercontent.com/dpereowei/fabricops/v0.1.3/config/samples/fabricops_v1alpha1_fabricnetwork.yaml
 kubectl wait fabricnetwork/fabricnetwork-sample -n default --for=condition=Ready --timeout=20m
 ```
 
@@ -128,7 +128,7 @@ fabricopsctl query --participant -n default --org BankB \
 ```
 
 For reproducible installs, replace `@latest` with a release tag such as
-`@v0.1.2`.
+`@v0.1.3`.
 
 If `go install` succeeds but your shell cannot find `fabricopsctl`, make the
 PATH export permanent in your shell profile, for example `~/.zshrc`.
@@ -217,7 +217,7 @@ Delete `FabricNetwork` resources before removing the operator so FabricOps final
 
 ```bash
 kubectl delete fabricnetwork fabricnetwork-sample -n default --ignore-not-found
-kubectl delete -f https://github.com/dpereowei/fabricops/releases/download/v0.1.2/install.yaml
+kubectl delete -f https://github.com/dpereowei/fabricops/releases/download/v0.1.3/install.yaml
 ```
 
 For Helm installs:
@@ -229,14 +229,14 @@ helm uninstall fabricops -n fabricops-system
 
 ## Release Artifacts
 
-Release `v0.1.2` publishes:
+Release `v0.1.3` publishes:
 
 - `install.yaml`: single-file Kubernetes install bundle
-- `fabricops-0.1.2.tgz`: Helm chart archive
-- `ghcr.io/dpereowei/fabricops:0.1.2`: multi-platform manager image
-- `ghcr.io/dpereowei/fabricops-node-settlement:0.1.2`: Node CCaaS sample
-- `ghcr.io/dpereowei/fabricops-go-settlement:0.1.2`: Go CCaaS sample
-- `ghcr.io/dpereowei/fabricops-java-settlement:0.1.2`: Java CCaaS sample
+- `fabricops-0.1.3.tgz`: Helm chart archive
+- `ghcr.io/dpereowei/fabricops:0.1.3`: multi-platform manager image
+- `ghcr.io/dpereowei/fabricops-node-settlement:0.1.3`: Node CCaaS sample
+- `ghcr.io/dpereowei/fabricops-go-settlement:0.1.3`: Go CCaaS sample
+- `ghcr.io/dpereowei/fabricops-java-settlement:0.1.3`: Java CCaaS sample
 
 ## Capabilities
 
@@ -396,8 +396,8 @@ The local release helpers remain useful for debugging individual steps. For
 example:
 
 ```bash
-make docker-buildx-release VERSION=0.1.2
-make build-installer-release VERSION=0.1.2
+make docker-buildx-release VERSION=0.1.3
+make build-installer-release VERSION=0.1.3
 ```
 
 `docker-buildx-release` publishes the manager image for all configured `PLATFORMS`. For local single-platform sanity checks, use `docker-build-release` and `docker-push-release`.
@@ -405,7 +405,7 @@ make build-installer-release VERSION=0.1.2
 Use that same tag for Helm installs:
 
 ```bash
-make helm-deploy-release VERSION=0.1.2
+make helm-deploy-release VERSION=0.1.3
 ```
 
 The release helpers derive `RELEASE_IMG` from `IMAGE_REGISTRY`, `IMAGE_REPOSITORY`, and `VERSION`. Override those variables if the image moves to another registry or repository.
@@ -413,7 +413,7 @@ The release helpers derive `RELEASE_IMG` from `IMAGE_REGISTRY`, `IMAGE_REPOSITOR
 Before publishing release instructions, verify that the manager image and sample chaincode images are publicly pullable from GHCR:
 
 ```bash
-make release-check-ghcr VERSION=0.1.2
+make release-check-ghcr VERSION=0.1.3
 ```
 
 See [docs/first-release-checklist.md](docs/first-release-checklist.md) for the full release checklist.
@@ -586,7 +586,7 @@ spec:
     - name: settlement
       version: "0.0.1"
       channel: settlement
-      image: ghcr.io/dpereowei/fabricops-node-settlement:0.1.2
+      image: ghcr.io/dpereowei/fabricops-node-settlement:0.1.3
       sequence: 1
       ccaas:
         replicas: 1

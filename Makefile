@@ -4,7 +4,7 @@ IMG ?= $(LOCAL_IMG)
 # Canonical manager image location for release builds.
 IMAGE_REGISTRY ?= ghcr.io/dpereowei
 IMAGE_REPOSITORY ?= fabricops
-VERSION ?= 0.1.1
+VERSION ?= 0.1.3
 RELEASE_IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):$(VERSION)
 SAMPLE_CHAINCODE_IMAGES ?= $(IMAGE_REGISTRY)/fabricops-node-settlement:$(VERSION) $(IMAGE_REGISTRY)/fabricops-go-settlement:$(VERSION) $(IMAGE_REGISTRY)/fabricops-java-settlement:$(VERSION)
 RELEASE_CHECK_IMAGES ?= $(RELEASE_IMG) $(SAMPLE_CHAINCODE_IMAGES)
