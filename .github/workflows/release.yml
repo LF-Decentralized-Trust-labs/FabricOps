@@ -7,6 +7,11 @@ on:
         description: "Release tag to publish, for example v0.1.3"
         required: true
         type: string
+      replace_existing_tag:
+        description: "Delete and recreate an existing unpublished tag after release gates pass"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -41,6 +46,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REQUESTED_TAG: ${{ inputs.release_tag }}
+          REPLACE_EXISTING_TAG_REQUESTED: ${{ inputs.replace_existing_tag }}
         run: |
           set -euo pipefail
 
@@ -65,9 +71,18 @@ jobs:
             remote_tag_sha="$(awk '{ print $1 }' /tmp/fabricops-release-tag)"
             head_sha="$(git rev-parse HEAD)"
             if [ "${remote_tag_sha}" != "${head_sha}" ]; then
-              echo "::error::Tag ${REQUESTED_TAG} already exists at ${remote_tag_sha}, not current HEAD ${head_sha}."
-              exit 1
+              if [ "${REPLACE_EXISTING_TAG_REQUESTED}" = "true" ]; then
+                echo "::warning::Tag ${REQUESTED_TAG} exists at ${remote_tag_sha}; it will be replaced after release gates pass."
+                echo "REPLACE_EXISTING_TAG=true" >> "$GITHUB_ENV"
+              else
+                echo "::error::Tag ${REQUESTED_TAG} already exists at ${remote_tag_sha}, not current HEAD ${head_sha}. Delete the stale tag, use a new release tag, or rerun with replace_existing_tag=true if no GitHub release exists."
+                exit 1
+              fi
+            else
+              echo "REPLACE_EXISTING_TAG=false" >> "$GITHUB_ENV"
             fi
+          else
+            echo "REPLACE_EXISTING_TAG=false" >> "$GITHUB_ENV"
           fi
 
           echo "tag=${REQUESTED_TAG}" >> "$GITHUB_OUTPUT"
@@ -121,18 +136,17 @@ jobs:
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
 
-      - name: Tag release
-        run: |
-          if git rev-parse "${RELEASE_TAG}" >/dev/null 2>&1; then
-            echo "Tag ${RELEASE_TAG} already exists locally."
-          else
-            git tag "${RELEASE_TAG}"
-          fi
-
-          git push origin "${RELEASE_TAG}"
-
       - name: Log in to GHCR
-        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        env:
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GHCR_TOKEN}" ]; then
+            echo "::error::GHCR_TOKEN is empty. Configure a repository secret with write:packages or allow the repository GITHUB_TOKEN to publish packages."
+            exit 1
+          fi
+          echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
 
       - name: Build and push manager image
         run: make docker-buildx-release VERSION="${VERSION}"
@@ -151,6 +165,22 @@ jobs:
 
       - name: Verify public GHCR visibility
         run: make release-check-ghcr VERSION="${VERSION}"
+
+      - name: Tag release
+        run: |
+          set -euo pipefail
+
+          if [ "${REPLACE_EXISTING_TAG}" = "true" ]; then
+            git tag -d "${RELEASE_TAG}" >/dev/null 2>&1 || true
+            git push origin ":refs/tags/${RELEASE_TAG}"
+            git tag "${RELEASE_TAG}"
+          elif git rev-parse "${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "Tag ${RELEASE_TAG} already exists locally."
+          else
+            git tag "${RELEASE_TAG}"
+          fi
+
+          git push origin "${RELEASE_TAG}"
 
       - name: Create GitHub release
         env:

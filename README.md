@@ -387,10 +387,16 @@ Use the `Release` GitHub Actions workflow from the GitHub UI when publishing a
 new release. Trigger it from `main` with a release tag such as `v<version>`.
 
 The workflow validates the tag, updates release-version files, runs the Go test
-and lint gates, builds and pushes the manager plus sample chaincode images,
-generates `install.yaml` and the Helm chart package, verifies GHCR public
-visibility, commits the release-prep changes, tags the commit, and creates the
+and lint gates, generates `install.yaml` and the Helm chart package, commits the
+release-prep changes, builds and pushes the manager plus sample chaincode
+images, verifies GHCR public visibility, then tags the commit and creates the
 GitHub release with the generated assets.
+
+For GHCR publishing, the workflow uses the repository `GITHUB_TOKEN` by default.
+If GHCR denies package writes, configure repository secrets `GHCR_TOKEN` with
+`write:packages` permission and, if needed, `GHCR_USERNAME`. If a workflow run
+fails after pushing a tag but before creating the GitHub release, rerun the same
+tag with `replace_existing_tag=true` after the fix is merged.
 
 The local release helpers remain useful for debugging individual steps. For
 example:

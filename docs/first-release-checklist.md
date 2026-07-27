@@ -8,8 +8,12 @@ Use the `Release` GitHub Actions workflow from the GitHub UI.
 
 - Run it from the `main` branch.
 - Enter the intended release tag, for example `v0.1.3`.
-- The workflow creates the release-prep commit, pushes the release tag, and
-  publishes the GitHub release assets.
+- For GHCR publishing, either allow the repository `GITHUB_TOKEN` to write the
+  package or configure a repository secret named `GHCR_TOKEN` with
+  `write:packages` permission. If the PAT owner is different from the workflow
+  actor, also set `GHCR_USERNAME`.
+- The workflow creates the release-prep commit, publishes and verifies images,
+  then pushes the release tag and publishes the GitHub release assets.
 
 The workflow performs these release gates:
 
@@ -20,6 +24,12 @@ The workflow performs these release gates:
 - Build and push sample chaincode images.
 - Build `dist/install.yaml` and `dist/fabricops-<version>.tgz`.
 - Verify GHCR images are publicly pullable before creating the release.
+
+If a release workflow fails after pushing a tag but before creating the GitHub
+release, fix the failure and rerun the same release tag with
+`replace_existing_tag=true`. That recovery option is only for unpublished failed
+releases; it deletes and recreates the existing tag after the image and public
+visibility gates pass.
 
 ## Manual Sanity Checks
 
