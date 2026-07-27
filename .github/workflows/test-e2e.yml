@@ -53,3 +53,44 @@ jobs:
       - name: Cleanup kind cluster
         if: always()
         run: kind delete cluster --name "${KIND_CLUSTER}" || true
+
+  test-e2e-federated:
+    permissions:
+      contents: read
+    name: Federated join smoke on kind
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      KIND_FEDERATED_FOUNDER_CLUSTER: fabricops-ci-fed-founder
+      KIND_FEDERATED_PARTICIPANT_CLUSTER: fabricops-ci-fed-participant
+      KIND_VERSION: v0.31.0
+      IMG: controller:latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-$(go env GOARCH)
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Verify kind installation
+        run: kind version
+
+      - name: Run federated join e2e smoke
+        run: |
+          make test-e2e-federated
+
+      - name: Cleanup kind clusters
+        if: always()
+        run: |
+          kind delete cluster --name "${KIND_FEDERATED_FOUNDER_CLUSTER}" || true
+          kind delete cluster --name "${KIND_FEDERATED_PARTICIPANT_CLUSTER}" || true

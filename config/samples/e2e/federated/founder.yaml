@@ -1,0 +1,58 @@
+apiVersion: fabricops.io/v1alpha1
+kind: FabricNetwork
+metadata:
+  labels:
+    app.kubernetes.io/name: fabricops
+    app.kubernetes.io/managed-by: kustomize
+  name: federated-founder
+spec:
+  global:
+    fabricVersion: "3.1.0"
+    tls: true
+    jobs:
+      succeededHistoryTTLSeconds: 600
+    storage:
+      ca:
+        size: 1Gi
+      orderer:
+        size: 1Gi
+      peer:
+        size: 1Gi
+
+  orgs:
+    - organization:
+        name: Orderer
+        domain: orderer.fabricops.io
+        mspName: OrdererMSP
+      ca:
+        db: sqlite
+      orderers:
+        - groupName: group1
+          type: raft
+          instances: 1
+          prefix: orderer
+          externalEndpoints:
+            - name: orderer0
+              address: __ORDERER_ADDRESS__
+
+    - organization:
+        name: BankA
+        domain: banka.fabricops.io
+        mspName: BankAMSP
+      ca:
+        db: sqlite
+      peer:
+        instances: 1
+        db: leveldb
+        prefix: peer
+        externalEndpoints:
+          - name: peer0
+            address: __FOUNDER_PEER_ADDRESS__
+
+  channels:
+    - name: settlement
+      orgs:
+        - name: BankA
+          peers: ["peer0"]
+
+  chaincodes: []

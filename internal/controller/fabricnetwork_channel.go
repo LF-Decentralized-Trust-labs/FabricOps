@@ -102,6 +102,7 @@ func (r *FabricNetworkReconciler) reconcileChannels(
 			BlockConfigMapName: channelBlockConfigMapName(channel.Name),
 			Orderers:           orderers,
 			Orgs:               make([]fabricopsv1alpha1.ChannelOrgStatus, 0, len(channel.Orgs)),
+			ExternalOrgs:       channelExternalOrgStatuses(channel, "Waiting for local channel bootstrap"),
 		}
 		messages := []string{}
 
@@ -200,6 +201,13 @@ func (r *FabricNetworkReconciler) reconcileChannels(
 							return statuses, err
 						}
 						status.Message = anchorMessage
+						if anchorMessage == "" {
+							externalOrgMessage, err := r.reconcileExternalOrgUpdates(ctx, net, channel, &status)
+							if err != nil {
+								return statuses, err
+							}
+							status.Message = externalOrgMessage
+						}
 					}
 				}
 			} else {
@@ -210,6 +218,7 @@ func (r *FabricNetworkReconciler) reconcileChannels(
 			status.Peers.Ready >= status.Peers.Desired &&
 			status.Orderers.Desired > 0 &&
 			status.Peers.Desired > 0 &&
+			channelExternalOrgsReady(status.ExternalOrgs) &&
 			status.Message == ""
 		statuses = append(statuses, status)
 	}
@@ -701,7 +710,7 @@ func (r *FabricNetworkReconciler) anchorPeerUpdateResultReadiness(
 	if raw == "" {
 		return false, fmt.Sprintf("Waiting for %s anchor peer update result ConfigMap data", org.Organization.Name), nil
 	}
-	if !anchorPeerUpdateResultMatches(raw, channelName, org.Organization.MSPName, channelPeerHost(anchorPeer), peerPort) {
+	if !anchorPeerUpdateResultMatches(raw, channelName, org.Organization.MSPName, channelPeerHost(anchorPeer), channelPeerPort(anchorPeer)) {
 		return false, fmt.Sprintf("Waiting for %s anchor peer update result for channel %s", org.Organization.Name, channelName), nil
 	}
 
@@ -1599,6 +1608,7 @@ func buildAnchorPeerUpdateJob(
 								org.Organization.MSPName,
 								peerAddress(anchorPeer),
 								channelPeerHost(anchorPeer),
+								channelPeerPort(anchorPeer),
 								ordererClientAddress(orderer),
 								channelOrgMSPPath(org),
 								channelOrdererAdminTLSPath(org),
@@ -1708,7 +1718,7 @@ func buildConfigtxYAML(net *fabricopsv1alpha1.FabricNetwork, channel fabricopsv1
 			b.WriteString("    AnchorPeers:\n")
 			for _, peer := range peers {
 				fmt.Fprintf(&b, "      - Host: %s\n", channelPeerHost(peer))
-				fmt.Fprintf(&b, "        Port: %d\n", peerPort)
+				fmt.Fprintf(&b, "        Port: %d\n", channelPeerPort(peer))
 			}
 		}
 		b.WriteString("    Policies:\n")
@@ -1739,7 +1749,7 @@ func buildConfigtxYAML(net *fabricopsv1alpha1.FabricNetwork, channel fabricopsv1
 		b.WriteString("  EtcdRaft:\n    Consenters:\n")
 		for _, orderer := range orderers {
 			fmt.Fprintf(&b, "      - Host: %s\n", channelOrdererHost(orderer))
-			fmt.Fprintf(&b, "        Port: %d\n", ordererPort)
+			fmt.Fprintf(&b, "        Port: %d\n", channelOrdererPort(orderer))
 			fmt.Fprintf(&b, "        ClientTLSCert: %s/server.crt\n", channelOrdererTLSPath(orderer.name))
 			fmt.Fprintf(&b, "        ServerTLSCert: %s/server.crt\n", channelOrdererTLSPath(orderer.name))
 		}
@@ -1870,18 +1880,26 @@ func channelAnchorPeerForOrg(
 func channelOrdererEndpoints(orderers []ordererInstance) []string {
 	endpoints := make([]string, 0, len(orderers))
 	for _, orderer := range orderers {
-		endpoints = append(endpoints, fmt.Sprintf("%s:%d", channelOrdererHost(orderer), ordererPort))
+		endpoints = append(endpoints, fmt.Sprintf("%s:%d", channelOrdererHost(orderer), channelOrdererPort(orderer)))
 	}
 
 	return endpoints
 }
 
 func channelOrdererHost(orderer ordererInstance) string {
-	return strings.TrimSuffix(serviceDNS(orderer.name, orderer.namespace, ordererPort), fmt.Sprintf(":%d", ordererPort))
+	return ordererAdvertisedHost(orderer)
+}
+
+func channelOrdererPort(orderer ordererInstance) int32 {
+	return ordererAdvertisedPort(orderer)
 }
 
 func channelPeerHost(peer peerInstance) string {
-	return strings.TrimSuffix(peerAddress(peer), fmt.Sprintf(":%d", peerPort))
+	return peerAdvertisedHost(peer)
+}
+
+func channelPeerPort(peer peerInstance) int32 {
+	return peerAdvertisedPort(peer)
 }
 
 func ordererConsensusType(groupType string) string {
@@ -2173,6 +2191,7 @@ func updateAnchorPeerScript(
 	mspID string,
 	peerAddress string,
 	anchorHost string,
+	anchorPort int32,
 	ordererAddress string,
 	mspPath string,
 	adminTLSPath string,
@@ -2312,7 +2331,7 @@ retry 30 5 peer channel update \
   --cafile "$ORDERER_TLS_DIR/ca.crt"
 
 write_anchor_result
-`, channelName, mspID, anchorHost, peerPort, ordererAddress, adminTLSPath, ordererTLSPath, anchorUpdateFile, channelOutputDir, channelAnchorPeerResultFile, peerAddress, mspPath)
+`, channelName, mspID, anchorHost, anchorPort, ordererAddress, adminTLSPath, ordererTLSPath, anchorUpdateFile, channelOutputDir, channelAnchorPeerResultFile, peerAddress, mspPath)
 }
 
 func publishChannelBlockEnv(channelName string) []corev1.EnvVar {

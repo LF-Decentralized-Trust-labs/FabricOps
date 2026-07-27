@@ -48,6 +48,7 @@ func validateFabricNetworkTopology(net *fabricopsv1alpha1.FabricNetwork) []strin
 		for _, group := range org.Orderers {
 			ordererCount += group.Instances
 		}
+		problems = append(problems, validateOrgExternalEndpoints(org)...)
 	}
 
 	if ordererCount == 0 {
@@ -71,8 +72,12 @@ func validateFabricNetworkTopology(net *fabricopsv1alpha1.FabricNetwork) []strin
 		if len(channel.Orgs) == 0 {
 			problems = append(problems, fmt.Sprintf("channel %q must include at least one peer org", channelName))
 		}
+		localChannelOrgNames := map[string]struct{}{}
 		for _, channelOrg := range channel.Orgs {
 			orgName := strings.TrimSpace(channelOrg.Name)
+			if orgName != "" {
+				localChannelOrgNames[orgName] = struct{}{}
+			}
 			org, ok := orgs[orgName]
 			if !ok {
 				problems = append(problems, fmt.Sprintf("channel %q references unknown org %q", channelName, orgName))
@@ -93,6 +98,7 @@ func validateFabricNetworkTopology(net *fabricopsv1alpha1.FabricNetwork) []strin
 				)
 			}
 		}
+		problems = append(problems, validateChannelExternalOrgs(channel, orgs, localChannelOrgNames, net)...)
 	}
 
 	seenChaincodes := map[string]struct{}{}
@@ -133,6 +139,189 @@ func validateFabricNetworkTopology(net *fabricopsv1alpha1.FabricNetwork) []strin
 	}
 
 	return problems
+}
+
+func validateChannelExternalOrgs(
+	channel fabricopsv1alpha1.Channel,
+	orgs map[string]fabricopsv1alpha1.Org,
+	localChannelOrgNames map[string]struct{},
+	net *fabricopsv1alpha1.FabricNetwork,
+) []string {
+	problems := []string{}
+	seenNames := map[string]struct{}{}
+	seenMSPIDs := map[string]struct{}{}
+	localMSPs := orgMSPNames(orgs)
+	localChannelMSPs := map[string]struct{}{}
+	for orgName := range localChannelOrgNames {
+		org, ok := orgs[orgName]
+		if !ok {
+			continue
+		}
+		localChannelMSPs[org.Organization.MSPName] = struct{}{}
+	}
+
+	for i, externalOrg := range channel.ExternalOrgs {
+		path := fmt.Sprintf("channel %q externalOrgs[%d]", channel.Name, i)
+		name := strings.TrimSpace(externalOrg.Name)
+		mspID := strings.TrimSpace(externalOrg.MSPID)
+		if name == "" {
+			problems = append(problems, path+" name is required")
+		} else {
+			if _, ok := seenNames[name]; ok {
+				problems = append(problems, fmt.Sprintf("channel %q external org %q is declared more than once", channel.Name, name))
+			}
+			seenNames[name] = struct{}{}
+			if _, ok := orgs[name]; ok {
+				problems = append(problems, fmt.Sprintf("channel %q external org %q is already a local org", channel.Name, name))
+			}
+		}
+		if mspID == "" {
+			problems = append(problems, path+" mspID is required")
+		} else {
+			if _, ok := seenMSPIDs[mspID]; ok {
+				problems = append(problems, fmt.Sprintf("channel %q external MSP %q is declared more than once", channel.Name, mspID))
+			}
+			seenMSPIDs[mspID] = struct{}{}
+			if _, ok := localMSPs[mspID]; ok {
+				problems = append(problems, fmt.Sprintf("channel %q external MSP %q is already managed by a local org", channel.Name, mspID))
+			}
+		}
+
+		problems = append(problems, validateChannelArtifactRef(path+".applicationOrgRef", &externalOrg.ApplicationOrgRef)...)
+		if adminOrg := strings.TrimSpace(externalOrg.AdminOrg); adminOrg != "" {
+			if _, ok := orgs[adminOrg]; !ok {
+				problems = append(problems, fmt.Sprintf("%s adminOrg %q is not a local org", path, adminOrg))
+			} else if _, ok := localChannelOrgNames[adminOrg]; !ok {
+				problems = append(problems, fmt.Sprintf("%s adminOrg %q is not a local org on channel %q", path, adminOrg, channel.Name))
+			}
+		}
+		seenRequiredSigners := map[string]struct{}{}
+		for j, signerMSPID := range externalOrg.RequiredSignerMSPIDs {
+			signerPath := fmt.Sprintf("%s.requiredSignerMSPIDs[%d]", path, j)
+			signerMSPID = strings.TrimSpace(signerMSPID)
+			if signerMSPID == "" {
+				problems = append(problems, signerPath+" is required")
+				continue
+			}
+			if _, ok := seenRequiredSigners[signerMSPID]; ok {
+				problems = append(
+					problems,
+					fmt.Sprintf("%s required signer MSP %q is declared more than once", path, signerMSPID),
+				)
+			}
+			seenRequiredSigners[signerMSPID] = struct{}{}
+			if _, ok := localChannelMSPs[signerMSPID]; !ok {
+				problems = append(
+					problems,
+					fmt.Sprintf("%s required signer MSP %q is not a local channel org MSP", path, signerMSPID),
+				)
+			}
+		}
+		if externalOrg.Orderer != nil {
+			if !channelOrdererRefMatchesAny(net, *externalOrg.Orderer) {
+				problems = append(problems, fmt.Sprintf("%s orderer does not match a local orderer instance", path))
+			}
+		}
+		for j, anchorPeer := range externalOrg.AnchorPeers {
+			anchorPath := fmt.Sprintf("%s.anchorPeers[%d]", path, j)
+			if strings.TrimSpace(anchorPeer.Host) == "" {
+				problems = append(problems, anchorPath+".host is required")
+			}
+			if anchorPeer.Port <= 0 || anchorPeer.Port > 65535 {
+				problems = append(problems, anchorPath+".port must be between 1 and 65535")
+			}
+		}
+	}
+
+	return problems
+}
+
+func validateOrgExternalEndpoints(org fabricopsv1alpha1.Org) []string {
+	problems := []string{}
+	orgName := strings.TrimSpace(org.Organization.Name)
+
+	for i, group := range org.Orderers {
+		knownOrderers := map[string]struct{}{}
+		for instance := 0; instance < group.Instances; instance++ {
+			knownOrderers[sanitizeName(fmt.Sprintf("%s%d", group.Prefix, instance))] = struct{}{}
+		}
+		path := fmt.Sprintf("org %q orderers[%d].externalEndpoints", orgName, i)
+		problems = append(problems, validateExternalEndpoints(path, group.ExternalEndpoints, knownOrderers)...)
+	}
+
+	if org.Peer != nil {
+		problems = append(
+			problems,
+			validateExternalEndpoints(fmt.Sprintf("org %q peer.externalEndpoints", orgName), org.Peer.ExternalEndpoints, desiredPeerNames(org))...,
+		)
+	}
+
+	return problems
+}
+
+func validateExternalEndpoints(
+	path string,
+	endpoints []fabricopsv1alpha1.ExternalEndpoint,
+	knownWorkloads map[string]struct{},
+) []string {
+	problems := []string{}
+	seen := map[string]struct{}{}
+	for i, endpoint := range endpoints {
+		endpointPath := fmt.Sprintf("%s[%d]", path, i)
+		name := strings.TrimSpace(endpoint.Name)
+		if name == "" {
+			problems = append(problems, endpointPath+".name is required")
+		} else {
+			if _, ok := seen[name]; ok {
+				problems = append(problems, fmt.Sprintf("%s workload %q is declared more than once", path, name))
+			}
+			seen[name] = struct{}{}
+			if _, ok := knownWorkloads[name]; !ok {
+				problems = append(problems, fmt.Sprintf("%s references unknown workload %q", endpointPath, name))
+			}
+		}
+		problems = append(problems, validateParticipantEndpoint(endpointPath+".address", endpoint.Address, true)...)
+		for j, host := range endpoint.TLSHosts {
+			if strings.TrimSpace(host) == "" {
+				problems = append(problems, fmt.Sprintf("%s.tlsHosts[%d] is required", endpointPath, j))
+			}
+		}
+	}
+	return problems
+}
+
+func validateChannelArtifactRef(path string, ref *fabricopsv1alpha1.ChannelArtifactKeyRef) []string {
+	if ref == nil {
+		return []string{path + " is required"}
+	}
+	hasConfigMap := ref.ConfigMapKeyRef != nil
+	hasSecret := ref.SecretKeyRef != nil
+	if hasConfigMap == hasSecret {
+		return []string{path + " must set exactly one of configMapKeyRef or secretKeyRef"}
+	}
+	if hasConfigMap {
+		return validateConfigMapKeySelector(path+".configMapKeyRef", *ref.ConfigMapKeyRef)
+	}
+	return validateSecretKeySelector(path+".secretKeyRef", *ref.SecretKeyRef)
+}
+
+func channelOrdererRefMatchesAny(
+	net *fabricopsv1alpha1.FabricNetwork,
+	ref fabricopsv1alpha1.ChannelOrdererRef,
+) bool {
+	if strings.TrimSpace(ref.Org) == "" && strings.TrimSpace(ref.Name) == "" {
+		return false
+	}
+	for _, orderer := range desiredOrdererInstances(net) {
+		if strings.TrimSpace(ref.Org) != "" && ref.Org != orderer.org.Organization.Name {
+			continue
+		}
+		if strings.TrimSpace(ref.Name) != "" && ref.Name != orderer.name {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func validateChaincodeEndorsementPolicyTopology(
@@ -320,6 +509,12 @@ func validateSignaturePolicyMSPReferences(
 ) []string {
 	problems := []string{}
 	allMSPs := orgMSPNames(orgs)
+	for _, externalOrg := range channel.ExternalOrgs {
+		mspName := strings.TrimSpace(externalOrg.MSPID)
+		if mspName != "" {
+			allMSPs[mspName] = struct{}{}
+		}
+	}
 	channelMSPs := channelMSPNames(channel, orgs)
 	matches := signaturePolicyPrincipalPattern.FindAllStringSubmatch(policy, -1)
 	if len(matches) == 0 {
@@ -393,6 +588,12 @@ func channelMSPNames(
 			continue
 		}
 		mspName := strings.TrimSpace(org.Organization.MSPName)
+		if mspName != "" {
+			mspNames[mspName] = struct{}{}
+		}
+	}
+	for _, externalOrg := range channel.ExternalOrgs {
+		mspName := strings.TrimSpace(externalOrg.MSPID)
 		if mspName != "" {
 			mspNames[mspName] = struct{}{}
 		}

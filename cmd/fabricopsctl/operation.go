@@ -25,6 +25,7 @@ import (
 	"hash/fnv"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -76,12 +77,14 @@ type chaincodeOperationOptions struct {
 	output       string
 	waitForEvent bool
 	keepJob      bool
+	participant  bool
 }
 
 type operationPeerTarget struct {
-	orgName  string
-	status   fabricopsv1alpha1.OrgStatus
-	endpoint fabricopsv1alpha1.PeerEndpointStatus
+	orgName      string
+	status       fabricopsv1alpha1.OrgStatus
+	endpoint     fabricopsv1alpha1.PeerEndpointStatus
+	tlsRootCARef *fabricopsv1alpha1.ParticipantArtifactKeyRef
 }
 
 type operationResult struct {
@@ -128,11 +131,12 @@ func runChaincodeOperation(args []string, stdout, stderr io.Writer, operation st
 	flags.StringVar(&options.output, "output", operationOutputText, "Output format: text or json")
 	flags.BoolVar(&options.waitForEvent, "wait-for-event", true, "Pass --waitForEvent to invoke")
 	flags.BoolVar(&options.keepJob, "keep-job", false, "Keep the operation Job and temporary Secret")
+	flags.BoolVar(&options.participant, "participant", false, "Treat the resource argument as a FabricParticipant")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if flags.NArg() != 1 {
-		printLine(stderr, "Usage: fabricopsctl "+operation+" [flags] <fabricnetwork>")
+		printLine(stderr, "Usage: fabricopsctl "+operation+" [flags] <fabricnetwork|fabricparticipant>")
 		return errUsage
 	}
 	if err := validateOperationOptions(options); err != nil {
@@ -179,6 +183,9 @@ func runChaincodeOperationWithOptions(
 	if err != nil {
 		return err
 	}
+	if options.participant {
+		return runParticipantChaincodeOperationWithOptions(ctx, networkName, operation, options, timeout, stdout)
+	}
 	network, err := getFabricNetwork(ctx, options.kube, networkName)
 	if err != nil {
 		return err
@@ -222,6 +229,115 @@ func runChaincodeOperationWithOptions(
 	tlsEnabled := network.Spec.Global.TLS
 	if tlsEnabled {
 		if err := ensureOperationTLSSecret(ctx, ctrlClient, tlsSecretName, submitter, orderer, targets); err != nil {
+			return err
+		}
+	}
+
+	job := buildOperationJob(
+		network,
+		operation,
+		options,
+		payload,
+		jobName,
+		tlsSecretName,
+		mspID,
+		submitter,
+		orderer,
+		targets,
+	)
+	if err := ctrlClient.Create(ctx, job); err != nil {
+		return err
+	}
+
+	completed, err := waitForOperationJob(ctx, ctrlClient, job.Namespace, job.Name, timeout)
+	logs, logErr := operationLogs(ctx, kubeClient, job.Namespace, job.Name)
+	if err != nil {
+		return err
+	}
+	if logErr != nil {
+		return logErr
+	}
+	result := buildOperationResult(operation, network, options, job, submitter, targets, completed, logs)
+	if err := writeOperationResult(stdout, options.output, result); err != nil {
+		return err
+	}
+	if !completed {
+		return fmt.Errorf("operation job %s/%s failed", job.Namespace, job.Name)
+	}
+	if !options.keepJob {
+		cleanupOperationObjects(ctx, ctrlClient, job, tlsEnabled, tlsSecretName)
+	}
+
+	return nil
+}
+
+func runParticipantChaincodeOperationWithOptions(
+	ctx context.Context,
+	participantName string,
+	operation string,
+	options chaincodeOperationOptions,
+	timeout time.Duration,
+	stdout io.Writer,
+) error {
+	participant, err := getFabricParticipant(ctx, options.kube, participantName)
+	if err != nil {
+		return err
+	}
+	payload, function, err := resolveChaincodePayload(options)
+	if err != nil {
+		return err
+	}
+	options.function = function
+	statuses := participantOperationOrgStatuses(participant)
+	targets, submitter, err := selectOperationTargets(
+		statuses,
+		options.org,
+		options.peers,
+	)
+	if err != nil {
+		return err
+	}
+	targets = decorateParticipantOperationTargets(participant, targets)
+	if err := validateSelectedOperationTargets(operation, submitter, targets); err != nil {
+		return err
+	}
+	mspID, err := mspIDForParticipantOrg(participant, submitter.Name)
+	if err != nil {
+		return err
+	}
+	ordererSpec, err := selectParticipantOperationOrderer(participant)
+	if err != nil {
+		return err
+	}
+	orderer := participantOperationOrdererStatus(ordererSpec)
+
+	ctrlClient, err := newClient(options.kube)
+	if err != nil {
+		return err
+	}
+	restConfig, err := newRESTConfig(options.kube)
+	if err != nil {
+		return err
+	}
+	kubeClient, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		return err
+	}
+
+	network := participantOperationNetwork(participant)
+	jobName := operationJobName(participant.Name, operation)
+	tlsSecretName := jobName + "-tls-roots"
+	tlsEnabled := participant.Spec.Global.TLS
+	if tlsEnabled {
+		if err := ensureParticipantOperationTLSSecret(
+			ctx,
+			ctrlClient,
+			tlsSecretName,
+			participant,
+			submitter,
+			ordererSpec,
+			targets,
+		); err != nil {
 			return err
 		}
 	}
@@ -460,17 +576,64 @@ func ensureOperationTLSSecret(
 	orderer fabricopsv1alpha1.OrdererEndpointStatus,
 	targets []operationPeerTarget,
 ) error {
-	data := map[string][]byte{}
-	ordererNamespace, err := endpointNamespace(orderer.ClientAddress)
-	if err != nil {
-		return err
+	ordererNamespace := strings.TrimSpace(orderer.Namespace)
+	if ordererNamespace == "" {
+		var err error
+		ordererNamespace, err = endpointNamespace(orderer.ClientAddress)
+		if err != nil {
+			return err
+		}
 	}
 	ordererRoot, err := loadSecretKey(ctx, client, ordererNamespace, orderer.Name+"-tls", tlsCACertKey)
 	if err != nil {
 		return err
 	}
-	data["orderer-ca.crt"] = ordererRoot
+	return ensureOperationTLSSecretWithOrdererRoot(ctx, client, name, submitter, ordererRoot, targets)
+}
 
+func ensureParticipantOperationTLSSecret(
+	ctx context.Context,
+	client ctrlclient.Client,
+	name string,
+	participant *fabricopsv1alpha1.FabricParticipant,
+	submitter fabricopsv1alpha1.OrgStatus,
+	orderer fabricopsv1alpha1.ParticipantOrdererEndpoint,
+	targets []operationPeerTarget,
+) error {
+	ordererRoot, err := loadParticipantOperationArtifact(ctx, client, participant.Namespace, orderer.TLSRootCARef)
+	if err != nil {
+		return err
+	}
+	data := map[string][]byte{
+		"orderer-ca.crt": ordererRoot,
+	}
+	for i, target := range targets {
+		var root []byte
+		var err error
+		if target.tlsRootCARef != nil {
+			root, err = loadParticipantOperationArtifact(ctx, client, participant.Namespace, target.tlsRootCARef)
+		} else {
+			root, err = loadSecretKey(ctx, client, target.status.Namespace, target.endpoint.Name+"-tls", tlsCACertKey)
+		}
+		if err != nil {
+			return err
+		}
+		data[fmt.Sprintf("peer-%d-ca.crt", i)] = root
+	}
+	return createOperationTLSSecret(ctx, client, name, submitter.Namespace, data)
+}
+
+func ensureOperationTLSSecretWithOrdererRoot(
+	ctx context.Context,
+	client ctrlclient.Client,
+	name string,
+	submitter fabricopsv1alpha1.OrgStatus,
+	ordererRoot []byte,
+	targets []operationPeerTarget,
+) error {
+	data := map[string][]byte{
+		"orderer-ca.crt": ordererRoot,
+	}
 	for i, target := range targets {
 		root, err := loadSecretKey(ctx, client, target.status.Namespace, target.endpoint.Name+"-tls", tlsCACertKey)
 		if err != nil {
@@ -478,11 +641,20 @@ func ensureOperationTLSSecret(
 		}
 		data[fmt.Sprintf("peer-%d-ca.crt", i)] = root
 	}
+	return createOperationTLSSecret(ctx, client, name, submitter.Namespace, data)
+}
 
+func createOperationTLSSecret(
+	ctx context.Context,
+	client ctrlclient.Client,
+	name string,
+	namespace string,
+	data map[string][]byte,
+) error {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: submitter.Namespace,
+			Namespace: namespace,
 			Labels: map[string]string{
 				"app.kubernetes.io/name":      "fabricops",
 				"app.kubernetes.io/component": "operation",
@@ -492,6 +664,24 @@ func ensureOperationTLSSecret(
 		Data: data,
 	}
 	return client.Create(ctx, secret)
+}
+
+func loadParticipantOperationArtifact(
+	ctx context.Context,
+	client ctrlclient.Client,
+	namespace string,
+	ref *fabricopsv1alpha1.ParticipantArtifactKeyRef,
+) ([]byte, error) {
+	if ref == nil {
+		return nil, fmt.Errorf("participant orderer TLS root ref is required")
+	}
+	if ref.ConfigMapKeyRef != nil {
+		return loadConfigMapKey(ctx, client, namespace, ref.ConfigMapKeyRef.Name, ref.ConfigMapKeyRef.Key)
+	}
+	if ref.SecretKeyRef != nil {
+		return loadSecretKey(ctx, client, namespace, ref.SecretKeyRef.Name, ref.SecretKeyRef.Key)
+	}
+	return nil, fmt.Errorf("participant artifact ref must set configMapKeyRef or secretKeyRef")
 }
 
 func loadSecretKey(ctx context.Context, client ctrlclient.Client, namespace, name, key string) ([]byte, error) {
@@ -570,6 +760,7 @@ func operationEnv(
 		{Name: "FABRICOPS_TRANSIENT", Value: options.transient},
 		{Name: "FABRICOPS_MSP_ID", Value: mspID},
 		{Name: "FABRICOPS_ORDERER_ADDRESS", Value: orderer.ClientAddress},
+		{Name: "FABRICOPS_ORDERER_TLS_HOSTNAME_OVERRIDE", Value: orderer.TLSHostnameOverride},
 		{Name: "FABRICOPS_CORE_PEER_ADDRESS", Value: submitterPeerAddress(submitter.Name, targets)},
 		{Name: "FABRICOPS_CORE_PEER_TLS_ROOT", Value: submitterPeerTLSRoot(submitter.Name, targets)},
 	}
@@ -590,7 +781,10 @@ func operationScript(tlsEnabled bool, waitForEvent bool, peerCount int) string {
 export CORE_PEER_TLS_CERT_FILE=%s/client.crt
 export CORE_PEER_TLS_KEY_FILE=%s/client.key
 export CORE_PEER_TLS_ROOTCERT_FILE="$FABRICOPS_CORE_PEER_TLS_ROOT"`, operationAdminTLSPath, operationAdminTLSPath)
-		invokeTLSArgs = fmt.Sprintf(`set -- "$@" --tls --cafile %s/orderer-ca.crt`, operationTLSRootPath)
+		invokeTLSArgs = fmt.Sprintf(`set -- "$@" --tls --cafile %s/orderer-ca.crt
+if [ -n "$FABRICOPS_ORDERER_TLS_HOSTNAME_OVERRIDE" ]; then
+  set -- "$@" --ordererTLSHostnameOverride "$FABRICOPS_ORDERER_TLS_HOSTNAME_OVERRIDE"
+fi`, operationTLSRootPath)
 	}
 
 	waitArg := ""
@@ -881,6 +1075,92 @@ func mspIDForOrg(network *fabricopsv1alpha1.FabricNetwork, orgName string) (stri
 		}
 	}
 	return "", fmt.Errorf("org %q was not found in FabricNetwork spec", orgName)
+}
+
+func mspIDForParticipantOrg(participant *fabricopsv1alpha1.FabricParticipant, orgName string) (string, error) {
+	org := participant.Spec.Org.Organization
+	if !strings.EqualFold(org.Name, orgName) {
+		return "", fmt.Errorf("org %q was not found in FabricParticipant spec", orgName)
+	}
+	return org.MSPName, nil
+}
+
+func participantOperationOrgStatuses(
+	participant *fabricopsv1alpha1.FabricParticipant,
+) []fabricopsv1alpha1.OrgStatus {
+	statuses := []fabricopsv1alpha1.OrgStatus{participant.Status.LocalOrgStatus}
+	remoteByOrg := map[string][]fabricopsv1alpha1.PeerEndpointStatus{}
+	for _, peer := range participant.Spec.Network.Peers {
+		remoteByOrg[peer.Org] = append(remoteByOrg[peer.Org], fabricopsv1alpha1.PeerEndpointStatus{
+			Name:                peer.Name,
+			Address:             peer.Address,
+			TLSHostnameOverride: peer.TLSHostnameOverride,
+		})
+	}
+	orgNames := make([]string, 0, len(remoteByOrg))
+	for orgName := range remoteByOrg {
+		orgNames = append(orgNames, orgName)
+	}
+	slices.Sort(orgNames)
+	for _, orgName := range orgNames {
+		statuses = append(statuses, fabricopsv1alpha1.OrgStatus{
+			Name:          orgName,
+			PeerEndpoints: remoteByOrg[orgName],
+		})
+	}
+	return statuses
+}
+
+func decorateParticipantOperationTargets(
+	participant *fabricopsv1alpha1.FabricParticipant,
+	targets []operationPeerTarget,
+) []operationPeerTarget {
+	for i := range targets {
+		for _, peer := range participant.Spec.Network.Peers {
+			if strings.EqualFold(targets[i].orgName, peer.Org) && targets[i].endpoint.Name == peer.Name {
+				targets[i].tlsRootCARef = peer.TLSRootCARef
+				break
+			}
+		}
+	}
+	return targets
+}
+
+func selectParticipantOperationOrderer(
+	participant *fabricopsv1alpha1.FabricParticipant,
+) (fabricopsv1alpha1.ParticipantOrdererEndpoint, error) {
+	for _, orderer := range participant.Spec.Network.Orderers {
+		if strings.TrimSpace(orderer.ClientAddress) != "" {
+			return orderer, nil
+		}
+	}
+	return fabricopsv1alpha1.ParticipantOrdererEndpoint{}, fmt.Errorf(
+		"no orderer endpoint found in FabricParticipant spec",
+	)
+}
+
+func participantOperationOrdererStatus(
+	orderer fabricopsv1alpha1.ParticipantOrdererEndpoint,
+) fabricopsv1alpha1.OrdererEndpointStatus {
+	return fabricopsv1alpha1.OrdererEndpointStatus{
+		Name:                orderer.Name,
+		ClientAddress:       orderer.ClientAddress,
+		TLSHostnameOverride: orderer.TLSHostnameOverride,
+		AdminAddress:        orderer.AdminAddress,
+	}
+}
+
+func participantOperationNetwork(participant *fabricopsv1alpha1.FabricParticipant) *fabricopsv1alpha1.FabricNetwork {
+	return &fabricopsv1alpha1.FabricNetwork{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      participant.Name,
+			Namespace: participant.Namespace,
+		},
+		Spec: fabricopsv1alpha1.FabricNetworkSpec{
+			Global: participant.Spec.Global,
+			Orgs:   []fabricopsv1alpha1.Org{participant.Spec.Org},
+		},
+	}
 }
 
 func endpointNamespace(address string) (string, error) {

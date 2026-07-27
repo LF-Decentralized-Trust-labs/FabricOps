@@ -112,7 +112,7 @@ func (r *FabricNetworkReconciler) reconcileWorkloadEnrollments(
 	for _, group := range org.Orderers {
 		for i := 0; i < group.Instances; i++ {
 			name := sanitizeName(fmt.Sprintf("%s%d", group.Prefix, i))
-			if err := r.reconcileWorkloadEnrollment(ctx, net, org, namespace, name, componentOrderer, workloadDNSNames(name, namespace)); err != nil {
+			if err := r.reconcileWorkloadEnrollment(ctx, net, org, namespace, name, componentOrderer, ordererWorkloadCSRHosts(group, name, namespace)); err != nil {
 				return err
 			}
 		}
@@ -124,7 +124,7 @@ func (r *FabricNetworkReconciler) reconcileWorkloadEnrollments(
 
 	for i := 0; i < org.Peer.Instances; i++ {
 		name := sanitizeName(fmt.Sprintf("%s%d", org.Peer.Prefix, i))
-		if err := r.reconcileWorkloadEnrollment(ctx, net, org, namespace, name, componentPeer, workloadDNSNames(name, namespace)); err != nil {
+		if err := r.reconcileWorkloadEnrollment(ctx, net, org, namespace, name, componentPeer, peerWorkloadCSRHosts(org, name, namespace)); err != nil {
 			return err
 		}
 	}

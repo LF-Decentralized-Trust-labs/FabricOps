@@ -145,6 +145,8 @@ type chaincodeLifecyclePeer struct {
 	org       fabricopsv1alpha1.Org
 	peerName  string
 	namespace string
+	address   string
+	tlsRootCA []byte
 }
 
 func (r *FabricNetworkReconciler) reconcileChaincodes(
@@ -1301,6 +1303,11 @@ func (r *FabricNetworkReconciler) reconcileChaincodeCommit(
 	}
 
 	peers := chaincodeLifecyclePeers(net, channel)
+	externalPeers, err := r.externalChaincodeLifecyclePeers(ctx, net, channel)
+	if err != nil {
+		return false, "", err
+	}
+	peers = append(peers, externalPeers...)
 	if len(peers) == 0 {
 		return false, "Waiting for target peers before lifecycle commit", nil
 	}
@@ -1387,6 +1394,24 @@ func (r *FabricNetworkReconciler) ensureChaincodeCommitInputs(
 	}
 
 	for _, peer := range peers {
+		if len(peer.tlsRootCA) > 0 {
+			desired := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        chaincodePeerTLSSecretName(chaincode, peer.org, peer.peerName),
+					Namespace:   namespace,
+					Labels:      labels,
+					Annotations: annotations,
+				},
+				Type: corev1.SecretTypeOpaque,
+				Data: map[string][]byte{
+					tlsCACertKey: peer.tlsRootCA,
+				},
+			}
+			if err := r.ensureReplicatedSecret(ctx, desired); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := r.ensureCopiedSecret(
 			ctx,
 			client.ObjectKey{
@@ -1568,7 +1593,7 @@ func buildChaincodeCommitJob(
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
 						SecretName:  chaincodePeerTLSSecretName(chaincode, peer.org, peer.peerName),
-						Items:       tlsSecretItems(),
+						Items:       chaincodePeerTLSSecretItems(peer),
 						DefaultMode: secretVolumeDefaultMode(),
 					},
 				},
@@ -1853,6 +1878,36 @@ func approveChaincodeDefinitionScript(
 	packageID string,
 	orderer ordererInstance,
 ) string {
+	return approveChaincodeDefinitionScriptForOrderer(
+		net,
+		channel,
+		chaincode,
+		org,
+		peerName,
+		namespace,
+		packageID,
+		ordererClientAddress(orderer),
+		chaincodeOrdererTLSPath(orderer.name)+"/ca.crt",
+		"",
+		chaincodeEndorsementPolicy(net, channel, chaincode),
+		chaincodeCollectionsConfigPath(chaincode),
+	)
+}
+
+func approveChaincodeDefinitionScriptForOrderer(
+	net *fabricopsv1alpha1.FabricNetwork,
+	channel fabricopsv1alpha1.Channel,
+	chaincode fabricopsv1alpha1.Chaincode,
+	org fabricopsv1alpha1.Org,
+	peerName string,
+	namespace string,
+	packageID string,
+	ordererAddress string,
+	ordererTLSCAPath string,
+	ordererTLSHostnameOverride string,
+	endorsementPolicy string,
+	collectionsConfigPath string,
+) string {
 	tlsEnv := "export CORE_PEER_TLS_ENABLED=false"
 	tlsArgs := ""
 	if net.Spec.Global.TLS {
@@ -1861,7 +1916,10 @@ export CORE_PEER_TLS_ENABLED=true
 export CORE_PEER_TLS_CERT_FILE="$ADMIN_TLS_DIR/client.crt"
 export CORE_PEER_TLS_KEY_FILE="$ADMIN_TLS_DIR/client.key"
 export CORE_PEER_TLS_ROOTCERT_FILE="$ADMIN_TLS_DIR/ca.crt"`, chaincodeAdminTLSPath)
-		tlsArgs = fmt.Sprintf(`set -- "$@" --tls --cafile %q`, chaincodeOrdererTLSPath(orderer.name)+"/ca.crt")
+		tlsArgs = fmt.Sprintf(`set -- "$@" --tls --cafile %q`, ordererTLSCAPath)
+		if strings.TrimSpace(ordererTLSHostnameOverride) != "" {
+			tlsArgs += fmt.Sprintf("\nset -- \"$@\" --ordererTLSHostnameOverride %q", strings.TrimSpace(ordererTLSHostnameOverride))
+		}
 	}
 
 	return fmt.Sprintf(`set -eu
@@ -1926,10 +1984,10 @@ peer lifecycle chaincode queryapproved \
 		chaincode.Version,
 		packageID,
 		chaincodeSequence(chaincode),
-		ordererClientAddress(orderer),
-		chaincodeEndorsementPolicy(net, channel, chaincode),
+		ordererAddress,
+		endorsementPolicy,
 		boolString(chaincode.InitRequired),
-		chaincodeCollectionsConfigPath(chaincode),
+		collectionsConfigPath,
 		chaincodeOutputDir,
 		chaincodeQueryApprovedFile,
 		org.Organization.MSPName,
@@ -1963,7 +2021,7 @@ export CORE_PEER_TLS_ROOTCERT_FILE="$ADMIN_TLS_DIR/ca.crt"`, chaincodeAdminTLSPa
 		for _, peer := range peers {
 			fmt.Fprintf(&peerBuilder,
 				"set -- \"$@\" --peerAddresses %q --tlsRootCertFiles %q\n",
-				serviceDNS(peer.peerName, peer.namespace, peerPort),
+				chaincodeLifecyclePeerAddress(peer),
 				chaincodePeerTLSPath(peer.org, peer.peerName)+"/ca.crt",
 			)
 		}
@@ -2037,7 +2095,7 @@ peer lifecycle chaincode querycommitted \
 		chaincodeOutputDir,
 		chaincodeQueryCommittedFile,
 		submitter.org.Organization.MSPName,
-		serviceDNS(submitter.peerName, submitter.namespace, peerPort),
+		chaincodeLifecyclePeerAddress(submitter),
 		chaincodeAdminMSPPath,
 		tlsEnv,
 		tlsArgs,
@@ -2250,6 +2308,87 @@ func chaincodeLifecyclePeers(
 	}
 
 	return peers
+}
+
+func (r *FabricNetworkReconciler) externalChaincodeLifecyclePeers(
+	ctx context.Context,
+	net *fabricopsv1alpha1.FabricNetwork,
+	channel fabricopsv1alpha1.Channel,
+) ([]chaincodeLifecyclePeer, error) {
+	if len(channel.ExternalOrgs) == 0 {
+		return nil, nil
+	}
+
+	peers := []chaincodeLifecyclePeer{}
+	for _, externalOrg := range channel.ExternalOrgs {
+		raw, ready, message, err := r.channelArtifactBytes(ctx, net.Namespace, &externalOrg.ApplicationOrgRef)
+		if err != nil {
+			return nil, err
+		}
+		if !ready {
+			return nil, fmt.Errorf("%s: %s", externalOrg.Name, message)
+		}
+
+		_, parsedAnchorPeers, err := parseApplicationOrgJSON(raw)
+		if err != nil {
+			return nil, fmt.Errorf("%s application org JSON is invalid: %w", externalOrg.Name, err)
+		}
+		anchorPeers := externalOrg.AnchorPeers
+		if len(anchorPeers) == 0 {
+			anchorPeers = parsedAnchorPeers
+		}
+		if len(anchorPeers) == 0 {
+			continue
+		}
+
+		var tlsRootCA []byte
+		if net.Spec.Global.TLS {
+			tlsRootCA, err = applicationOrgTLSRootCA(raw)
+			if err != nil {
+				return nil, fmt.Errorf("%s application org TLS root is invalid: %w", externalOrg.Name, err)
+			}
+			if len(tlsRootCA) == 0 {
+				return nil, fmt.Errorf("%s application org JSON is missing tls_root_certs", externalOrg.Name)
+			}
+		}
+
+		org := fabricopsv1alpha1.Org{
+			Organization: fabricopsv1alpha1.OrgMeta{
+				Name:    externalOrg.Name,
+				MSPName: externalOrg.MSPID,
+			},
+		}
+		for i, anchorPeer := range anchorPeers {
+			host := strings.TrimSpace(anchorPeer.Host)
+			if host == "" || anchorPeer.Port <= 0 {
+				continue
+			}
+			peers = append(peers, chaincodeLifecyclePeer{
+				org:       org,
+				peerName:  sanitizeName(fmt.Sprintf("external-peer-%d", i)),
+				address:   fmt.Sprintf("%s:%d", host, anchorPeer.Port),
+				tlsRootCA: tlsRootCA,
+			})
+		}
+	}
+
+	return peers, nil
+}
+
+func chaincodeLifecyclePeerAddress(peer chaincodeLifecyclePeer) string {
+	if strings.TrimSpace(peer.address) != "" {
+		return strings.TrimSpace(peer.address)
+	}
+	return serviceDNS(peer.peerName, peer.namespace, peerPort)
+}
+
+func chaincodePeerTLSSecretItems(peer chaincodeLifecyclePeer) []corev1.KeyToPath {
+	if len(peer.tlsRootCA) > 0 {
+		return []corev1.KeyToPath{
+			{Key: tlsCACertKey, Path: "ca.crt"},
+		}
+	}
+	return tlsSecretItems()
 }
 
 func firstChaincodePackageID(targets []fabricopsv1alpha1.ChaincodeTargetStatus) string {

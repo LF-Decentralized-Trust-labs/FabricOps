@@ -38,11 +38,19 @@ func ordererEndpointStatuses(org fabricopsv1alpha1.Org, namespace string) []fabr
 	for _, group := range org.Orderers {
 		for i := 0; i < group.Instances; i++ {
 			name := sanitizeName(fmt.Sprintf("%s%d", group.Prefix, i))
+			orderer := ordererInstance{
+				org:       org,
+				group:     group,
+				name:      name,
+				namespace: namespace,
+			}
 			endpoints = append(endpoints, fabricopsv1alpha1.OrdererEndpointStatus{
-				Name:              name,
-				ClientAddress:     serviceDNS(name, namespace, ordererPort),
-				AdminAddress:      serviceDNS(name, namespace, ordererAdminPort),
-				OperationsAddress: "http://" + serviceDNS(operationsServiceName(name), namespace, ordererOpsPort),
+				Name:                name,
+				Namespace:           namespace,
+				ClientAddress:       ordererAdvertisedClientAddress(orderer),
+				TLSHostnameOverride: ordererTLSHostnameOverride(orderer),
+				AdminAddress:        serviceDNS(name, namespace, ordererAdminPort),
+				OperationsAddress:   "http://" + serviceDNS(operationsServiceName(name), namespace, ordererOpsPort),
 			})
 		}
 	}
@@ -58,11 +66,13 @@ func peerEndpointStatuses(org fabricopsv1alpha1.Org, namespace string) []fabrico
 	endpoints := []fabricopsv1alpha1.PeerEndpointStatus{}
 	for i := 0; i < org.Peer.Instances; i++ {
 		name := sanitizeName(fmt.Sprintf("%s%d", org.Peer.Prefix, i))
+		peer := peerInstance{org: org, name: name, namespace: namespace}
 		endpoints = append(endpoints, fabricopsv1alpha1.PeerEndpointStatus{
-			Name:              name,
-			Address:           serviceDNS(name, namespace, peerPort),
-			ChaincodeAddress:  serviceDNS(name, namespace, peerChaincodePort),
-			OperationsAddress: "http://" + serviceDNS(operationsServiceName(name), namespace, peerOpsPort),
+			Name:                name,
+			Address:             peerAdvertisedAddress(peer),
+			TLSHostnameOverride: peerTLSHostnameOverride(peer),
+			ChaincodeAddress:    serviceDNS(name, namespace, peerChaincodePort),
+			OperationsAddress:   "http://" + serviceDNS(operationsServiceName(name), namespace, peerOpsPort),
 		})
 	}
 

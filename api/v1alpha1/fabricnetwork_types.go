@@ -168,6 +168,11 @@ type OrdererGroup struct {
 	// +kubebuilder:validation:MaxLength=50
 	// +kubebuilder:validation:Pattern="^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
 	Prefix string `json:"prefix"`
+	// ExternalEndpoints declares externally reachable client endpoints for
+	// individual orderer workloads. When omitted, FabricOps advertises the
+	// in-cluster Service DNS name.
+	// +optional
+	ExternalEndpoints []ExternalEndpoint `json:"externalEndpoints,omitempty"`
 }
 
 type PeerConfig struct {
@@ -182,6 +187,36 @@ type PeerConfig struct {
 	// +kubebuilder:validation:MaxLength=50
 	// +kubebuilder:validation:Pattern="^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
 	Prefix string `json:"prefix"`
+	// ExternalEndpoints declares externally reachable peer endpoints for
+	// individual peer workloads. When omitted, FabricOps advertises the
+	// in-cluster Service DNS name.
+	// +optional
+	ExternalEndpoints []ExternalEndpoint `json:"externalEndpoints,omitempty"`
+}
+
+type ExternalEndpoint struct {
+	// Name is the generated workload name, for example orderer0 or peer0.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$"
+	Name string `json:"name"`
+	// Address is the externally reachable host:port endpoint advertised to
+	// remote orgs, clients, connection profiles, and channel anchor/orderer
+	// config.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	Address string `json:"address"`
+	// TLSHosts adds certificate SAN hostnames for this external endpoint. The
+	// host from Address is included automatically.
+	// +optional
+	// +kubebuilder:validation:MaxItems=16
+	TLSHosts []string `json:"tlsHosts,omitempty"`
+	// TLSHostnameOverride is the hostname Fabric clients should use for TLS
+	// verification when the dial address intentionally differs from the
+	// certificate identity, for example local port-forward testing.
+	// +optional
+	// +kubebuilder:validation:MaxLength=253
+	TLSHostnameOverride string `json:"tlsHostnameOverride,omitempty"`
 }
 
 type Channel struct {
@@ -192,6 +227,13 @@ type Channel struct {
 
 	// +kubebuilder:validation:MinItems=1
 	Orgs []ChannelOrg `json:"orgs"`
+
+	// ExternalOrgs declares participant-owned organizations that the founder
+	// cluster should admit to this channel through a channel config update.
+	// The org material should be the rendered Application org JSON produced
+	// by `fabricopsctl join-bundle render-org`; private keys are never imported.
+	// +optional
+	ExternalOrgs []ChannelExternalOrg `json:"externalOrgs,omitempty"`
 }
 
 type ChannelOrg struct {
@@ -201,6 +243,81 @@ type ChannelOrg struct {
 	Name string `json:"name"`
 	// +kubebuilder:validation:MinItems=1
 	Peers []string `json:"peers"`
+}
+
+type ChannelExternalOrg struct {
+	// Name is the human-readable organization name from the participant join
+	// bundle.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$"
+	Name string `json:"name"`
+	// MSPID is the participant MSP ID to add under the channel Application
+	// group.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern="^[A-Za-z][A-Za-z0-9]*$"
+	MSPID string `json:"mspID"`
+	// ApplicationOrgRef points at the rendered channel Application org JSON for
+	// this external organization.
+	ApplicationOrgRef ChannelArtifactKeyRef `json:"applicationOrgRef"`
+	// AdminOrg optionally selects the local founder org whose admin identity
+	// submits the channel update. When omitted, the first local org declared on
+	// the channel is used.
+	// +optional
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$"
+	AdminOrg string `json:"adminOrg,omitempty"`
+	// RequiredSignerMSPIDs lists founder-side MSP IDs expected to sign the
+	// channel config update before submission. When omitted, FabricOps attempts
+	// the update with the selected AdminOrg only. When this list names
+	// additional MSPs, FabricOps prepares the admission inputs and waits for a
+	// manual multi-admin signature handoff instead of launching an update Job.
+	// +optional
+	// +kubebuilder:validation:MaxItems=16
+	RequiredSignerMSPIDs []string `json:"requiredSignerMSPIDs,omitempty"`
+	// Orderer optionally selects the local orderer endpoint used to fetch and
+	// submit the channel config update. When omitted, the first local orderer is
+	// used.
+	// +optional
+	Orderer *ChannelOrdererRef `json:"orderer,omitempty"`
+	// AnchorPeers records the externally reachable anchor peers expected in the
+	// rendered Application org JSON.
+	// +optional
+	AnchorPeers []ChannelExternalAnchorPeer `json:"anchorPeers,omitempty"`
+}
+
+type ChannelArtifactKeyRef struct {
+	// ConfigMapKeyRef points at a key in a ConfigMap in the FabricNetwork
+	// namespace.
+	// +optional
+	ConfigMapKeyRef *corev1.ConfigMapKeySelector `json:"configMapKeyRef,omitempty"`
+	// SecretKeyRef points at a key in a Secret in the FabricNetwork namespace.
+	// +optional
+	SecretKeyRef *corev1.SecretKeySelector `json:"secretKeyRef,omitempty"`
+}
+
+type ChannelOrdererRef struct {
+	// Org optionally scopes the selected orderer to a local orderer
+	// organization.
+	// +optional
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$"
+	Org string `json:"org,omitempty"`
+	// Name is the local orderer instance name, for example orderer0.
+	// +optional
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$"
+	Name string `json:"name,omitempty"`
+}
+
+type ChannelExternalAnchorPeer struct {
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	Host string `json:"host"`
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	Port int32 `json:"port"`
 }
 
 type Chaincode struct {
@@ -379,17 +496,20 @@ type WorkloadStatus struct {
 }
 
 type OrdererEndpointStatus struct {
-	Name              string `json:"name"`
-	ClientAddress     string `json:"clientAddress,omitempty"`
-	AdminAddress      string `json:"adminAddress,omitempty"`
-	OperationsAddress string `json:"operationsAddress,omitempty"`
+	Name                string `json:"name"`
+	Namespace           string `json:"namespace,omitempty"`
+	ClientAddress       string `json:"clientAddress,omitempty"`
+	TLSHostnameOverride string `json:"tlsHostnameOverride,omitempty"`
+	AdminAddress        string `json:"adminAddress,omitempty"`
+	OperationsAddress   string `json:"operationsAddress,omitempty"`
 }
 
 type PeerEndpointStatus struct {
-	Name              string `json:"name"`
-	Address           string `json:"address,omitempty"`
-	ChaincodeAddress  string `json:"chaincodeAddress,omitempty"`
-	OperationsAddress string `json:"operationsAddress,omitempty"`
+	Name                string `json:"name"`
+	Address             string `json:"address,omitempty"`
+	TLSHostnameOverride string `json:"tlsHostnameOverride,omitempty"`
+	ChaincodeAddress    string `json:"chaincodeAddress,omitempty"`
+	OperationsAddress   string `json:"operationsAddress,omitempty"`
 }
 
 type OrgStatus struct {
@@ -401,14 +521,14 @@ type OrgStatus struct {
 	// CAEndpoint is the in-cluster Fabric CA endpoint for this org.
 	// +optional
 	CAEndpoint string `json:"caEndpoint,omitempty"`
-	// OrdererEndpoints lists in-cluster client, admin, and operations
-	// endpoints for desired orderer workloads in this org.
+	// OrdererEndpoints lists advertised client endpoints plus in-cluster admin
+	// and operations endpoints for desired orderer workloads in this org.
 	// +optional
 	OrdererEndpoints []OrdererEndpointStatus `json:"ordererEndpoints,omitempty"`
 	Orderers         WorkloadStatus          `json:"orderers,omitempty"`
 	OrderersReady    bool                    `json:"orderersReady"`
-	// PeerEndpoints lists in-cluster client, chaincode, and operations
-	// endpoints for desired peer workloads in this org.
+	// PeerEndpoints lists advertised peer endpoints plus in-cluster chaincode
+	// and operations endpoints for desired peer workloads in this org.
 	// +optional
 	PeerEndpoints []PeerEndpointStatus `json:"peerEndpoints,omitempty"`
 	Peers         WorkloadStatus       `json:"peers,omitempty"`
@@ -431,16 +551,30 @@ type ChannelOrgStatus struct {
 }
 
 type ChannelStatus struct {
-	Name               string             `json:"name"`
-	ConfigMapName      string             `json:"configMapName,omitempty"`
-	BlockConfigMapName string             `json:"blockConfigMapName,omitempty"`
-	ConfigReady        bool               `json:"configReady"`
-	BlockReady         bool               `json:"blockReady"`
-	Orderers           WorkloadStatus     `json:"orderers,omitempty"`
-	Peers              WorkloadStatus     `json:"peers,omitempty"`
-	Orgs               []ChannelOrgStatus `json:"orgs,omitempty"`
-	Ready              bool               `json:"ready"`
-	Message            string             `json:"message,omitempty"`
+	Name               string                     `json:"name"`
+	ConfigMapName      string                     `json:"configMapName,omitempty"`
+	BlockConfigMapName string                     `json:"blockConfigMapName,omitempty"`
+	ConfigReady        bool                       `json:"configReady"`
+	BlockReady         bool                       `json:"blockReady"`
+	Orderers           WorkloadStatus             `json:"orderers,omitempty"`
+	Peers              WorkloadStatus             `json:"peers,omitempty"`
+	Orgs               []ChannelOrgStatus         `json:"orgs,omitempty"`
+	ExternalOrgs       []ChannelExternalOrgStatus `json:"externalOrgs,omitempty"`
+	Ready              bool                       `json:"ready"`
+	Message            string                     `json:"message,omitempty"`
+}
+
+type ChannelExternalOrgStatus struct {
+	Name                        string                      `json:"name"`
+	MSPID                       string                      `json:"mspID"`
+	ApplicationOrgConfigMapName string                      `json:"applicationOrgConfigMapName,omitempty"`
+	UpdateJobName               string                      `json:"updateJobName,omitempty"`
+	AdminOrg                    string                      `json:"adminOrg,omitempty"`
+	Orderer                     string                      `json:"orderer,omitempty"`
+	RequiredSignerMSPIDs        []string                    `json:"requiredSignerMSPIDs,omitempty"`
+	AnchorPeers                 []ChannelExternalAnchorPeer `json:"anchorPeers,omitempty"`
+	Ready                       bool                        `json:"ready"`
+	Message                     string                      `json:"message,omitempty"`
 }
 
 type ChaincodeTargetStatus struct {

@@ -3,6 +3,7 @@
 # It should be run by config/default
 resources:
 - bases/fabricops.io_fabricnetworks.yaml
+- bases/fabricops.io_fabricparticipants.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

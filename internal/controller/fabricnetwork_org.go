@@ -1651,8 +1651,10 @@ func buildPeerDeployment(
 	namespace string,
 ) *appsv1.Deployment {
 	name := sanitizeName(fmt.Sprintf("%s%d", org.Peer.Prefix, instance))
+	peer := peerInstance{org: org, name: name, namespace: namespace}
 	replicas := int32(1)
-	peerAddress := serviceDNS(name, namespace, peerPort)
+	peerAddress := peerAddress(peer)
+	peerAdvertisedAddress := peerAdvertisedAddress(peer)
 	chaincodeAddress := serviceDNS(name, namespace, peerChaincodePort)
 	tlsEnabled := net.Spec.Global.TLS
 	selector := map[string]string{
@@ -1673,7 +1675,7 @@ func buildPeerDeployment(
 		{Name: "CORE_PEER_CHAINCODEADDRESS", Value: chaincodeAddress},
 		{Name: "CORE_PEER_CHAINCODELISTENADDRESS", Value: fmt.Sprintf("0.0.0.0:%d", peerChaincodePort)},
 		{Name: "CORE_PEER_GOSSIP_ENDPOINT", Value: peerAddress},
-		{Name: "CORE_PEER_GOSSIP_EXTERNALENDPOINT", Value: peerAddress},
+		{Name: "CORE_PEER_GOSSIP_EXTERNALENDPOINT", Value: peerAdvertisedAddress},
 		{Name: "CORE_PEER_LOCALMSPID", Value: org.Organization.MSPName},
 		{Name: "CORE_PEER_MSPCONFIGPATH", Value: peerMSPPath},
 		{Name: "CORE_VM_ENDPOINT", Value: ""},

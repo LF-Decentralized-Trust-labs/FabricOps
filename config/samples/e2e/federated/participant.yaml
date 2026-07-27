@@ -1,0 +1,65 @@
+apiVersion: fabricops.io/v1alpha1
+kind: FabricParticipant
+metadata:
+  labels:
+    app.kubernetes.io/name: fabricops
+    app.kubernetes.io/managed-by: kustomize
+  name: bankb-participant
+spec:
+  global:
+    fabricVersion: "3.1.0"
+    tls: true
+    jobs:
+      succeededHistoryTTLSeconds: 600
+    storage:
+      ca:
+        size: 1Gi
+      peer:
+        size: 1Gi
+  org:
+    organization:
+      name: BankB
+      domain: bankb.fabricops.io
+      mspName: BankBMSP
+    ca:
+      db: sqlite
+    peer:
+      instances: 1
+      db: leveldb
+      prefix: peer
+      externalEndpoints:
+        - name: peer0
+          address: __PEER_ADDRESS__
+          tlsHostnameOverride: localhost
+  network:
+    name: federated-founder
+    founderMSPID: BankAMSP
+    orderers:
+      - org: Orderer
+        name: orderer0
+        clientAddress: __ORDERER_ADDRESS__
+        tlsHostnameOverride: localhost
+        tlsRootCARef:
+          configMapKeyRef:
+            name: orderer0-artifacts
+            key: tls-ca.pem
+    peers:
+      - org: BankA
+        name: peer0
+        address: __FOUNDER_PEER_ADDRESS__
+        tlsRootCARef:
+          configMapKeyRef:
+            name: banka-peer0-artifacts
+            key: tls-ca.pem
+  channels:
+    - name: settlement
+      blockRef:
+        configMapKeyRef:
+          name: settlement-artifacts
+          key: settlement.block
+      peers:
+        - peer0
+      anchorPeers:
+        - name: peer0
+          host: __PEER_HOST__
+          port: __PEER_PORT__

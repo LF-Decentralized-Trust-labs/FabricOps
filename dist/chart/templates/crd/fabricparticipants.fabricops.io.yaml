@@ -1,23 +1,26 @@
----
+{{- if .Values.crd.enabled }}
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
+    {{- if .Values.crd.keep }}
+    "helm.sh/resource-policy": keep
+    {{- end }}
     controller-gen.kubebuilder.io/version: v0.21.0
-  name: fabricnetworks.fabricops.io
+  name: fabricparticipants.fabricops.io
 spec:
   group: fabricops.io
   names:
-    kind: FabricNetwork
-    listKind: FabricNetworkList
-    plural: fabricnetworks
-    singular: fabricnetwork
+    kind: FabricParticipant
+    listKind: FabricParticipantList
+    plural: fabricparticipants
+    singular: fabricparticipant
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: FabricNetwork is the Schema for the fabricnetworks API
+        description: FabricParticipant is the Schema for the fabricparticipants API
         properties:
           apiVersion:
             description: |-
@@ -37,15 +40,17 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of FabricNetwork
+            description: spec defines the desired state of FabricParticipant
             properties:
               chaincodes:
+                description: |-
+                  Chaincodes declares lifecycle definitions this participant expects to
+                  install and approve after joining the relevant channels.
                 items:
                   properties:
                     ccaas:
-                      description: |-
-                        CCAAS describes the Kubernetes Chaincode-as-a-Service workload and
-                        connection package settings for this chaincode.
+                      description: CCAAS describes the participant-local chaincode
+                        service workload.
                       properties:
                         containerPort:
                           default: 7052
@@ -310,60 +315,24 @@ spec:
                       minLength: 1
                       pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
                       type: string
-                    couchdbIndexes:
+                    collectionConfigHash:
                       description: |-
-                        CouchDBIndexes declares JSON CouchDB indexes that should be packaged
-                        with this chaincode. Public indexes are rendered under
-                        metadata/META-INF/statedb/couchdb/indexes; collection-scoped indexes are
-                        rendered under metadata/META-INF/statedb/couchdb/collections/<collection>/indexes.
-                      items:
-                        properties:
-                          collection:
-                            description: |-
-                              Collection optionally scopes the index to a private data collection.
-                              When empty, the index is packaged for the chaincode public state.
-                            maxLength: 64
-                            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
-                            type: string
-                          designDocument:
-                            description: DesignDocument optionally sets the CouchDB
-                              design document (`ddoc`).
-                            maxLength: 128
-                            pattern: ^[A-Za-z0-9][A-Za-z0-9_.-]*$
-                            type: string
-                          fields:
-                            description: Fields is the ordered list of JSON document
-                              fields indexed by CouchDB.
-                            items:
-                              type: string
-                            maxItems: 32
-                            minItems: 1
-                            type: array
-                          name:
-                            description: Name is the CouchDB index name and the basis
-                              for the packaged file name.
-                            maxLength: 128
-                            minLength: 1
-                            pattern: ^[A-Za-z0-9][A-Za-z0-9_.-]*$
-                            type: string
-                        required:
-                        - fields
-                        - name
-                        type: object
-                      type: array
+                        CollectionConfigHash records the expected private-data collection config
+                        hash for the definition, if collections are used.
+                      type: string
                     endorsementPolicy:
-                      description: |-
-                        EndorsementPolicy is passed as a Fabric signature policy during approve
-                        and commit. When empty, the operator will derive a channel-org policy.
+                      description: EndorsementPolicy is the expected Fabric signature
+                        policy, if known.
                       maxLength: 512
                       type: string
                     image:
+                      description: Image is the participant chaincode server image
+                        for CCaaS workloads.
                       maxLength: 512
-                      minLength: 1
                       type: string
                     initRequired:
-                      description: InitRequired controls the Fabric lifecycle --init-required
-                        flag.
+                      description: InitRequired records whether the channel definition
+                        requires init.
                       type: boolean
                     name:
                       maxLength: 63
@@ -372,100 +341,73 @@ spec:
                       type: string
                     packageLabel:
                       description: |-
-                        PackageLabel overrides the default lifecycle package label. When empty,
-                        the operator uses <channel>_<name>_<version>.
+                        PackageLabel is the lifecycle package label the participant should
+                        install and approve for this definition.
                       maxLength: 128
                       minLength: 1
                       pattern: ^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$
                       type: string
-                    privateData:
+                    packageRef:
                       description: |-
-                        PrivateData declares explicit Fabric private data collections for this
-                        chaincode definition. The operator renders these entries to the Fabric
-                        collection config JSON used during approve and commit.
-                      items:
-                        properties:
-                          blockToLive:
-                            description: |-
-                              BlockToLive controls private data purging by block age. Zero keeps data
-                              indefinitely.
-                            format: int64
-                            minimum: 0
-                            type: integer
-                          endorsementPolicy:
-                            description: |-
-                              EndorsementPolicy optionally overrides the chaincode endorsement policy for
-                              this collection.
-                            properties:
-                              channelConfigPolicy:
-                                description: ChannelConfigPolicy references a policy
-                                  from the channel configuration.
-                                maxLength: 256
-                                type: string
-                              signaturePolicy:
-                                description: |-
-                                  SignaturePolicy is a Fabric signature policy, for example
-                                  AND('BankAMSP.member','BankBMSP.member').
-                                maxLength: 512
-                                type: string
-                            type: object
-                          maxPeerCount:
-                            description: |-
-                              MaxPeerCount is the maximum number of authorized peers each endorsing peer
-                              attempts to disseminate private data to.
-                            format: int32
-                            maximum: 50
-                            minimum: 0
-                            type: integer
-                          memberOnlyRead:
-                            description: |-
-                              MemberOnlyRead asks peers to enforce that only collection member
-                              organizations can read collection data.
-                            type: boolean
-                          memberOnlyWrite:
-                            description: |-
-                              MemberOnlyWrite asks peers to enforce that only collection member
-                              organizations can write collection data.
-                            type: boolean
-                          name:
-                            description: Name is the Fabric private data collection
-                              name.
-                            maxLength: 64
-                            minLength: 1
-                            pattern: ^[A-Za-z0-9][A-Za-z0-9_-]*$
-                            type: string
-                          orgNames:
-                            description: |-
-                              OrgNames lists the channel organizations allowed to store collection data.
-                              When Policy is empty, the operator derives an OR('<MSP>.member', ...)
-                              policy from this list.
-                            items:
+                        PackageRef optionally points at a prebuilt Fabric lifecycle package
+                        archive. When omitted, FabricOps generates a CCaaS package from Image
+                        and CCAAS settings.
+                      properties:
+                        configMapKeyRef:
+                          description: |-
+                            ConfigMapKeyRef points at a key in a ConfigMap in the FabricParticipant
+                            namespace.
+                          properties:
+                            key:
+                              description: The key to select.
                               type: string
-                            minItems: 1
-                            type: array
-                          policy:
-                            description: Policy overrides the derived Fabric collection
-                              distribution policy.
-                            maxLength: 512
-                            type: string
-                          requiredPeerCount:
-                            description: |-
-                              RequiredPeerCount is the minimum number of authorized peers that must
-                              receive private data before endorsement succeeds.
-                            format: int32
-                            maximum: 50
-                            minimum: 0
-                            type: integer
-                        required:
-                        - name
-                        - orgNames
-                        type: object
-                      type: array
+                            name:
+                              default: ""
+                              description: |-
+                                Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
+                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              type: string
+                            optional:
+                              description: Specify whether the ConfigMap or its key
+                                must be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        secretKeyRef:
+                          description: |-
+                            SecretKeyRef points at a key in a Secret in the FabricParticipant
+                            namespace.
+                          properties:
+                            key:
+                              description: The key of the secret to select from.  Must
+                                be a valid secret key.
+                              type: string
+                            name:
+                              default: ""
+                              description: |-
+                                Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
+                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              type: string
+                            optional:
+                              description: Specify whether the Secret or its key must
+                                be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                          x-kubernetes-map-type: atomic
+                      type: object
                     sequence:
-                      default: 1
-                      description: |-
-                        Sequence is the Fabric lifecycle definition sequence to use when
-                        approving and committing the chaincode.
+                      description: Sequence is the Fabric lifecycle sequence expected
+                        on the channel.
                       format: int32
                       minimum: 1
                       type: integer
@@ -475,186 +417,136 @@ spec:
                       type: string
                   required:
                   - channel
-                  - image
                   - name
+                  - packageLabel
+                  - sequence
                   - version
                   type: object
                 type: array
               channels:
+                description: |-
+                  Channels declares the existing network channels this participant should
+                  join after the founder/coordinator admits its MSP to channel config.
                 items:
                   properties:
-                    externalOrgs:
+                    anchorPeers:
                       description: |-
-                        ExternalOrgs declares participant-owned organizations that the founder
-                        cluster should admit to this channel through a channel config update.
-                        The org material should be the rendered Application org JSON produced
-                        by `fabricopsctl join-bundle render-org`; private keys are never imported.
+                        AnchorPeers declares the externally reachable anchor peers the founder
+                        should put into the channel Application config for this org.
                       items:
                         properties:
-                          adminOrg:
-                            description: |-
-                              AdminOrg optionally selects the local founder org whose admin identity
-                              submits the channel update. When omitted, the first local org declared on
-                              the channel is used.
-                            maxLength: 63
-                            pattern: ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$
-                            type: string
-                          anchorPeers:
-                            description: |-
-                              AnchorPeers records the externally reachable anchor peers expected in the
-                              rendered Application org JSON.
-                            items:
-                              properties:
-                                host:
-                                  maxLength: 253
-                                  minLength: 1
-                                  type: string
-                                port:
-                                  format: int32
-                                  maximum: 65535
-                                  minimum: 1
-                                  type: integer
-                              required:
-                              - host
-                              - port
-                              type: object
-                            type: array
-                          applicationOrgRef:
-                            description: |-
-                              ApplicationOrgRef points at the rendered channel Application org JSON for
-                              this external organization.
-                            properties:
-                              configMapKeyRef:
-                                description: |-
-                                  ConfigMapKeyRef points at a key in a ConfigMap in the FabricNetwork
-                                  namespace.
-                                properties:
-                                  key:
-                                    description: The key to select.
-                                    type: string
-                                  name:
-                                    default: ""
-                                    description: |-
-                                      Name of the referent.
-                                      This field is effectively required, but due to backwards compatibility is
-                                      allowed to be empty. Instances of this type with an empty value here are
-                                      almost certainly wrong.
-                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                                    type: string
-                                  optional:
-                                    description: Specify whether the ConfigMap or
-                                      its key must be defined
-                                    type: boolean
-                                required:
-                                - key
-                                type: object
-                                x-kubernetes-map-type: atomic
-                              secretKeyRef:
-                                description: SecretKeyRef points at a key in a Secret
-                                  in the FabricNetwork namespace.
-                                properties:
-                                  key:
-                                    description: The key of the secret to select from.  Must
-                                      be a valid secret key.
-                                    type: string
-                                  name:
-                                    default: ""
-                                    description: |-
-                                      Name of the referent.
-                                      This field is effectively required, but due to backwards compatibility is
-                                      allowed to be empty. Instances of this type with an empty value here are
-                                      almost certainly wrong.
-                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                                    type: string
-                                  optional:
-                                    description: Specify whether the Secret or its
-                                      key must be defined
-                                    type: boolean
-                                required:
-                                - key
-                                type: object
-                                x-kubernetes-map-type: atomic
-                            type: object
-                          mspID:
-                            description: |-
-                              MSPID is the participant MSP ID to add under the channel Application
-                              group.
-                            maxLength: 64
+                          host:
+                            maxLength: 253
                             minLength: 1
-                            pattern: ^[A-Za-z][A-Za-z0-9]*$
                             type: string
                           name:
-                            description: |-
-                              Name is the human-readable organization name from the participant join
-                              bundle.
                             maxLength: 63
                             minLength: 1
-                            pattern: ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$
+                            pattern: ^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$
                             type: string
-                          orderer:
-                            description: |-
-                              Orderer optionally selects the local orderer endpoint used to fetch and
-                              submit the channel config update. When omitted, the first local orderer is
-                              used.
-                            properties:
-                              name:
-                                description: Name is the local orderer instance name,
-                                  for example orderer0.
-                                maxLength: 63
-                                pattern: ^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$
-                                type: string
-                              org:
-                                description: |-
-                                  Org optionally scopes the selected orderer to a local orderer
-                                  organization.
-                                maxLength: 63
-                                pattern: ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$
-                                type: string
-                            type: object
-                          requiredSignerMSPIDs:
-                            description: |-
-                              RequiredSignerMSPIDs lists founder-side MSP IDs expected to sign the
-                              channel config update before submission. When omitted, FabricOps attempts
-                              the update with the selected AdminOrg only. When this list names
-                              additional MSPs, FabricOps prepares the admission inputs and waits for a
-                              manual multi-admin signature handoff instead of launching an update Job.
-                            items:
-                              type: string
-                            maxItems: 16
-                            type: array
+                          port:
+                            format: int32
+                            maximum: 65535
+                            minimum: 1
+                            type: integer
                         required:
-                        - applicationOrgRef
-                        - mspID
+                        - host
                         - name
+                        - port
                         type: object
                       type: array
+                    blockRef:
+                      description: |-
+                        BlockRef points at the channel block the participant peers should join.
+                        The founder/coordinator provides this after the org is admitted.
+                      properties:
+                        configMapKeyRef:
+                          description: |-
+                            ConfigMapKeyRef points at a key in a ConfigMap in the FabricParticipant
+                            namespace.
+                          properties:
+                            key:
+                              description: The key to select.
+                              type: string
+                            name:
+                              default: ""
+                              description: |-
+                                Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
+                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              type: string
+                            optional:
+                              description: Specify whether the ConfigMap or its key
+                                must be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        secretKeyRef:
+                          description: |-
+                            SecretKeyRef points at a key in a Secret in the FabricParticipant
+                            namespace.
+                          properties:
+                            key:
+                              description: The key of the secret to select from.  Must
+                                be a valid secret key.
+                              type: string
+                            name:
+                              default: ""
+                              description: |-
+                                Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
+                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              type: string
+                            optional:
+                              description: Specify whether the Secret or its key must
+                                be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                          x-kubernetes-map-type: atomic
+                      type: object
+                    membership:
+                      description: |-
+                        Membership carries founder-side policy hints captured with the imported
+                        artifacts. FabricOps records this contract before it automates updates.
+                      properties:
+                        applicationPolicy:
+                          description: |-
+                            ApplicationPolicy describes the channel Application policy expected to
+                            authorize membership updates, for example /Channel/Application/Admins.
+                          maxLength: 256
+                          type: string
+                        requiredSignerMSPIDs:
+                          description: |-
+                            RequiredSignerMSPIDs lists MSP IDs expected to sign the org-add config
+                            update before submission.
+                          items:
+                            type: string
+                          type: array
+                      type: object
                     name:
                       maxLength: 249
                       minLength: 1
                       pattern: ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$
                       type: string
-                    orgs:
+                    peers:
+                      description: Peers lists local participant peers that should
+                        join this channel.
                       items:
-                        properties:
-                          name:
-                            maxLength: 63
-                            minLength: 1
-                            pattern: ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$
-                            type: string
-                          peers:
-                            items:
-                              type: string
-                            minItems: 1
-                            type: array
-                        required:
-                        - name
-                        - peers
-                        type: object
+                        type: string
                       minItems: 1
                       type: array
                   required:
+                  - blockRef
                   - name
-                  - orgs
+                  - peers
                   type: object
                 type: array
               global:
@@ -781,123 +673,242 @@ spec:
                 - fabricVersion
                 - tls
                 type: object
-              orgs:
-                items:
-                  properties:
-                    ca:
+              network:
+                properties:
+                  founderMSPID:
+                    description: |-
+                      FounderMSPID identifies the coordinator/founder MSP that is expected to
+                      submit channel config updates.
+                    maxLength: 64
+                    pattern: ^[A-Za-z][A-Za-z0-9]*$
+                    type: string
+                  name:
+                    description: Name is the human-readable name of the existing Fabric
+                      network.
+                    maxLength: 63
+                    minLength: 1
+                    pattern: ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$
+                    type: string
+                  orderers:
+                    description: Orderers lists reachable ordering endpoints from
+                      the existing network.
+                    items:
                       properties:
-                        db:
-                          maxLength: 32
-                          minLength: 1
-                          pattern: ^[A-Za-z0-9_-]+$
-                          type: string
-                      required:
-                      - db
-                      type: object
-                    orderers:
-                      items:
-                        properties:
-                          externalEndpoints:
-                            description: |-
-                              ExternalEndpoints declares externally reachable client endpoints for
-                              individual orderer workloads. When omitted, FabricOps advertises the
-                              in-cluster Service DNS name.
-                            items:
-                              properties:
-                                address:
-                                  description: |-
-                                    Address is the externally reachable host:port endpoint advertised to
-                                    remote orgs, clients, connection profiles, and channel anchor/orderer
-                                    config.
-                                  maxLength: 253
-                                  minLength: 1
-                                  type: string
-                                name:
-                                  description: Name is the generated workload name,
-                                    for example orderer0 or peer0.
-                                  maxLength: 63
-                                  minLength: 1
-                                  pattern: ^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$
-                                  type: string
-                                tlsHostnameOverride:
-                                  description: |-
-                                    TLSHostnameOverride is the hostname Fabric clients should use for TLS
-                                    verification when the dial address intentionally differs from the
-                                    certificate identity, for example local port-forward testing.
-                                  maxLength: 253
-                                  type: string
-                                tlsHosts:
-                                  description: |-
-                                    TLSHosts adds certificate SAN hostnames for this external endpoint. The
-                                    host from Address is included automatically.
-                                  items:
-                                    type: string
-                                  maxItems: 16
-                                  type: array
-                              required:
-                              - address
-                              - name
-                              type: object
-                            type: array
-                          groupName:
-                            maxLength: 63
-                            minLength: 1
-                            pattern: ^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$
-                            type: string
-                          instances:
-                            maximum: 50
-                            minimum: 1
-                            type: integer
-                          prefix:
-                            maxLength: 50
-                            minLength: 1
-                            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
-                            type: string
-                          type:
-                            maxLength: 32
-                            minLength: 1
-                            pattern: ^[A-Za-z0-9_-]+$
-                            type: string
-                        required:
-                        - groupName
-                        - instances
-                        - prefix
-                        - type
-                        type: object
-                      type: array
-                    organization:
-                      properties:
-                        domain:
+                        adminAddress:
+                          description: |-
+                            AdminAddress is the optional orderer admin endpoint for participation
+                            APIs when the participant is expected to interact with it directly.
                           maxLength: 253
-                          minLength: 3
-                          pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?\.)+[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                           type: string
-                        mspName:
-                          maxLength: 64
+                        clientAddress:
+                          description: ClientAddress is the host:port endpoint used
+                            by peer CLI/Gateway flows.
+                          maxLength: 253
                           minLength: 1
-                          pattern: ^[A-Za-z][A-Za-z0-9]*$
                           type: string
                         name:
                           maxLength: 63
                           minLength: 1
+                          pattern: ^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$
+                          type: string
+                        org:
+                          maxLength: 63
+                          minLength: 1
                           pattern: ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$
                           type: string
-                      required:
-                      - domain
-                      - mspName
-                      - name
-                      type: object
-                    peer:
-                      properties:
-                        db:
-                          maxLength: 32
-                          minLength: 1
-                          pattern: ^[A-Za-z0-9_-]+$
+                        tlsHostnameOverride:
+                          description: |-
+                            TLSHostnameOverride is passed to Fabric CLI calls when ClientAddress
+                            differs from the orderer's certificate hostname, for example local
+                            port-forward testing. Production manifests should prefer DNS names that
+                            match the orderer certificate SANs.
+                          maxLength: 253
                           type: string
+                        tlsRootCARef:
+                          description: |-
+                            TLSRootCARef points at the PEM encoded TLS root CA for this orderer.
+                            Required when spec.global.tls is true.
+                          properties:
+                            configMapKeyRef:
+                              description: |-
+                                ConfigMapKeyRef points at a key in a ConfigMap in the FabricParticipant
+                                namespace.
+                              properties:
+                                key:
+                                  description: The key to select.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the ConfigMap or its
+                                    key must be defined
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            secretKeyRef:
+                              description: |-
+                                SecretKeyRef points at a key in a Secret in the FabricParticipant
+                                namespace.
+                              properties:
+                                key:
+                                  description: The key of the secret to select from.  Must
+                                    be a valid secret key.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the Secret or its key
+                                    must be defined
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                          type: object
+                      required:
+                      - clientAddress
+                      - name
+                      - org
+                      type: object
+                    minItems: 1
+                    type: array
+                  peers:
+                    description: |-
+                      Peers lists optional remote peer endpoints from already-admitted orgs.
+                      `fabricopsctl invoke/query --participant` can use these endpoints for
+                      explicit cross-cluster endorsement target selection. FabricOps does not
+                      reconcile these remote peers as Kubernetes workloads.
+                    items:
+                      properties:
+                        address:
+                          description: Address is the host:port endpoint used by Fabric
+                            client operations.
+                          maxLength: 253
+                          minLength: 1
+                          type: string
+                        name:
+                          maxLength: 63
+                          minLength: 1
+                          pattern: ^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$
+                          type: string
+                        org:
+                          maxLength: 63
+                          minLength: 1
+                          pattern: ^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$
+                          type: string
+                        tlsHostnameOverride:
+                          description: |-
+                            TLSHostnameOverride records local-test override intent. Fabric peer CLI
+                            paths do not support a per-peer TLS hostname override, so production and
+                            e2e addresses should match the peer certificate SANs.
+                          maxLength: 253
+                          type: string
+                        tlsRootCARef:
+                          description: |-
+                            TLSRootCARef points at the PEM encoded TLS root CA for this peer.
+                            Required when spec.global.tls is true.
+                          properties:
+                            configMapKeyRef:
+                              description: |-
+                                ConfigMapKeyRef points at a key in a ConfigMap in the FabricParticipant
+                                namespace.
+                              properties:
+                                key:
+                                  description: The key to select.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the ConfigMap or its
+                                    key must be defined
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            secretKeyRef:
+                              description: |-
+                                SecretKeyRef points at a key in a Secret in the FabricParticipant
+                                namespace.
+                              properties:
+                                key:
+                                  description: The key of the secret to select from.  Must
+                                    be a valid secret key.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the Secret or its key
+                                    must be defined
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                          type: object
+                      required:
+                      - address
+                      - name
+                      - org
+                      type: object
+                    type: array
+                required:
+                - name
+                - orderers
+                type: object
+              org:
+                description: |-
+                  Org is the local organization this participant cluster owns. It should
+                  contain the participant CA and peer shape; remote founder/orderer
+                  material belongs under Network.
+                properties:
+                  ca:
+                    properties:
+                      db:
+                        maxLength: 32
+                        minLength: 1
+                        pattern: ^[A-Za-z0-9_-]+$
+                        type: string
+                    required:
+                    - db
+                    type: object
+                  orderers:
+                    items:
+                      properties:
                         externalEndpoints:
                           description: |-
-                            ExternalEndpoints declares externally reachable peer endpoints for
-                            individual peer workloads. When omitted, FabricOps advertises the
+                            ExternalEndpoints declares externally reachable client endpoints for
+                            individual orderer workloads. When omitted, FabricOps advertises the
                             in-cluster Service DNS name.
                           items:
                             properties:
@@ -936,6 +947,11 @@ spec:
                             - name
                             type: object
                           type: array
+                        groupName:
+                          maxLength: 63
+                          minLength: 1
+                          pattern: ^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$
+                          type: string
                         instances:
                           maximum: 50
                           minimum: 1
@@ -945,285 +961,154 @@ spec:
                           minLength: 1
                           pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                           type: string
+                        type:
+                          maxLength: 32
+                          minLength: 1
+                          pattern: ^[A-Za-z0-9_-]+$
+                          type: string
                       required:
-                      - db
+                      - groupName
                       - instances
                       - prefix
+                      - type
                       type: object
-                  required:
-                  - ca
-                  - organization
-                  type: object
-                minItems: 1
-                type: array
+                    type: array
+                  organization:
+                    properties:
+                      domain:
+                        maxLength: 253
+                        minLength: 3
+                        pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?\.)+[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                        type: string
+                      mspName:
+                        maxLength: 64
+                        minLength: 1
+                        pattern: ^[A-Za-z][A-Za-z0-9]*$
+                        type: string
+                      name:
+                        maxLength: 63
+                        minLength: 1
+                        pattern: ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$
+                        type: string
+                    required:
+                    - domain
+                    - mspName
+                    - name
+                    type: object
+                  peer:
+                    properties:
+                      db:
+                        maxLength: 32
+                        minLength: 1
+                        pattern: ^[A-Za-z0-9_-]+$
+                        type: string
+                      externalEndpoints:
+                        description: |-
+                          ExternalEndpoints declares externally reachable peer endpoints for
+                          individual peer workloads. When omitted, FabricOps advertises the
+                          in-cluster Service DNS name.
+                        items:
+                          properties:
+                            address:
+                              description: |-
+                                Address is the externally reachable host:port endpoint advertised to
+                                remote orgs, clients, connection profiles, and channel anchor/orderer
+                                config.
+                              maxLength: 253
+                              minLength: 1
+                              type: string
+                            name:
+                              description: Name is the generated workload name, for
+                                example orderer0 or peer0.
+                              maxLength: 63
+                              minLength: 1
+                              pattern: ^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$
+                              type: string
+                            tlsHostnameOverride:
+                              description: |-
+                                TLSHostnameOverride is the hostname Fabric clients should use for TLS
+                                verification when the dial address intentionally differs from the
+                                certificate identity, for example local port-forward testing.
+                              maxLength: 253
+                              type: string
+                            tlsHosts:
+                              description: |-
+                                TLSHosts adds certificate SAN hostnames for this external endpoint. The
+                                host from Address is included automatically.
+                              items:
+                                type: string
+                              maxItems: 16
+                              type: array
+                          required:
+                          - address
+                          - name
+                          type: object
+                        type: array
+                      instances:
+                        maximum: 50
+                        minimum: 1
+                        type: integer
+                      prefix:
+                        maxLength: 50
+                        minLength: 1
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                        type: string
+                    required:
+                    - db
+                    - instances
+                    - prefix
+                    type: object
+                required:
+                - ca
+                - organization
+                type: object
             required:
-            - chaincodes
-            - channels
             - global
-            - orgs
+            - network
+            - org
             type: object
           status:
-            description: status defines the observed state of FabricNetwork
+            description: status defines the observed state of FabricParticipant
             properties:
+              chaincodeLifecycleReady:
+                type: boolean
               chaincodeStatus:
                 items:
                   properties:
                     approved:
-                      properties:
-                        desired:
-                          format: int32
-                          type: integer
-                        ready:
-                          format: int32
-                          type: integer
-                      required:
-                      - desired
-                      - ready
-                      type: object
-                    approvedReady:
                       type: boolean
                     channel:
                       type: string
-                    collectionConfigHash:
-                      type: string
-                    collectionConfigMap:
-                      type: string
-                    commitJobName:
-                      type: string
-                    committed:
-                      type: boolean
                     installed:
-                      properties:
-                        desired:
-                          format: int32
-                          type: integer
-                        ready:
-                          format: int32
-                          type: integer
-                      required:
-                      - desired
-                      - ready
-                      type: object
-                    installedReady:
                       type: boolean
                     message:
                       type: string
                     name:
                       type: string
-                    packageLabel:
-                      type: string
-                    packageMetadata:
-                      properties:
-                        desired:
-                          format: int32
-                          type: integer
-                        ready:
-                          format: int32
-                          type: integer
-                      required:
-                      - desired
-                      - ready
-                      type: object
-                    packageMetadataReady:
+                    packageReady:
                       type: boolean
                     ready:
                       type: boolean
-                    sequence:
-                      format: int32
-                      type: integer
-                    targets:
-                      items:
-                        properties:
-                          address:
-                            type: string
-                          approveJobName:
-                            type: string
-                          approved:
-                            type: boolean
-                          chaincodeID:
-                            type: string
-                          installJobName:
-                            type: string
-                          installed:
-                            type: boolean
-                          message:
-                            type: string
-                          namespace:
-                            type: string
-                          orgName:
-                            type: string
-                          packageConfigMapName:
-                            type: string
-                          packageID:
-                            type: string
-                          packageIDConfigMapName:
-                            type: string
-                          packageMetadataReady:
-                            type: boolean
-                          peerName:
-                            type: string
-                          serviceName:
-                            type: string
-                          workload:
-                            properties:
-                              desired:
-                                format: int32
-                                type: integer
-                              ready:
-                                format: int32
-                                type: integer
-                            required:
-                            - desired
-                            - ready
-                            type: object
-                          workloadName:
-                            type: string
-                          workloadReady:
-                            type: boolean
-                        required:
-                        - approved
-                        - installed
-                        - orgName
-                        - packageMetadataReady
-                        - peerName
-                        - workloadReady
-                        type: object
-                      type: array
-                    version:
-                      type: string
-                    workloads:
-                      properties:
-                        desired:
-                          format: int32
-                          type: integer
-                        ready:
-                          format: int32
-                          type: integer
-                      required:
-                      - desired
-                      - ready
-                      type: object
-                    workloadsReady:
-                      type: boolean
                   required:
-                  - approvedReady
+                  - approved
                   - channel
-                  - committed
-                  - installedReady
+                  - installed
                   - name
-                  - packageMetadataReady
+                  - packageReady
                   - ready
-                  - version
-                  - workloadsReady
                   type: object
                 type: array
               channelStatus:
                 items:
                   properties:
-                    blockConfigMapName:
-                      type: string
                     blockReady:
                       type: boolean
-                    configMapName:
-                      type: string
-                    configReady:
+                    joined:
                       type: boolean
-                    externalOrgs:
-                      items:
-                        properties:
-                          adminOrg:
-                            type: string
-                          anchorPeers:
-                            items:
-                              properties:
-                                host:
-                                  maxLength: 253
-                                  minLength: 1
-                                  type: string
-                                port:
-                                  format: int32
-                                  maximum: 65535
-                                  minimum: 1
-                                  type: integer
-                              required:
-                              - host
-                              - port
-                              type: object
-                            type: array
-                          applicationOrgConfigMapName:
-                            type: string
-                          message:
-                            type: string
-                          mspID:
-                            type: string
-                          name:
-                            type: string
-                          orderer:
-                            type: string
-                          ready:
-                            type: boolean
-                          requiredSignerMSPIDs:
-                            items:
-                              type: string
-                            type: array
-                          updateJobName:
-                            type: string
-                        required:
-                        - mspID
-                        - name
-                        - ready
-                        type: object
-                      type: array
                     message:
                       type: string
                     name:
                       type: string
-                    orderers:
-                      properties:
-                        desired:
-                          format: int32
-                          type: integer
-                        ready:
-                          format: int32
-                          type: integer
-                      required:
-                      - desired
-                      - ready
-                      type: object
-                    orgs:
-                      items:
-                        properties:
-                          message:
-                            type: string
-                          mspName:
-                            type: string
-                          name:
-                            type: string
-                          namespace:
-                            type: string
-                          peerNames:
-                            items:
-                              type: string
-                            type: array
-                          peers:
-                            properties:
-                              desired:
-                                format: int32
-                                type: integer
-                              ready:
-                                format: int32
-                                type: integer
-                            required:
-                            - desired
-                            - ready
-                            type: object
-                          ready:
-                            type: boolean
-                        required:
-                        - name
-                        - ready
-                        type: object
-                      type: array
                     peers:
                       properties:
                         desired:
@@ -1240,11 +1125,13 @@ spec:
                       type: boolean
                   required:
                   - blockReady
-                  - configReady
+                  - joined
                   - name
                   - ready
                   type: object
                 type: array
+              channelsReady:
+                type: boolean
               conditions:
                 items:
                   description: Condition contains details for one aspect of the current
@@ -1304,113 +1191,117 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              localInfrastructureReady:
+                type: boolean
+              localOrgStatus:
+                description: LocalOrgStatus reports the participant-owned org infrastructure
+                  status.
+                properties:
+                  caEndpoint:
+                    description: CAEndpoint is the in-cluster Fabric CA endpoint for
+                      this org.
+                    type: string
+                  caReady:
+                    type: boolean
+                  connectionProfileConfigMapName:
+                    description: |-
+                      ConnectionProfileConfigMapName points application clients at the
+                      generated Fabric connection profile ConfigMap for this org.
+                    type: string
+                  identityError:
+                    type: string
+                  identityReady:
+                    type: boolean
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+                  ordererEndpoints:
+                    description: |-
+                      OrdererEndpoints lists advertised client endpoints plus in-cluster admin
+                      and operations endpoints for desired orderer workloads in this org.
+                    items:
+                      properties:
+                        adminAddress:
+                          type: string
+                        clientAddress:
+                          type: string
+                        name:
+                          type: string
+                        namespace:
+                          type: string
+                        operationsAddress:
+                          type: string
+                        tlsHostnameOverride:
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                  orderers:
+                    properties:
+                      desired:
+                        format: int32
+                        type: integer
+                      ready:
+                        format: int32
+                        type: integer
+                    required:
+                    - desired
+                    - ready
+                    type: object
+                  orderersReady:
+                    type: boolean
+                  peerEndpoints:
+                    description: |-
+                      PeerEndpoints lists advertised peer endpoints plus in-cluster chaincode
+                      and operations endpoints for desired peer workloads in this org.
+                    items:
+                      properties:
+                        address:
+                          type: string
+                        chaincodeAddress:
+                          type: string
+                        name:
+                          type: string
+                        operationsAddress:
+                          type: string
+                        tlsHostnameOverride:
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                  peers:
+                    properties:
+                      desired:
+                        format: int32
+                        type: integer
+                      ready:
+                        format: int32
+                        type: integer
+                    required:
+                    - desired
+                    - ready
+                    type: object
+                  peersReady:
+                    type: boolean
+                  ready:
+                    type: boolean
+                required:
+                - caReady
+                - identityReady
+                - name
+                - orderersReady
+                - peersReady
+                - ready
+                type: object
               message:
                 type: string
-              orgStatus:
-                items:
-                  properties:
-                    caEndpoint:
-                      description: CAEndpoint is the in-cluster Fabric CA endpoint
-                        for this org.
-                      type: string
-                    caReady:
-                      type: boolean
-                    connectionProfileConfigMapName:
-                      description: |-
-                        ConnectionProfileConfigMapName points application clients at the
-                        generated Fabric connection profile ConfigMap for this org.
-                      type: string
-                    identityError:
-                      type: string
-                    identityReady:
-                      type: boolean
-                    name:
-                      type: string
-                    namespace:
-                      type: string
-                    ordererEndpoints:
-                      description: |-
-                        OrdererEndpoints lists advertised client endpoints plus in-cluster admin
-                        and operations endpoints for desired orderer workloads in this org.
-                      items:
-                        properties:
-                          adminAddress:
-                            type: string
-                          clientAddress:
-                            type: string
-                          name:
-                            type: string
-                          namespace:
-                            type: string
-                          operationsAddress:
-                            type: string
-                          tlsHostnameOverride:
-                            type: string
-                        required:
-                        - name
-                        type: object
-                      type: array
-                    orderers:
-                      properties:
-                        desired:
-                          format: int32
-                          type: integer
-                        ready:
-                          format: int32
-                          type: integer
-                      required:
-                      - desired
-                      - ready
-                      type: object
-                    orderersReady:
-                      type: boolean
-                    peerEndpoints:
-                      description: |-
-                        PeerEndpoints lists advertised peer endpoints plus in-cluster chaincode
-                        and operations endpoints for desired peer workloads in this org.
-                      items:
-                        properties:
-                          address:
-                            type: string
-                          chaincodeAddress:
-                            type: string
-                          name:
-                            type: string
-                          operationsAddress:
-                            type: string
-                          tlsHostnameOverride:
-                            type: string
-                        required:
-                        - name
-                        type: object
-                      type: array
-                    peers:
-                      properties:
-                        desired:
-                          format: int32
-                          type: integer
-                        ready:
-                          format: int32
-                          type: integer
-                      required:
-                      - desired
-                      - ready
-                      type: object
-                    peersReady:
-                      type: boolean
-                    ready:
-                      type: boolean
-                  required:
-                  - caReady
-                  - identityReady
-                  - name
-                  - orderersReady
-                  - peersReady
-                  - ready
-                  type: object
-                type: array
               phase:
                 type: string
+              remoteArtifactsReady:
+                type: boolean
             type: object
         required:
         - spec
@@ -1419,3 +1310,4 @@ spec:
     storage: true
     subresources:
       status: {}
+{{- end }}

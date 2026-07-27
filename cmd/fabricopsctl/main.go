@@ -42,6 +42,7 @@ import (
 const (
 	defaultNamespace = "default"
 	defaultWaitFor   = "condition=Ready"
+	defaultCondition = "Ready"
 
 	connectionProfileJSONKey = "connection.json"
 	connectionProfileYAMLKey = "connection.yaml"
@@ -88,6 +89,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runWait(args[1:], stdout, stderr)
 	case "connection-profile":
 		return runConnectionProfile(args[1:], stdout, stderr)
+	case "join-bundle":
+		return runJoinBundle(args[1:], stdout, stderr)
 	case "invoke":
 		return runChaincodeOperation(args[1:], stdout, stderr, chaincodeOperationInvoke)
 	case "query":
@@ -101,52 +104,72 @@ func run(args []string, stdout, stderr io.Writer) error {
 func runStatus(args []string, stdout, stderr io.Writer) error {
 	var kube kubeOptions
 	var output string
+	var participant bool
 	flags := flag.NewFlagSet("status", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	bindKubeFlags(flags, &kube)
 	flags.StringVar(&output, "o", "table", "Output format: table or json")
+	flags.BoolVar(&participant, "participant", false, "Treat the resource argument as a FabricParticipant")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if flags.NArg() != 1 {
-		printLine(stderr, "Usage: fabricopsctl status [flags] <fabricnetwork>")
+		printLine(stderr, "Usage: fabricopsctl status [flags] <fabricnetwork|fabricparticipant>")
 		return errUsage
-	}
-
-	network, err := getFabricNetwork(context.Background(), kube, flags.Arg(0))
-	if err != nil {
-		return err
 	}
 
 	switch output {
 	case "json":
-		return writeJSON(stdout, network.Status)
 	case "table":
-		printStatus(stdout, network)
-		return nil
 	default:
 		return fmt.Errorf("unsupported output format %q", output)
 	}
+
+	ctx := context.Background()
+	if participant {
+		participant, err := getFabricParticipant(ctx, kube, flags.Arg(0))
+		if err != nil {
+			return err
+		}
+		if output == "json" {
+			return writeJSON(stdout, participant.Status)
+		}
+		printParticipantStatus(stdout, participant)
+		return nil
+	}
+
+	network, err := getFabricNetwork(ctx, kube, flags.Arg(0))
+	if err != nil {
+		return err
+	}
+	if output == "json" {
+		return writeJSON(stdout, network.Status)
+	}
+	printStatus(stdout, network)
+	return nil
 }
 
 func runWait(args []string, stdout, stderr io.Writer) error {
 	var kube kubeOptions
 	var waitFor, timeoutValue, pollIntervalValue string
+	var participant bool
 	flags := flag.NewFlagSet("wait", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	bindKubeFlags(flags, &kube)
-	flags.StringVar(&waitFor, "for", defaultWaitFor, "Wait target; only condition=Ready is supported")
+	flags.StringVar(&waitFor, "for", defaultWaitFor, "Wait target such as condition=Ready")
 	flags.StringVar(&timeoutValue, "timeout", "20m", "How long to wait for readiness")
-	flags.StringVar(&pollIntervalValue, "poll-interval", "5s", "How often to poll FabricNetwork status")
+	flags.StringVar(&pollIntervalValue, "poll-interval", "5s", "How often to poll resource status")
+	flags.BoolVar(&participant, "participant", false, "Treat the resource argument as a FabricParticipant")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if flags.NArg() != 1 {
-		printLine(stderr, "Usage: fabricopsctl wait [flags] <fabricnetwork>")
+		printLine(stderr, "Usage: fabricopsctl wait [flags] <fabricnetwork|fabricparticipant>")
 		return errUsage
 	}
-	if waitFor != defaultWaitFor {
-		return fmt.Errorf("unsupported wait target %q; only %s is supported", waitFor, defaultWaitFor)
+	conditionType, err := waitConditionType(waitFor)
+	if err != nil {
+		return err
 	}
 
 	timeout, err := time.ParseDuration(timeoutValue)
@@ -158,10 +181,25 @@ func runWait(args []string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("invalid --poll-interval value %q: %w", pollIntervalValue, err)
 	}
 
-	return waitForFabricNetworkReady(
+	if participant {
+		return waitForFabricParticipantCondition(
+			context.Background(),
+			kube,
+			flags.Arg(0),
+			conditionType,
+			timeout,
+			pollInterval,
+			stdout,
+			stderr,
+			getFabricParticipant,
+		)
+	}
+
+	return waitForFabricNetworkCondition(
 		context.Background(),
 		kube,
 		flags.Arg(0),
+		conditionType,
 		timeout,
 		pollInterval,
 		stdout,
@@ -222,8 +260,8 @@ func runConnectionProfile(args []string, stdout, stderr io.Writer) error {
 }
 
 func bindKubeFlags(flags *flag.FlagSet, kube *kubeOptions) {
-	flags.StringVar(&kube.namespace, "n", defaultNamespace, "FabricNetwork namespace")
-	flags.StringVar(&kube.namespace, "namespace", defaultNamespace, "FabricNetwork namespace")
+	flags.StringVar(&kube.namespace, "n", defaultNamespace, "Resource namespace")
+	flags.StringVar(&kube.namespace, "namespace", defaultNamespace, "Resource namespace")
 	flags.StringVar(&kube.kubeconfig, "kubeconfig", "", "Path to kubeconfig; defaults to KUBECONFIG or ~/.kube/config")
 	flags.StringVar(&kube.context, "context", "", "Kubeconfig context override")
 }
@@ -243,6 +281,27 @@ func getFabricNetwork(ctx context.Context, kube kubeOptions, name string) (*fabr
 	}
 
 	return network, nil
+}
+
+func getFabricParticipant(
+	ctx context.Context,
+	kube kubeOptions,
+	name string,
+) (*fabricopsv1alpha1.FabricParticipant, error) {
+	client, err := newClient(kube)
+	if err != nil {
+		return nil, err
+	}
+
+	participant := &fabricopsv1alpha1.FabricParticipant{}
+	if err := client.Get(ctx, ctrlclient.ObjectKey{
+		Namespace: kube.namespace,
+		Name:      name,
+	}, participant); err != nil {
+		return nil, err
+	}
+
+	return participant, nil
 }
 
 func newClient(kube kubeOptions) (ctrlclient.Client, error) {
@@ -286,6 +345,27 @@ func printStatus(out io.Writer, network *fabricopsv1alpha1.FabricNetwork) {
 	printChaincodeStatuses(out, network.Status.ChaincodeStatus)
 }
 
+func printParticipantStatus(out io.Writer, participant *fabricopsv1alpha1.FabricParticipant) {
+	printf(out, "FabricParticipant: %s/%s\n", participant.Namespace, participant.Name)
+	printf(out, "Phase: %s\n", participant.Status.Phase)
+	if ready := readyConditionSummary(participant.Status.Conditions); ready != "" {
+		printf(out, "Ready: %s\n", ready)
+	}
+	if participant.Status.Message != "" {
+		printf(out, "Message: %s\n", participant.Status.Message)
+	}
+	printf(out, "LocalInfrastructureReady: %t\n", participant.Status.LocalInfrastructureReady)
+	printf(out, "RemoteArtifactsReady: %t\n", participant.Status.RemoteArtifactsReady)
+	printf(out, "ChannelsReady: %t\n", participant.Status.ChannelsReady)
+	printf(out, "ChaincodeLifecycleReady: %t\n", participant.Status.ChaincodeLifecycleReady)
+
+	if participant.Status.LocalOrgStatus.Name != "" || participant.Status.LocalOrgStatus.Namespace != "" {
+		printOrgStatuses(out, []fabricopsv1alpha1.OrgStatus{participant.Status.LocalOrgStatus})
+	}
+	printParticipantChannelStatuses(out, participant.Status.ChannelStatus)
+	printParticipantChaincodeStatuses(out, participant.Status.ChaincodeStatus)
+}
+
 type fabricNetworkGetter func(
 	ctx context.Context,
 	kube kubeOptions,
@@ -302,6 +382,114 @@ func waitForFabricNetworkReady(
 	stderr io.Writer,
 	getter fabricNetworkGetter,
 ) error {
+	return waitForFabricNetworkCondition(ctx, kube, name, defaultCondition, timeout, pollInterval, stdout, stderr, getter)
+}
+
+func waitForFabricNetworkCondition(
+	ctx context.Context,
+	kube kubeOptions,
+	name string,
+	conditionType string,
+	timeout time.Duration,
+	pollInterval time.Duration,
+	stdout io.Writer,
+	stderr io.Writer,
+	getter fabricNetworkGetter,
+) error {
+	return waitForResourceCondition(
+		ctx,
+		kube,
+		name,
+		"FabricNetwork",
+		conditionType,
+		timeout,
+		pollInterval,
+		stdout,
+		stderr,
+		fabricNetworkWaitState(getter),
+	)
+}
+
+type fabricParticipantGetter func(
+	ctx context.Context,
+	kube kubeOptions,
+	name string,
+) (*fabricopsv1alpha1.FabricParticipant, error)
+
+func waitForFabricParticipantReady(
+	ctx context.Context,
+	kube kubeOptions,
+	name string,
+	timeout time.Duration,
+	pollInterval time.Duration,
+	stdout io.Writer,
+	stderr io.Writer,
+	getter fabricParticipantGetter,
+) error {
+	return waitForFabricParticipantCondition(
+		ctx,
+		kube,
+		name,
+		defaultCondition,
+		timeout,
+		pollInterval,
+		stdout,
+		stderr,
+		getter,
+	)
+}
+
+func waitForFabricParticipantCondition(
+	ctx context.Context,
+	kube kubeOptions,
+	name string,
+	conditionType string,
+	timeout time.Duration,
+	pollInterval time.Duration,
+	stdout io.Writer,
+	stderr io.Writer,
+	getter fabricParticipantGetter,
+) error {
+	return waitForResourceCondition(
+		ctx,
+		kube,
+		name,
+		"FabricParticipant",
+		conditionType,
+		timeout,
+		pollInterval,
+		stdout,
+		stderr,
+		fabricParticipantWaitState(getter),
+	)
+}
+
+type waitResourceState struct {
+	namespace        string
+	name             string
+	conditionIsTrue  bool
+	printDiagnostics func(io.Writer)
+}
+
+type waitResourceGetter func(
+	ctx context.Context,
+	kube kubeOptions,
+	name string,
+	conditionType string,
+) (waitResourceState, error)
+
+func waitForResourceCondition(
+	ctx context.Context,
+	kube kubeOptions,
+	name string,
+	kind string,
+	conditionType string,
+	timeout time.Duration,
+	pollInterval time.Duration,
+	stdout io.Writer,
+	stderr io.Writer,
+	getter waitResourceGetter,
+) error {
 	if timeout <= 0 {
 		return fmt.Errorf("--timeout must be greater than zero")
 	}
@@ -312,15 +500,15 @@ func waitForFabricNetworkReady(
 	deadline := time.NewTimer(timeout)
 	defer deadline.Stop()
 
-	var lastNetwork *fabricopsv1alpha1.FabricNetwork
+	var lastState *waitResourceState
 	var lastErr error
 	for {
-		network, err := getter(ctx, kube, name)
+		state, err := getter(ctx, kube, name, conditionType)
 		if err == nil {
-			lastNetwork = network
+			lastState = &state
 			lastErr = nil
-			if fabricNetworkReady(network) {
-				printf(stdout, "FabricNetwork %s/%s is Ready\n", network.Namespace, network.Name)
+			if state.conditionIsTrue {
+				printWaitSuccess(stdout, kind, state.namespace, state.name, conditionType)
 				return nil
 			}
 		} else {
@@ -331,28 +519,90 @@ func waitForFabricNetworkReady(
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-deadline.C:
-			printWaitDiagnostics(stderr, lastNetwork, lastErr)
-			return fmt.Errorf("timed out waiting for FabricNetwork %s/%s to be Ready", kube.namespace, name)
+			printResourceWaitDiagnostics(stderr, lastState, lastErr)
+			return waitTimeoutError(kind, kube.namespace, name, conditionType)
 		case <-time.After(pollInterval):
 		}
 	}
 }
 
-func fabricNetworkReady(network *fabricopsv1alpha1.FabricNetwork) bool {
-	for _, condition := range network.Status.Conditions {
-		if condition.Type == "Ready" {
+func fabricNetworkWaitState(getter fabricNetworkGetter) waitResourceGetter {
+	return func(ctx context.Context, kube kubeOptions, name string, conditionType string) (waitResourceState, error) {
+		network, err := getter(ctx, kube, name)
+		if err != nil {
+			return waitResourceState{}, err
+		}
+		return waitResourceState{
+			namespace:       network.Namespace,
+			name:            network.Name,
+			conditionIsTrue: conditionTrue(network.Status.Conditions, conditionType),
+			printDiagnostics: func(out io.Writer) {
+				printStatus(out, network)
+			},
+		}, nil
+	}
+}
+
+func fabricParticipantWaitState(getter fabricParticipantGetter) waitResourceGetter {
+	return func(ctx context.Context, kube kubeOptions, name string, conditionType string) (waitResourceState, error) {
+		participant, err := getter(ctx, kube, name)
+		if err != nil {
+			return waitResourceState{}, err
+		}
+		return waitResourceState{
+			namespace:       participant.Namespace,
+			name:            participant.Name,
+			conditionIsTrue: conditionTrue(participant.Status.Conditions, conditionType),
+			printDiagnostics: func(out io.Writer) {
+				printParticipantStatus(out, participant)
+			},
+		}, nil
+	}
+}
+
+func conditionTrue(conditions []metav1.Condition, conditionType string) bool {
+	for _, condition := range conditions {
+		if condition.Type == conditionType {
 			return condition.Status == metav1.ConditionTrue
 		}
 	}
 	return false
 }
 
-func printWaitDiagnostics(out io.Writer, network *fabricopsv1alpha1.FabricNetwork, lastErr error) {
+func waitConditionType(waitFor string) (string, error) {
+	const prefix = "condition="
+	waitFor = strings.TrimSpace(waitFor)
+	if !strings.HasPrefix(waitFor, prefix) {
+		return "", fmt.Errorf("unsupported wait target %q; use condition=<type>", waitFor)
+	}
+	conditionType := strings.TrimSpace(strings.TrimPrefix(waitFor, prefix))
+	if conditionType == "" {
+		return "", fmt.Errorf("unsupported wait target %q; condition type is required", waitFor)
+	}
+	return conditionType, nil
+}
+
+func printWaitSuccess(out io.Writer, kind, namespace, name, conditionType string) {
+	if conditionType == defaultCondition {
+		printf(out, "%s %s/%s is Ready\n", kind, namespace, name)
+		return
+	}
+	printf(out, "%s %s/%s condition %s is True\n", kind, namespace, name, conditionType)
+}
+
+func waitTimeoutError(kind, namespace, name, conditionType string) error {
+	if conditionType == defaultCondition {
+		return fmt.Errorf("timed out waiting for %s %s/%s to be Ready", kind, namespace, name)
+	}
+	return fmt.Errorf("timed out waiting for %s %s/%s condition %s to be True", kind, namespace, name, conditionType)
+}
+
+func printResourceWaitDiagnostics(out io.Writer, state *waitResourceState, lastErr error) {
 	if lastErr != nil {
 		printf(out, "Last error: %v\n", lastErr)
 	}
-	if network != nil {
-		printStatus(out, network)
+	if state != nil && state.printDiagnostics != nil {
+		state.printDiagnostics(out)
 	}
 }
 
@@ -433,6 +683,56 @@ func printChannelStatuses(out io.Writer, statuses []fabricopsv1alpha1.ChannelSta
 			status.Orderers.Desired,
 			status.Peers.Ready,
 			status.Peers.Desired,
+		)
+		if status.Message != "" {
+			printf(out, " message=%q", status.Message)
+		}
+		printLine(out)
+	}
+}
+
+func printParticipantChannelStatuses(out io.Writer, statuses []fabricopsv1alpha1.ParticipantChannelStatus) {
+	if len(statuses) == 0 {
+		return
+	}
+
+	printLine(out)
+	printLine(out, "Channels:")
+	for _, status := range statuses {
+		printf(
+			out,
+			"- %s ready=%t block=%t joined=%t peers=%d/%d",
+			status.Name,
+			status.Ready,
+			status.BlockReady,
+			status.Joined,
+			status.Peers.Ready,
+			status.Peers.Desired,
+		)
+		if status.Message != "" {
+			printf(out, " message=%q", status.Message)
+		}
+		printLine(out)
+	}
+}
+
+func printParticipantChaincodeStatuses(out io.Writer, statuses []fabricopsv1alpha1.ParticipantChaincodeStatus) {
+	if len(statuses) == 0 {
+		return
+	}
+
+	printLine(out)
+	printLine(out, "Chaincodes:")
+	for _, status := range statuses {
+		printf(
+			out,
+			"- %s channel=%s ready=%t package=%t installed=%t approved=%t",
+			status.Name,
+			status.Channel,
+			status.Ready,
+			status.PackageReady,
+			status.Installed,
+			status.Approved,
 		)
 		if status.Message != "" {
 			printf(out, " message=%q", status.Message)
@@ -557,25 +857,45 @@ func printLine(out io.Writer, args ...any) {
 func printUsage(out io.Writer) {
 	printLine(out, `Usage:
   fabricopsctl status [flags] <fabricnetwork>
+  fabricopsctl status --participant [flags] <fabricparticipant>
   fabricopsctl wait [flags] <fabricnetwork>
+  fabricopsctl wait --participant [flags] <fabricparticipant>
   fabricopsctl connection-profile [flags] <fabricnetwork>
+  fabricopsctl join-bundle --org <org> [flags] <fabricnetwork>
+  fabricopsctl join-bundle participant [flags] <fabricparticipant>
+  fabricopsctl join-bundle validate [flags] <bundle.json>
+  fabricopsctl join-bundle plan [flags] <bundle.json>
+  fabricopsctl join-bundle render-org [flags] <bundle.json>
+  fabricopsctl join-bundle render-update [flags] <bundle.json>
   fabricopsctl invoke [flags] <fabricnetwork>
+  fabricopsctl invoke --participant [flags] <fabricparticipant>
   fabricopsctl query [flags] <fabricnetwork>
+  fabricopsctl query --participant [flags] <fabricparticipant>
 
 Common flags:
-  -n, --namespace string   FabricNetwork namespace (default "default")
+  -n, --namespace string   Resource namespace (default "default")
       --kubeconfig string  Path to kubeconfig
       --context string     Kubeconfig context override
 
 Examples:
   fabricopsctl status fabricnetwork-sample
+  fabricopsctl status --participant bankb-participant
   fabricopsctl status -n default -o json fabricnetwork-sample
   fabricopsctl wait -n default --timeout 20m fabricnetwork-sample
+  fabricopsctl wait --participant -n default --timeout 20m bankb-participant
   fabricopsctl connection-profile --org BankA --format yaml fabricnetwork-sample
   fabricopsctl connection-profile --org BankA --format json --out connection-banka.json fabricnetwork-sample
+  fabricopsctl join-bundle --org BankA --out banka-join-bundle.json fabricnetwork-sample
+  fabricopsctl join-bundle participant --out bankb-join-bundle.json bankb-participant
+  fabricopsctl join-bundle validate banka-join-bundle.json
+  fabricopsctl join-bundle plan --channel settlement banka-join-bundle.json
+  fabricopsctl join-bundle render-org --channel settlement --out banka-org.json banka-join-bundle.json
+  fabricopsctl join-bundle render-update --channel settlement --out settlement-join-update.sh banka-join-bundle.json
   fabricopsctl query --org BankA --channel settlement \
     --chaincode settlement --function readSettlement --args '["id1"]' -o json fabricnetwork-sample
   fabricopsctl invoke --org BankA --peer BankA/peer0 --peer BankB/peer0 \
     --channel settlement --chaincode settlement --function createSettlement \
-    --args '["id1","alice","bob","100","USD"]' fabricnetwork-sample`)
+    --args '["id1","alice","bob","100","USD"]' fabricnetwork-sample
+  fabricopsctl query --participant --org BankB --channel settlement \
+    --chaincode settlement --function readSettlement --args '["id1"]' bankb-participant`)
 }

@@ -226,12 +226,12 @@ func buildConnectionProfile(
 	for _, orderer := range orderers {
 		name := connectionProfileOrdererName(orderer.org, orderer.name)
 		ordererNames = append(ordererNames, name)
-		profile.Orderers[name] = connectionProfileGRPCEndpoint(ordererClientAddress(orderer), ordererHost(orderer), tlsRoots.orderers[name])
+		profile.Orderers[name] = connectionProfileGRPCEndpoint(ordererAdvertisedClientAddress(orderer), ordererHost(orderer), tlsRoots.orderers[name])
 	}
 
 	for _, peer := range peers {
 		name := connectionProfilePeerName(peer.org, peer.name)
-		profile.Peers[name] = connectionProfileGRPCEndpoint(peerAddress(peer), peerHost(peer), tlsRoots.peers[name])
+		profile.Peers[name] = connectionProfileGRPCEndpoint(peerAdvertisedAddress(peer), peerHost(peer), tlsRoots.peers[name])
 	}
 
 	for _, org := range net.Spec.Orgs {
@@ -337,9 +337,9 @@ func connectionProfileCAName(org fabricopsv1alpha1.Org) string {
 }
 
 func ordererHost(orderer ordererInstance) string {
-	return strings.TrimSuffix(ordererClientAddress(orderer), fmt.Sprintf(":%d", ordererPort))
+	return ordererConnectionProfileTLSHost(orderer)
 }
 
 func peerHost(peer peerInstance) string {
-	return strings.TrimSuffix(peerAddress(peer), fmt.Sprintf(":%d", peerPort))
+	return peerConnectionProfileTLSHost(peer)
 }

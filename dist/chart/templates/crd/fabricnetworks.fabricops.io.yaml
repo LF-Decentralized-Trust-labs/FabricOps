@@ -486,6 +486,151 @@ spec:
               channels:
                 items:
                   properties:
+                    externalOrgs:
+                      description: |-
+                        ExternalOrgs declares participant-owned organizations that the founder
+                        cluster should admit to this channel through a channel config update.
+                        The org material should be the rendered Application org JSON produced
+                        by `fabricopsctl join-bundle render-org`; private keys are never imported.
+                      items:
+                        properties:
+                          adminOrg:
+                            description: |-
+                              AdminOrg optionally selects the local founder org whose admin identity
+                              submits the channel update. When omitted, the first local org declared on
+                              the channel is used.
+                            maxLength: 63
+                            pattern: ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$
+                            type: string
+                          anchorPeers:
+                            description: |-
+                              AnchorPeers records the externally reachable anchor peers expected in the
+                              rendered Application org JSON.
+                            items:
+                              properties:
+                                host:
+                                  maxLength: 253
+                                  minLength: 1
+                                  type: string
+                                port:
+                                  format: int32
+                                  maximum: 65535
+                                  minimum: 1
+                                  type: integer
+                              required:
+                              - host
+                              - port
+                              type: object
+                            type: array
+                          applicationOrgRef:
+                            description: |-
+                              ApplicationOrgRef points at the rendered channel Application org JSON for
+                              this external organization.
+                            properties:
+                              configMapKeyRef:
+                                description: |-
+                                  ConfigMapKeyRef points at a key in a ConfigMap in the FabricNetwork
+                                  namespace.
+                                properties:
+                                  key:
+                                    description: The key to select.
+                                    type: string
+                                  name:
+                                    default: ""
+                                    description: |-
+                                      Name of the referent.
+                                      This field is effectively required, but due to backwards compatibility is
+                                      allowed to be empty. Instances of this type with an empty value here are
+                                      almost certainly wrong.
+                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    type: string
+                                  optional:
+                                    description: Specify whether the ConfigMap or
+                                      its key must be defined
+                                    type: boolean
+                                required:
+                                - key
+                                type: object
+                                x-kubernetes-map-type: atomic
+                              secretKeyRef:
+                                description: SecretKeyRef points at a key in a Secret
+                                  in the FabricNetwork namespace.
+                                properties:
+                                  key:
+                                    description: The key of the secret to select from.  Must
+                                      be a valid secret key.
+                                    type: string
+                                  name:
+                                    default: ""
+                                    description: |-
+                                      Name of the referent.
+                                      This field is effectively required, but due to backwards compatibility is
+                                      allowed to be empty. Instances of this type with an empty value here are
+                                      almost certainly wrong.
+                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    type: string
+                                  optional:
+                                    description: Specify whether the Secret or its
+                                      key must be defined
+                                    type: boolean
+                                required:
+                                - key
+                                type: object
+                                x-kubernetes-map-type: atomic
+                            type: object
+                          mspID:
+                            description: |-
+                              MSPID is the participant MSP ID to add under the channel Application
+                              group.
+                            maxLength: 64
+                            minLength: 1
+                            pattern: ^[A-Za-z][A-Za-z0-9]*$
+                            type: string
+                          name:
+                            description: |-
+                              Name is the human-readable organization name from the participant join
+                              bundle.
+                            maxLength: 63
+                            minLength: 1
+                            pattern: ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$
+                            type: string
+                          orderer:
+                            description: |-
+                              Orderer optionally selects the local orderer endpoint used to fetch and
+                              submit the channel config update. When omitted, the first local orderer is
+                              used.
+                            properties:
+                              name:
+                                description: Name is the local orderer instance name,
+                                  for example orderer0.
+                                maxLength: 63
+                                pattern: ^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$
+                                type: string
+                              org:
+                                description: |-
+                                  Org optionally scopes the selected orderer to a local orderer
+                                  organization.
+                                maxLength: 63
+                                pattern: ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$
+                                type: string
+                            type: object
+                          requiredSignerMSPIDs:
+                            description: |-
+                              RequiredSignerMSPIDs lists founder-side MSP IDs expected to sign the
+                              channel config update before submission. When omitted, FabricOps attempts
+                              the update with the selected AdminOrg only. When this list names
+                              additional MSPs, FabricOps prepares the admission inputs and waits for a
+                              manual multi-admin signature handoff instead of launching an update Job.
+                            items:
+                              type: string
+                            maxItems: 16
+                            type: array
+                        required:
+                        - applicationOrgRef
+                        - mspID
+                        - name
+                        type: object
+                      type: array
                     name:
                       maxLength: 249
                       minLength: 1
@@ -655,6 +800,48 @@ spec:
                     orderers:
                       items:
                         properties:
+                          externalEndpoints:
+                            description: |-
+                              ExternalEndpoints declares externally reachable client endpoints for
+                              individual orderer workloads. When omitted, FabricOps advertises the
+                              in-cluster Service DNS name.
+                            items:
+                              properties:
+                                address:
+                                  description: |-
+                                    Address is the externally reachable host:port endpoint advertised to
+                                    remote orgs, clients, connection profiles, and channel anchor/orderer
+                                    config.
+                                  maxLength: 253
+                                  minLength: 1
+                                  type: string
+                                name:
+                                  description: Name is the generated workload name,
+                                    for example orderer0 or peer0.
+                                  maxLength: 63
+                                  minLength: 1
+                                  pattern: ^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$
+                                  type: string
+                                tlsHostnameOverride:
+                                  description: |-
+                                    TLSHostnameOverride is the hostname Fabric clients should use for TLS
+                                    verification when the dial address intentionally differs from the
+                                    certificate identity, for example local port-forward testing.
+                                  maxLength: 253
+                                  type: string
+                                tlsHosts:
+                                  description: |-
+                                    TLSHosts adds certificate SAN hostnames for this external endpoint. The
+                                    host from Address is included automatically.
+                                  items:
+                                    type: string
+                                  maxItems: 16
+                                  type: array
+                              required:
+                              - address
+                              - name
+                              type: object
+                            type: array
                           groupName:
                             maxLength: 63
                             minLength: 1
@@ -710,6 +897,48 @@ spec:
                           minLength: 1
                           pattern: ^[A-Za-z0-9_-]+$
                           type: string
+                        externalEndpoints:
+                          description: |-
+                            ExternalEndpoints declares externally reachable peer endpoints for
+                            individual peer workloads. When omitted, FabricOps advertises the
+                            in-cluster Service DNS name.
+                          items:
+                            properties:
+                              address:
+                                description: |-
+                                  Address is the externally reachable host:port endpoint advertised to
+                                  remote orgs, clients, connection profiles, and channel anchor/orderer
+                                  config.
+                                maxLength: 253
+                                minLength: 1
+                                type: string
+                              name:
+                                description: Name is the generated workload name,
+                                  for example orderer0 or peer0.
+                                maxLength: 63
+                                minLength: 1
+                                pattern: ^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$
+                                type: string
+                              tlsHostnameOverride:
+                                description: |-
+                                  TLSHostnameOverride is the hostname Fabric clients should use for TLS
+                                  verification when the dial address intentionally differs from the
+                                  certificate identity, for example local port-forward testing.
+                                maxLength: 253
+                                type: string
+                              tlsHosts:
+                                description: |-
+                                  TLSHosts adds certificate SAN hostnames for this external endpoint. The
+                                  host from Address is included automatically.
+                                items:
+                                  type: string
+                                maxItems: 16
+                                type: array
+                            required:
+                            - address
+                            - name
+                            type: object
+                          type: array
                         instances:
                           maximum: 50
                           minimum: 1
@@ -902,6 +1131,52 @@ spec:
                       type: string
                     configReady:
                       type: boolean
+                    externalOrgs:
+                      items:
+                        properties:
+                          adminOrg:
+                            type: string
+                          anchorPeers:
+                            items:
+                              properties:
+                                host:
+                                  maxLength: 253
+                                  minLength: 1
+                                  type: string
+                                port:
+                                  format: int32
+                                  maximum: 65535
+                                  minimum: 1
+                                  type: integer
+                              required:
+                              - host
+                              - port
+                              type: object
+                            type: array
+                          applicationOrgConfigMapName:
+                            type: string
+                          message:
+                            type: string
+                          mspID:
+                            type: string
+                          name:
+                            type: string
+                          orderer:
+                            type: string
+                          ready:
+                            type: boolean
+                          requiredSignerMSPIDs:
+                            items:
+                              type: string
+                            type: array
+                          updateJobName:
+                            type: string
+                        required:
+                        - mspID
+                        - name
+                        - ready
+                        type: object
+                      type: array
                     message:
                       type: string
                     name:
@@ -1058,8 +1333,8 @@ spec:
                       type: string
                     ordererEndpoints:
                       description: |-
-                        OrdererEndpoints lists in-cluster client, admin, and operations
-                        endpoints for desired orderer workloads in this org.
+                        OrdererEndpoints lists advertised client endpoints plus in-cluster admin
+                        and operations endpoints for desired orderer workloads in this org.
                       items:
                         properties:
                           adminAddress:
@@ -1068,7 +1343,11 @@ spec:
                             type: string
                           name:
                             type: string
+                          namespace:
+                            type: string
                           operationsAddress:
+                            type: string
+                          tlsHostnameOverride:
                             type: string
                         required:
                         - name
@@ -1090,8 +1369,8 @@ spec:
                       type: boolean
                     peerEndpoints:
                       description: |-
-                        PeerEndpoints lists in-cluster client, chaincode, and operations
-                        endpoints for desired peer workloads in this org.
+                        PeerEndpoints lists advertised peer endpoints plus in-cluster chaincode
+                        and operations endpoints for desired peer workloads in this org.
                       items:
                         properties:
                           address:
@@ -1101,6 +1380,8 @@ spec:
                           name:
                             type: string
                           operationsAddress:
+                            type: string
+                          tlsHostnameOverride:
                             type: string
                         required:
                         - name

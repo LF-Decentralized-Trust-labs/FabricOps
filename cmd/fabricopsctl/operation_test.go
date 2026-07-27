@@ -18,6 +18,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -25,6 +26,8 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	fabricopsv1alpha1 "github.com/dpereowei/fabricops/api/v1alpha1"
 )
@@ -118,6 +121,9 @@ func TestBuildOperationJobUsesAdminSecretsAndPeerFlags(t *testing.T) {
 	if env["FABRICOPS_CORE_PEER_TLS_ROOT"] != operationTLSRootPath+"/peer-0-ca.crt" {
 		t.Fatalf("FABRICOPS_CORE_PEER_TLS_ROOT = %q", env["FABRICOPS_CORE_PEER_TLS_ROOT"])
 	}
+	if env["FABRICOPS_ORDERER_TLS_HOSTNAME_OVERRIDE"] != "localhost" {
+		t.Fatalf("FABRICOPS_ORDERER_TLS_HOSTNAME_OVERRIDE = %q", env["FABRICOPS_ORDERER_TLS_HOSTNAME_OVERRIDE"])
+	}
 	if env["FABRICOPS_PEER_ADDRESS_1"] != "peer0.fo-test-bankb.svc.cluster.local:7051" {
 		t.Fatalf("FABRICOPS_PEER_ADDRESS_1 = %q", env["FABRICOPS_PEER_ADDRESS_1"])
 	}
@@ -139,11 +145,240 @@ func TestBuildOperationJobUsesAdminSecretsAndPeerFlags(t *testing.T) {
 		`set -- "$@" --peerAddresses "$FABRICOPS_PEER_ADDRESS_1"`,
 		`set -- "$@" --tlsRootCertFiles "` + operationTLSRootPath + `/peer-0-ca.crt"`,
 		`set -- "$@" --tlsRootCertFiles "` + operationTLSRootPath + `/peer-1-ca.crt"`,
+		`set -- "$@" --ordererTLSHostnameOverride "$FABRICOPS_ORDERER_TLS_HOSTNAME_OVERRIDE"`,
 		`set -- "$@" --waitForEvent`,
 	} {
 		if !strings.Contains(script, want) {
 			t.Fatalf("operation script does not contain %q\nscript:\n%s", want, script)
 		}
+	}
+}
+
+func TestBuildParticipantOperationJobUsesImportedOrderer(t *testing.T) {
+	participant := operationTestParticipant()
+	targets, submitter, err := selectOperationTargets(
+		[]fabricopsv1alpha1.OrgStatus{participant.Status.LocalOrgStatus},
+		"BankB",
+		[]string{"peer0"},
+	)
+	if err != nil {
+		t.Fatalf("selectOperationTargets() error = %v", err)
+	}
+	mspID, err := mspIDForParticipantOrg(participant, submitter.Name)
+	if err != nil {
+		t.Fatalf("mspIDForParticipantOrg() error = %v", err)
+	}
+	ordererSpec, err := selectParticipantOperationOrderer(participant)
+	if err != nil {
+		t.Fatalf("selectParticipantOperationOrderer() error = %v", err)
+	}
+
+	job := buildOperationJob(
+		participantOperationNetwork(participant),
+		chaincodeOperationQuery,
+		chaincodeOperationOptions{
+			channel:   "settlement",
+			chaincode: "settlement",
+			function:  "readSettlement",
+		},
+		`{"Args":["readSettlement","id1"]}`,
+		"bankb-query",
+		"bankb-query-tls-roots",
+		mspID,
+		submitter,
+		participantOperationOrdererStatus(ordererSpec),
+		targets,
+	)
+
+	if job.Namespace != "fo-fp-bankb" {
+		t.Fatalf("job.Namespace = %q, want fo-fp-bankb", job.Namespace)
+	}
+	container := job.Spec.Template.Spec.Containers[0]
+	env := operationEnvMap(container.Env)
+	if env["FABRICOPS_MSP_ID"] != "BankBMSP" {
+		t.Fatalf("FABRICOPS_MSP_ID = %q, want BankBMSP", env["FABRICOPS_MSP_ID"])
+	}
+	if env["FABRICOPS_ORDERER_ADDRESS"] != "host.docker.internal:8050" {
+		t.Fatalf("FABRICOPS_ORDERER_ADDRESS = %q", env["FABRICOPS_ORDERER_ADDRESS"])
+	}
+	if env["FABRICOPS_ORDERER_TLS_HOSTNAME_OVERRIDE"] != "localhost" {
+		t.Fatalf("FABRICOPS_ORDERER_TLS_HOSTNAME_OVERRIDE = %q", env["FABRICOPS_ORDERER_TLS_HOSTNAME_OVERRIDE"])
+	}
+	if env["FABRICOPS_CORE_PEER_ADDRESS"] != "peer0.fo-fp-bankb.svc.cluster.local:7051" {
+		t.Fatalf("FABRICOPS_CORE_PEER_ADDRESS = %q", env["FABRICOPS_CORE_PEER_ADDRESS"])
+	}
+
+	volumes := operationVolumeSecrets(job)
+	if volumes["admin-msp"] != "bankb-admin-msp" {
+		t.Fatalf("admin-msp SecretName = %q, want bankb-admin-msp", volumes["admin-msp"])
+	}
+	if volumes["admin-tls"] != "bankb-admin-tls" {
+		t.Fatalf("admin-tls SecretName = %q, want bankb-admin-tls", volumes["admin-tls"])
+	}
+	if volumes["tls-roots"] != "bankb-query-tls-roots" {
+		t.Fatalf("tls-roots SecretName = %q, want bankb-query-tls-roots", volumes["tls-roots"])
+	}
+}
+
+func TestParticipantOperationTargetsIncludeImportedRemotePeers(t *testing.T) {
+	participant := operationTestParticipant()
+	statuses := participantOperationOrgStatuses(participant)
+	targets, submitter, err := selectOperationTargets(
+		statuses,
+		"BankB",
+		[]string{"BankB/peer0", "BankA/peer0"},
+	)
+	if err != nil {
+		t.Fatalf("selectOperationTargets() error = %v", err)
+	}
+	targets = decorateParticipantOperationTargets(participant, targets)
+
+	if submitter.Name != "BankB" {
+		t.Fatalf("submitter.Name = %q, want BankB", submitter.Name)
+	}
+	if len(targets) != 2 {
+		t.Fatalf("len(targets) = %d, want 2", len(targets))
+	}
+	if targets[0].endpoint.Address != "peer0.fo-fp-bankb.svc.cluster.local:7051" {
+		t.Fatalf("targets[0].endpoint.Address = %q", targets[0].endpoint.Address)
+	}
+	if targets[0].tlsRootCARef != nil {
+		t.Fatal("targets[0].tlsRootCARef is set for local peer")
+	}
+	if targets[1].orgName != "BankA" {
+		t.Fatalf("targets[1].orgName = %q, want BankA", targets[1].orgName)
+	}
+	if targets[1].endpoint.Address != "192.168.117.3:30052" {
+		t.Fatalf("targets[1].endpoint.Address = %q", targets[1].endpoint.Address)
+	}
+	if targets[1].tlsRootCARef == nil || targets[1].tlsRootCARef.ConfigMapKeyRef == nil {
+		t.Fatal("targets[1].tlsRootCARef is nil, want imported ConfigMap ref")
+	}
+	if targets[1].tlsRootCARef.ConfigMapKeyRef.Name != "banka-peer0-artifacts" {
+		t.Fatalf(
+			"targets[1].tlsRootCARef.ConfigMapKeyRef.Name = %q",
+			targets[1].tlsRootCARef.ConfigMapKeyRef.Name,
+		)
+	}
+}
+
+func TestEnsureParticipantOperationTLSSecretUsesImportedOrdererRoot(t *testing.T) {
+	ctx := context.Background()
+	participant := operationTestParticipant()
+	targets, submitter, err := selectOperationTargets(
+		[]fabricopsv1alpha1.OrgStatus{participant.Status.LocalOrgStatus},
+		"BankB",
+		[]string{"peer0"},
+	)
+	if err != nil {
+		t.Fatalf("selectOperationTargets() error = %v", err)
+	}
+	ordererSpec, err := selectParticipantOperationOrderer(participant)
+	if err != nil {
+		t.Fatalf("selectParticipantOperationOrderer() error = %v", err)
+	}
+	client := fake.NewClientBuilder().
+		WithScheme(cliScheme).
+		WithObjects(
+			&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "orderer0-artifacts", Namespace: "default"},
+				Data:       map[string]string{"tls-ca.pem": "orderer-root"},
+			},
+			&corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "peer0-tls", Namespace: "fo-fp-bankb"},
+				Data:       map[string][]byte{tlsCACertKey: []byte("peer-root")},
+			},
+		).
+		Build()
+
+	if err := ensureParticipantOperationTLSSecret(
+		ctx,
+		client,
+		"bankb-query-tls-roots",
+		participant,
+		submitter,
+		ordererSpec,
+		targets,
+	); err != nil {
+		t.Fatalf("ensureParticipantOperationTLSSecret() error = %v", err)
+	}
+
+	var secret corev1.Secret
+	if err := client.Get(ctx, ctrlclient.ObjectKey{
+		Namespace: "fo-fp-bankb",
+		Name:      "bankb-query-tls-roots",
+	}, &secret); err != nil {
+		t.Fatalf("client.Get() error = %v", err)
+	}
+	if string(secret.Data["orderer-ca.crt"]) != "orderer-root" {
+		t.Fatalf("orderer-ca.crt = %q", string(secret.Data["orderer-ca.crt"]))
+	}
+	if string(secret.Data["peer-0-ca.crt"]) != "peer-root" {
+		t.Fatalf("peer-0-ca.crt = %q", string(secret.Data["peer-0-ca.crt"]))
+	}
+}
+
+func TestEnsureParticipantOperationTLSSecretUsesImportedPeerRoot(t *testing.T) {
+	ctx := context.Background()
+	participant := operationTestParticipant()
+	targets, submitter, err := selectOperationTargets(
+		participantOperationOrgStatuses(participant),
+		"BankB",
+		[]string{"BankB/peer0", "BankA/peer0"},
+	)
+	if err != nil {
+		t.Fatalf("selectOperationTargets() error = %v", err)
+	}
+	targets = decorateParticipantOperationTargets(participant, targets)
+	ordererSpec, err := selectParticipantOperationOrderer(participant)
+	if err != nil {
+		t.Fatalf("selectParticipantOperationOrderer() error = %v", err)
+	}
+	client := fake.NewClientBuilder().
+		WithScheme(cliScheme).
+		WithObjects(
+			&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "orderer0-artifacts", Namespace: "default"},
+				Data:       map[string]string{"tls-ca.pem": "orderer-root"},
+			},
+			&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{Name: "banka-peer0-artifacts", Namespace: "default"},
+				Data:       map[string]string{"tls-ca.pem": "founder-peer-root"},
+			},
+			&corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "peer0-tls", Namespace: "fo-fp-bankb"},
+				Data:       map[string][]byte{tlsCACertKey: []byte("peer-root")},
+			},
+		).
+		Build()
+
+	if err := ensureParticipantOperationTLSSecret(
+		ctx,
+		client,
+		"bankb-invoke-tls-roots",
+		participant,
+		submitter,
+		ordererSpec,
+		targets,
+	); err != nil {
+		t.Fatalf("ensureParticipantOperationTLSSecret() error = %v", err)
+	}
+
+	var secret corev1.Secret
+	if err := client.Get(ctx, ctrlclient.ObjectKey{
+		Namespace: "fo-fp-bankb",
+		Name:      "bankb-invoke-tls-roots",
+	}, &secret); err != nil {
+		t.Fatalf("client.Get() error = %v", err)
+	}
+	if string(secret.Data["orderer-ca.crt"]) != "orderer-root" {
+		t.Fatalf("orderer-ca.crt = %q", string(secret.Data["orderer-ca.crt"]))
+	}
+	if string(secret.Data["peer-0-ca.crt"]) != "peer-root" {
+		t.Fatalf("peer-0-ca.crt = %q", string(secret.Data["peer-0-ca.crt"]))
+	}
+	if string(secret.Data["peer-1-ca.crt"]) != "founder-peer-root" {
+		t.Fatalf("peer-1-ca.crt = %q", string(secret.Data["peer-1-ca.crt"]))
 	}
 }
 
@@ -324,7 +559,12 @@ func operationTestOrgStatuses() []fabricopsv1alpha1.OrgStatus {
 			Name:      "OrdererOrg",
 			Namespace: "fo-test-orderer",
 			OrdererEndpoints: []fabricopsv1alpha1.OrdererEndpointStatus{
-				{Name: "orderer0", ClientAddress: "orderer0.fo-test-orderer.svc.cluster.local:7050"},
+				{
+					Name:                "orderer0",
+					Namespace:           "fo-test-orderer",
+					ClientAddress:       "host.docker.internal:8050",
+					TLSHostnameOverride: "localhost",
+				},
 			},
 		},
 		{
@@ -340,6 +580,60 @@ func operationTestOrgStatuses() []fabricopsv1alpha1.OrgStatus {
 			Namespace: "fo-test-bankb",
 			PeerEndpoints: []fabricopsv1alpha1.PeerEndpointStatus{
 				{Name: "peer0", Address: "peer0.fo-test-bankb.svc.cluster.local:7051"},
+			},
+		},
+	}
+}
+
+func operationTestParticipant() *fabricopsv1alpha1.FabricParticipant {
+	return &fabricopsv1alpha1.FabricParticipant{
+		ObjectMeta: metav1.ObjectMeta{Name: "bankb-participant", Namespace: "default"},
+		Spec: fabricopsv1alpha1.FabricParticipantSpec{
+			Global: fabricopsv1alpha1.GlobalConfig{
+				FabricVersion: "3.0.0",
+				TLS:           true,
+			},
+			Org: fabricopsv1alpha1.Org{
+				Organization: fabricopsv1alpha1.OrgMeta{Name: "BankB", MSPName: "BankBMSP"},
+			},
+			Network: fabricopsv1alpha1.ParticipantNetwork{
+				Name: "federated-founder",
+				Orderers: []fabricopsv1alpha1.ParticipantOrdererEndpoint{
+					{
+						Org:                 "Orderer",
+						Name:                "orderer0",
+						ClientAddress:       "host.docker.internal:8050",
+						TLSHostnameOverride: "localhost",
+						TLSRootCARef: &fabricopsv1alpha1.ParticipantArtifactKeyRef{
+							ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{Name: "orderer0-artifacts"},
+								Key:                  "tls-ca.pem",
+							},
+						},
+					},
+				},
+				Peers: []fabricopsv1alpha1.ParticipantPeerEndpoint{
+					{
+						Org:     "BankA",
+						Name:    "peer0",
+						Address: "192.168.117.3:30052",
+						TLSRootCARef: &fabricopsv1alpha1.ParticipantArtifactKeyRef{
+							ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{Name: "banka-peer0-artifacts"},
+								Key:                  "tls-ca.pem",
+							},
+						},
+					},
+				},
+			},
+		},
+		Status: fabricopsv1alpha1.FabricParticipantStatus{
+			LocalOrgStatus: fabricopsv1alpha1.OrgStatus{
+				Name:      "BankB",
+				Namespace: "fo-fp-bankb",
+				PeerEndpoints: []fabricopsv1alpha1.PeerEndpointStatus{
+					{Name: "peer0", Address: "peer0.fo-fp-bankb.svc.cluster.local:7051"},
+				},
 			},
 		},
 	}

@@ -1,0 +1,65 @@
+apiVersion: fabricops.io/v1alpha1
+kind: FabricParticipant
+metadata:
+  labels:
+    app.kubernetes.io/name: fabricops
+    app.kubernetes.io/managed-by: kustomize
+  name: bankb-participant
+spec:
+  global:
+    fabricVersion: 3.1.0
+    tls: true
+  org:
+    organization:
+      name: BankB
+      domain: bankb.fabricops.io
+      mspName: BankBMSP
+    ca:
+      db: sqlite
+    peer:
+      instances: 1
+      db: leveldb
+      prefix: peer
+  network:
+    name: settlement-network
+    founderMSPID: BankAMSP
+    orderers:
+      - org: OrdererOrg
+        name: orderer0
+        clientAddress: orderer0.bank-a.fabricops.io:7050
+        tlsRootCARef:
+          configMapKeyRef:
+            name: orderer0-artifacts
+            key: tls-ca.pem
+    peers:
+      - org: BankA
+        name: peer0
+        address: peer0.banka.fabricops.io:7051
+        tlsRootCARef:
+          configMapKeyRef:
+            name: banka-peer0-artifacts
+            key: tls-ca.pem
+  channels:
+    - name: settlement
+      blockRef:
+        configMapKeyRef:
+          name: settlement-artifacts
+          key: channel.block
+      peers:
+        - peer0
+      anchorPeers:
+        - name: peer0
+          host: peer0.bankb.fabricops.io
+          port: 7051
+      membership:
+        applicationPolicy: /Channel/Application/Admins
+        requiredSignerMSPIDs:
+          - BankAMSP
+  chaincodes:
+    - name: settlement
+      channel: settlement
+      version: "1.0"
+      packageLabel: settlement_settlement_1.0
+      sequence: 1
+      endorsementPolicy: AND('BankAMSP.member','BankBMSP.member')
+      image: ghcr.io/dpereowei/fabricops-node-settlement:0.1.2

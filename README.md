@@ -23,14 +23,14 @@ Requirements:
 Install the latest published release bundle:
 
 ```bash
-kubectl apply -f https://github.com/dpereowei/fabricops/releases/download/v0.1.1/install.yaml
+kubectl apply -f https://github.com/dpereowei/fabricops/releases/download/v0.1.2/install.yaml
 kubectl rollout status deployment/fabricops-controller-manager -n fabricops-system --timeout=120s
 ```
 
 The bundle installs the `FabricNetwork` CRD, RBAC, ServiceAccount, manager Deployment, and metrics Service. The manager image is pinned to the release tag:
 
 ```text
-ghcr.io/dpereowei/fabricops:0.1.1
+ghcr.io/dpereowei/fabricops:0.1.2
 ```
 
 ### Install With Helm
@@ -39,7 +39,7 @@ Install the release chart directly from the GitHub release:
 
 ```bash
 helm upgrade --install fabricops \
-  https://github.com/dpereowei/fabricops/releases/download/v0.1.1/fabricops-0.1.1.tgz \
+  https://github.com/dpereowei/fabricops/releases/download/v0.1.2/fabricops-0.1.2.tgz \
   --namespace fabricops-system \
   --create-namespace \
   --wait
@@ -51,11 +51,11 @@ Override the manager image if needed:
 
 ```bash
 helm upgrade --install fabricops \
-  https://github.com/dpereowei/fabricops/releases/download/v0.1.1/fabricops-0.1.1.tgz \
+  https://github.com/dpereowei/fabricops/releases/download/v0.1.2/fabricops-0.1.2.tgz \
   --namespace fabricops-system \
   --create-namespace \
   --set manager.image.repository=ghcr.io/dpereowei/fabricops \
-  --set manager.image.tag=0.1.1 \
+  --set manager.image.tag=0.1.2 \
   --wait
 ```
 
@@ -65,7 +65,7 @@ If you want to review the Kubernetes objects before applying them:
 
 ```bash
 helm template fabricops \
-  https://github.com/dpereowei/fabricops/releases/download/v0.1.1/fabricops-0.1.1.tgz \
+  https://github.com/dpereowei/fabricops/releases/download/v0.1.2/fabricops-0.1.2.tgz \
   --namespace fabricops-system > fabricops-install.yaml
 
 kubectl apply -f fabricops-install.yaml
@@ -77,7 +77,7 @@ kubectl rollout status deployment/fabricops-controller-manager -n fabricops-syst
 After installing the operator, apply the sample `FabricNetwork`:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/dpereowei/fabricops/v0.1.1/config/samples/fabricops_v1alpha1_fabricnetwork.yaml
+kubectl apply -f https://raw.githubusercontent.com/dpereowei/fabricops/v0.1.2/config/samples/fabricops_v1alpha1_fabricnetwork.yaml
 kubectl wait fabricnetwork/fabricnetwork-sample -n default --for=condition=Ready --timeout=20m
 ```
 
@@ -101,8 +101,8 @@ kubectl get fabricnetwork fabricnetwork-sample -n default -o jsonpath='{.status.
 ### Install fabricopsctl
 
 `fabricopsctl` is optional, but it makes day-two operations easier by wrapping
-status, readiness, connection profile lookup, and short-lived chaincode
-operation Jobs.
+status, readiness, connection profile lookup, membership bundle export, and
+short-lived chaincode operation Jobs.
 
 Install the CLI with Go:
 
@@ -111,14 +111,24 @@ go install github.com/dpereowei/fabricops/cmd/fabricopsctl@latest
 export PATH="$(go env GOPATH)/bin:$PATH"
 fabricopsctl status -n default fabricnetwork-sample
 fabricopsctl wait -n default --timeout 20m fabricnetwork-sample
+fabricopsctl status --participant -n default bankb-participant
+fabricopsctl wait --participant -n default --for condition=LocalInfrastructureReady --timeout 20m bankb-participant
 fabricopsctl connection-profile -n default --org BankA --format yaml fabricnetwork-sample
+fabricopsctl join-bundle -n default --org BankA --out banka-join-bundle.json fabricnetwork-sample
+fabricopsctl join-bundle validate banka-join-bundle.json
+fabricopsctl join-bundle plan --channel settlement banka-join-bundle.json
+fabricopsctl join-bundle render-org --channel settlement --out banka-org.json banka-join-bundle.json
+fabricopsctl join-bundle render-update --channel settlement --out settlement-join-update.sh banka-join-bundle.json
 fabricopsctl query -n default --org BankA \
   --channel settlement --chaincode settlement --function readSettlement \
   --args '["settlement-001"]' fabricnetwork-sample
+fabricopsctl query --participant -n default --org BankB \
+  --channel settlement --chaincode settlement --function readSettlement \
+  --args '["settlement-001"]' bankb-participant
 ```
 
 For reproducible installs, replace `@latest` with a release tag such as
-`@v0.1.1`.
+`@v0.1.2`.
 
 If `go install` succeeds but your shell cannot find `fabricopsctl`, make the
 PATH export permanent in your shell profile, for example `~/.zshrc`.
@@ -129,17 +139,77 @@ When building from source:
 make build-fabricopsctl
 bin/fabricopsctl status -n default fabricnetwork-sample
 bin/fabricopsctl wait -n default --timeout 20m fabricnetwork-sample
+bin/fabricopsctl status --participant -n default bankb-participant
+bin/fabricopsctl wait --participant -n default --for condition=Ready --timeout 20m bankb-participant
 bin/fabricopsctl connection-profile -n default --org BankA --format yaml fabricnetwork-sample
+bin/fabricopsctl join-bundle -n default --org BankA --out banka-join-bundle.json fabricnetwork-sample
+bin/fabricopsctl join-bundle participant -n default --out bankb-join-bundle.json bankb-participant
+bin/fabricopsctl join-bundle validate banka-join-bundle.json
+bin/fabricopsctl join-bundle plan --channel settlement banka-join-bundle.json
+bin/fabricopsctl join-bundle render-org --channel settlement --out banka-org.json banka-join-bundle.json
+bin/fabricopsctl join-bundle render-update --channel settlement --out settlement-join-update.sh banka-join-bundle.json
 bin/fabricopsctl query -n default --org BankA \
   --channel settlement --chaincode settlement --function readSettlement \
   --args '["settlement-001"]' fabricnetwork-sample
+bin/fabricopsctl query --participant -n default --org BankB \
+  --channel settlement --chaincode settlement --function readSettlement \
+  --args '["settlement-001"]' bankb-participant
 ```
 
 Tools that render or apply FabricOps resources, including a future Fablo
 Kubernetes engine, can use the same CLI surface after applying the
-`FabricNetwork`: `wait` for readiness, `status` for diagnostics,
-`connection-profile` for client material, and `invoke` or `query` for smoke
-checks.
+`FabricNetwork` or `FabricParticipant`: `wait` for readiness or a named
+condition such as `LocalInfrastructureReady`, `status` for diagnostics,
+`connection-profile` for client material, `join-bundle` for public membership
+artifacts and signer hints, `join-bundle validate` for offline artifact checks,
+`join-bundle plan` for founder/participant join planning,
+`join-bundle participant` for participant-owned org exports,
+`join-bundle render-org` for channel Application org JSON,
+`join-bundle render-update` for an unsigned channel config update script, and
+`invoke` or `query` for smoke checks, including `--participant` when the target
+resource is a `FabricParticipant`.
+
+### Federated Channel Joins
+
+Founder/coordinator networks can admit a participant-owned organization by
+referencing the rendered Application org JSON from a join bundle:
+
+```bash
+fabricopsctl join-bundle participant -n default --out bankb-join-bundle.json bankb-participant
+fabricopsctl join-bundle render-org --channel settlement --out bankb-org.json bankb-join-bundle.json
+kubectl create configmap bankb-application-org -n default --from-file=org.json=bankb-org.json
+```
+
+Then declare the external org on the founder `FabricNetwork` channel:
+
+```yaml
+channels:
+  - name: settlement
+    orgs:
+      - name: BankA
+        peers: ["peer0"]
+    externalOrgs:
+      - name: BankB
+        mspID: BankBMSP
+        applicationOrgRef:
+          configMapKeyRef:
+            name: bankb-application-org
+            key: org.json
+        anchorPeers:
+          - host: peer0.bankb.fabricops.io
+            port: 7051
+        requiredSignerMSPIDs:
+          - BankAMSP
+```
+
+FabricOps runs a founder-admin channel config update Job when the selected
+founder admin MSP can satisfy the declared signer requirement by itself. If
+`requiredSignerMSPIDs` names additional founder MSPs, FabricOps stages the
+admission inputs and reports a manual signature handoff under
+`.status.channelStatus[*].externalOrgs`.
+See [Federated Join Operations](docs/federated-join.md) for the founder and
+participant runbooks, DNS/TLS requirements, and two-cluster e2e acceptance
+criteria.
 
 ### Uninstall
 
@@ -147,7 +217,7 @@ Delete `FabricNetwork` resources before removing the operator so FabricOps final
 
 ```bash
 kubectl delete fabricnetwork fabricnetwork-sample -n default --ignore-not-found
-kubectl delete -f https://github.com/dpereowei/fabricops/releases/download/v0.1.1/install.yaml
+kubectl delete -f https://github.com/dpereowei/fabricops/releases/download/v0.1.2/install.yaml
 ```
 
 For Helm installs:
@@ -159,14 +229,14 @@ helm uninstall fabricops -n fabricops-system
 
 ## Release Artifacts
 
-Release `v0.1.1` publishes:
+Release `v0.1.2` publishes:
 
 - `install.yaml`: single-file Kubernetes install bundle
-- `fabricops-0.1.1.tgz`: Helm chart archive
-- `ghcr.io/dpereowei/fabricops:0.1.1`: multi-platform manager image
-- `ghcr.io/dpereowei/fabricops-node-settlement:0.1.1`: Node CCaaS sample
-- `ghcr.io/dpereowei/fabricops-go-settlement:0.1.1`: Go CCaaS sample
-- `ghcr.io/dpereowei/fabricops-java-settlement:0.1.1`: Java CCaaS sample
+- `fabricops-0.1.2.tgz`: Helm chart archive
+- `ghcr.io/dpereowei/fabricops:0.1.2`: multi-platform manager image
+- `ghcr.io/dpereowei/fabricops-node-settlement:0.1.2`: Node CCaaS sample
+- `ghcr.io/dpereowei/fabricops-go-settlement:0.1.2`: Go CCaaS sample
+- `ghcr.io/dpereowei/fabricops-java-settlement:0.1.2`: Java CCaaS sample
 
 ## Capabilities
 
@@ -174,6 +244,8 @@ FabricOps supports:
 
 - A namespaced `FabricNetwork` CRD at `fabricops.io/v1alpha1`
 - Per-org Kubernetes namespaces with compact network-scoped names
+- Founder-side external org admission through channel config update Jobs
+- Preview `FabricParticipant` CRD for federated-join imported artifacts, participant-local org reconciliation, peer channel joins, participant-side chaincode install/approval, and participant-scoped invoke/query with imported remote peer targets
 - Fabric CA, orderer, peer, and CCaaS chaincode workloads
 - Fabric CA registrar bootstrap, admin enrollment, and workload enrollment Secrets
 - Fabric CA-backed MSP/TLS material for admins, orderers, and peers
@@ -181,8 +253,9 @@ FabricOps supports:
 - Declarative channel config generation, channel block generation, orderer joins, peer joins, and anchor peer updates
 - CCaaS package metadata generation, install, approve, commit, and chaincode server workloads
 - Per-peer-org client connection profile ConfigMaps for in-cluster Gateway/application clients
+- Optional external endpoint advertising, TLS SAN enrollment hosts, and local-test TLS hostname overrides for federated peer/orderer access
 - Endpoint discovery in status for Fabric CAs, peers, orderers, operations Services, and peer chaincode Services
-- `fabricopsctl` helper commands for status, connection profile lookup, and chaincode invoke/query when built from source
+- `fabricopsctl` helper commands for status, connection profile lookup, join bundle handoff, and chaincode invoke/query against `FabricNetwork` or `FabricParticipant` resources when built from source
 - Kubernetes status conditions for component, identity, channel, chaincode, and observability readiness
 - Fabric peer/orderer operations endpoints and optional Prometheus Operator `ServiceMonitor` resources
 - Optional org-boundary NetworkPolicies for FabricOps-managed pods
@@ -323,8 +396,8 @@ The local release helpers remain useful for debugging individual steps. For
 example:
 
 ```bash
-make docker-buildx-release VERSION=0.1.1
-make build-installer-release VERSION=0.1.1
+make docker-buildx-release VERSION=0.1.2
+make build-installer-release VERSION=0.1.2
 ```
 
 `docker-buildx-release` publishes the manager image for all configured `PLATFORMS`. For local single-platform sanity checks, use `docker-build-release` and `docker-push-release`.
@@ -332,7 +405,7 @@ make build-installer-release VERSION=0.1.1
 Use that same tag for Helm installs:
 
 ```bash
-make helm-deploy-release VERSION=0.1.1
+make helm-deploy-release VERSION=0.1.2
 ```
 
 The release helpers derive `RELEASE_IMG` from `IMAGE_REGISTRY`, `IMAGE_REPOSITORY`, and `VERSION`. Override those variables if the image moves to another registry or repository.
@@ -340,7 +413,7 @@ The release helpers derive `RELEASE_IMG` from `IMAGE_REGISTRY`, `IMAGE_REPOSITOR
 Before publishing release instructions, verify that the manager image and sample chaincode images are publicly pullable from GHCR:
 
 ```bash
-make release-check-ghcr VERSION=0.1.1
+make release-check-ghcr VERSION=0.1.2
 ```
 
 See [docs/first-release-checklist.md](docs/first-release-checklist.md) for the full release checklist.
@@ -513,7 +586,7 @@ spec:
     - name: settlement
       version: "0.0.1"
       channel: settlement
-      image: ghcr.io/dpereowei/fabricops-node-settlement:0.1.1
+      image: ghcr.io/dpereowei/fabricops-node-settlement:0.1.2
       sequence: 1
       ccaas:
         replicas: 1
