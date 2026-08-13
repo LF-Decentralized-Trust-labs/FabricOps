@@ -4,7 +4,7 @@ set -euo pipefail
 accept_header="application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json"
 
 version="${VERSION:-0.1.0}"
-image_registry="${IMAGE_REGISTRY:-ghcr.io/dpereowei}"
+image_registry="${IMAGE_REGISTRY:-ghcr.io/lf-decentralized-trust-labs}"
 image_repository="${IMAGE_REPOSITORY:-fabricops}"
 
 default_images=(

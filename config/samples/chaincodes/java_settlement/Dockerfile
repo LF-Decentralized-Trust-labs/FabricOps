@@ -7,7 +7,7 @@ COPY src ./src
 RUN gradle --no-daemon clean shadowJar
 
 FROM eclipse-temurin:21-jre
-LABEL org.opencontainers.image.source="https://github.com/dpereowei/fabricops" \
+LABEL org.opencontainers.image.source="https://github.com/LF-Decentralized-Trust-labs/FabricOps" \
       org.opencontainers.image.description="FabricOps Java settlement CCaaS sample chaincode" \
       org.opencontainers.image.licenses="Apache-2.0"
 

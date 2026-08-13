@@ -21,7 +21,7 @@ import (
 	"strconv"
 	"strings"
 
-	fabricopsv1alpha1 "github.com/dpereowei/fabricops/api/v1alpha1"
+	fabricopsv1alpha1 "github.com/LF-Decentralized-Trust-labs/FabricOps/api/v1alpha1"
 )
 
 func ordererAdvertisedClientAddress(orderer ordererInstance) string {

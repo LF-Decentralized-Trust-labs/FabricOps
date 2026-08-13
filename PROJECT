@@ -11,7 +11,7 @@ plugins:
     manifests: dist/install.yaml
     output: dist
 projectName: fabricops
-repo: github.com/dpereowei/fabricops
+repo: github.com/LF-Decentralized-Trust-labs/FabricOps
 resources:
 - api:
     crdVersion: v1
@@ -20,7 +20,7 @@ resources:
   domain: io
   group: fabricops
   kind: FabricNetwork
-  path: github.com/dpereowei/fabricops/api/v1alpha1
+  path: github.com/LF-Decentralized-Trust-labs/FabricOps/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -29,6 +29,6 @@ resources:
   domain: io
   group: fabricops
   kind: FabricParticipant
-  path: github.com/dpereowei/fabricops/api/v1alpha1
+  path: github.com/LF-Decentralized-Trust-labs/FabricOps/api/v1alpha1
   version: v1alpha1
 version: "3"

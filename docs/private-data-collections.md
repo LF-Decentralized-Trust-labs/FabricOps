@@ -26,7 +26,7 @@ chaincodes:
   - name: settlement
     version: "0.0.1"
     channel: settlement
-    image: ghcr.io/dpereowei/fabricops-node-settlement:0.1.3
+    image: ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.0
     sequence: 1
     privateData:
       - name: bank-a-collection

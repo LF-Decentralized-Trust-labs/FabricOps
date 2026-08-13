@@ -1,4 +1,4 @@
-module github.com/dpereowei/fabricops/config/samples/chaincodes/go_settlement
+module github.com/LF-Decentralized-Trust-labs/FabricOps/config/samples/chaincodes/go_settlement
 
 go 1.25.0
 

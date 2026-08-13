@@ -32,9 +32,9 @@ perl_replace \
 perl_replace '
   s{releases/download/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?/install\.yaml}{releases/download/$ENV{RELEASE_TAG}/install.yaml}g;
   s{releases/download/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?/fabricops-[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?\.tgz}{releases/download/$ENV{RELEASE_TAG}/fabricops-$ENV{RELEASE_VERSION}.tgz}g;
-  s{raw.githubusercontent.com/dpereowei/fabricops/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?/}{raw.githubusercontent.com/dpereowei/fabricops/$ENV{RELEASE_TAG}/}g;
-  s{ghcr.io/dpereowei/fabricops:([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?)}{ghcr.io/dpereowei/fabricops:$ENV{RELEASE_VERSION}}g;
-  s{ghcr.io/dpereowei/fabricops-(node|go|java)-settlement:[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?}{ghcr.io/dpereowei/fabricops-$1-settlement:$ENV{RELEASE_VERSION}}g;
+  s{raw.githubusercontent.com/LF-Decentralized-Trust-labs/FabricOps/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?/}{raw.githubusercontent.com/LF-Decentralized-Trust-labs/FabricOps/$ENV{RELEASE_TAG}/}g;
+  s{ghcr.io/lf-decentralized-trust-labs/fabricops:([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?)}{ghcr.io/lf-decentralized-trust-labs/fabricops:$ENV{RELEASE_VERSION}}g;
+  s{ghcr.io/lf-decentralized-trust-labs/fabricops-(node|go|java)-settlement:[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?}{ghcr.io/lf-decentralized-trust-labs/fabricops-$1-settlement:$ENV{RELEASE_VERSION}}g;
   s{fabricops-[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?\.tgz}{fabricops-$ENV{RELEASE_VERSION}.tgz}g;
   s{Release `v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?`}{Release `$ENV{RELEASE_TAG}`}g;
   s{VERSION=[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?}{VERSION=$ENV{RELEASE_VERSION}}g;
@@ -48,16 +48,21 @@ perl_replace '
   docs/first-release-checklist.md
 
 perl_replace \
-  's{ghcr.io/dpereowei/fabricops-(node|go|java)-settlement:[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?}{ghcr.io/dpereowei/fabricops-$1-settlement:$ENV{RELEASE_VERSION}}g' \
+  's{ghcr.io/lf-decentralized-trust-labs/fabricops-(node|go|java)-settlement:[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?}{ghcr.io/lf-decentralized-trust-labs/fabricops-$1-settlement:$ENV{RELEASE_VERSION}}g' \
   docs/private-data-collections.md \
   config/samples/fabricops_v1alpha1_fabricnetwork.yaml \
+  config/samples/fabricops_v1alpha1_fabricparticipant.yaml \
   config/samples/e2e/node/fabricnetwork.yaml \
   config/samples/e2e/go/fabricnetwork.yaml \
   config/samples/e2e/java/fabricnetwork.yaml \
   config/samples/chaincodes/README.md \
   config/samples/chaincodes/node_settlement/build_and_push.sh \
   config/samples/chaincodes/go_settlement/build_and_push.sh \
-  config/samples/chaincodes/java_settlement/build_and_push.sh
+  config/samples/chaincodes/java_settlement/build_and_push.sh \
+  test/e2e/federated/e2e_suite_test.go \
+  cmd/fabricopsctl/join_bundle_test.go \
+  internal/controller/fabricnetwork_controller_test.go \
+  internal/controller/fabricparticipant_controller_test.go
 
 perl_replace 's/"version": "[^"]+"/"version": "$ENV{RELEASE_VERSION}"/' \
   config/samples/chaincodes/node_settlement/package.json

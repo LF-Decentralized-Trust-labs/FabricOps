@@ -24,7 +24,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	fabricopsv1alpha1 "github.com/dpereowei/fabricops/api/v1alpha1"
+	fabricopsv1alpha1 "github.com/LF-Decentralized-Trust-labs/FabricOps/api/v1alpha1"
 )
 
 func validateFabricParticipantTopology(participant *fabricopsv1alpha1.FabricParticipant) []string {

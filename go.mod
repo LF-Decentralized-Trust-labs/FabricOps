@@ -1,4 +1,4 @@
-module github.com/dpereowei/fabricops
+module github.com/LF-Decentralized-Trust-labs/FabricOps
 
 go 1.26.0
 

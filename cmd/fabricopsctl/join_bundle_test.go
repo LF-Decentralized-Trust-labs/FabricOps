@@ -31,7 +31,7 @@ import (
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	fabricopsv1alpha1 "github.com/dpereowei/fabricops/api/v1alpha1"
+	fabricopsv1alpha1 "github.com/LF-Decentralized-Trust-labs/FabricOps/api/v1alpha1"
 )
 
 func TestBuildJoinBundleExportsPublicMembershipArtifacts(t *testing.T) {
@@ -878,7 +878,7 @@ func joinBundleTestNetwork() *fabricopsv1alpha1.FabricNetwork {
 			Name:              "settlement",
 			Channel:           "settlement",
 			Version:           "2.0",
-			Image:             "ghcr.io/dpereowei/fabricops/sample-node:2.0",
+			Image:             "ghcr.io/lf-decentralized-trust-labs/fabricops/sample-node:2.0",
 			Sequence:          2,
 			EndorsementPolicy: "AND('BankAMSP.member','BankBMSP.member')",
 		},
@@ -886,7 +886,7 @@ func joinBundleTestNetwork() *fabricopsv1alpha1.FabricNetwork {
 			Name:    "audit",
 			Channel: "audit",
 			Version: "1.0",
-			Image:   "ghcr.io/dpereowei/fabricops/sample-go:1.0",
+			Image:   "ghcr.io/lf-decentralized-trust-labs/fabricops/sample-go:1.0",
 		},
 	}
 	network.Status.OrgStatus = []fabricopsv1alpha1.OrgStatus{
@@ -1028,7 +1028,7 @@ func joinBundleTestParticipant() *fabricopsv1alpha1.FabricParticipant {
 					PackageLabel:      "settlement_settlement_1.0",
 					Sequence:          1,
 					EndorsementPolicy: "AND('BankAMSP.member','BankBMSP.member')",
-					Image:             "ghcr.io/dpereowei/fabricops-node-settlement:0.1.2",
+					Image:             "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.0",
 				},
 			},
 		},

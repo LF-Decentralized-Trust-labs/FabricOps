@@ -2,7 +2,7 @@
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-IMAGE=${IMAGE:-ghcr.io/dpereowei/fabricops-go-settlement:0.1.3}
+IMAGE=${IMAGE:-ghcr.io/lf-decentralized-trust-labs/fabricops-go-settlement:0.2.0}
 PLATFORM=${PLATFORM:-linux/amd64}
 PUSH=${PUSH:-false}
 

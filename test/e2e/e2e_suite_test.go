@@ -48,7 +48,7 @@ const (
 	fabricNetworkLabel                = "fabricops.io/fabricnetwork"
 	fabricNetworkNamespaceLabel       = "fabricops.io/fabricnetwork-namespace"
 	fastCleanupTTLSeconds             = int32(10)
-	nodeSettlementUpgradeImageDefault = "ghcr.io/dpereowei/fabricops-node-settlement:0.2.0"
+	nodeSettlementUpgradeImageDefault = "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.0"
 )
 
 var (
