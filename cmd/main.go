@@ -35,8 +35,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	fabricopsv1alpha1 "github.com/dpereowei/fabricops/api/v1alpha1"
-	"github.com/dpereowei/fabricops/internal/controller"
+	fabricopsv1alpha1 "github.com/LF-Decentralized-Trust-labs/FabricOps/api/v1alpha1"
+	"github.com/LF-Decentralized-Trust-labs/FabricOps/internal/controller"
 	// +kubebuilder:scaffold:imports
 )
 

@@ -31,7 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	fabricopsv1alpha1 "github.com/dpereowei/fabricops/api/v1alpha1"
+	fabricopsv1alpha1 "github.com/LF-Decentralized-Trust-labs/FabricOps/api/v1alpha1"
 )
 
 var _ = Describe("FabricParticipant Controller", func() {
@@ -286,7 +286,7 @@ var _ = Describe("FabricParticipant Controller", func() {
 			&chaincodeDeployment,
 		)).To(Succeed())
 		Expect(chaincodeDeployment.Spec.Template.Spec.Containers[0].Image).
-			To(Equal("ghcr.io/dpereowei/fabricops-node-settlement:0.1.2"))
+			To(Equal("ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.0"))
 		Expect(envMap(chaincodeDeployment.Spec.Template.Spec.Containers[0])[envCCAASChaincodeID]).
 			To(Equal(packageID))
 
@@ -510,7 +510,7 @@ func fabricParticipantFixture(name string) *fabricopsv1alpha1.FabricParticipant 
 				PackageLabel:      "settlement_settlement_1.0",
 				Sequence:          1,
 				EndorsementPolicy: "AND('BankAMSP.member','BankBMSP.member')",
-				Image:             "ghcr.io/dpereowei/fabricops-node-settlement:0.1.2",
+				Image:             "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.0",
 			}},
 		},
 	}

@@ -33,9 +33,9 @@ Override `IMAGE` and `PLATFORM` when publishing to a different registry or archi
 
 Default image names:
 
-- `ghcr.io/dpereowei/fabricops-node-settlement:0.1.3`
-- `ghcr.io/dpereowei/fabricops-go-settlement:0.1.3`
-- `ghcr.io/dpereowei/fabricops-java-settlement:0.1.3`
+- `ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.0`
+- `ghcr.io/lf-decentralized-trust-labs/fabricops-go-settlement:0.2.0`
+- `ghcr.io/lf-decentralized-trust-labs/fabricops-java-settlement:0.2.0`
 
 At runtime, the chaincode containers expect Fabric CCaaS identity from `CHAINCODE_ID` or `CORE_CHAINCODE_ID_NAME`, and they listen on `CHAINCODE_SERVER_ADDRESS` with `0.0.0.0:7052` as the sample default.
 

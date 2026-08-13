@@ -1,5 +1,5 @@
 FROM node:18-bookworm-slim
-LABEL org.opencontainers.image.source="https://github.com/dpereowei/fabricops" \
+LABEL org.opencontainers.image.source="https://github.com/LF-Decentralized-Trust-labs/FabricOps" \
       org.opencontainers.image.description="FabricOps Node settlement CCaaS sample chaincode" \
       org.opencontainers.image.licenses="Apache-2.0"
 

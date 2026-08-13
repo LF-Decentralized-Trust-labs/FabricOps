@@ -7,7 +7,7 @@ Use this checklist before publishing a FabricOps release tag or pointing users a
 Use the `Release` GitHub Actions workflow from the GitHub UI.
 
 - Run it from the `main` branch.
-- Enter the intended release tag, for example `v0.1.3`.
+- Enter the intended release tag, for example `v0.2.0`.
 - The workflow creates the release-prep commit, pushes the release tag, and
   publishes the GitHub release assets.
 
@@ -29,7 +29,7 @@ debugging or release dry runs.
 ## Build And Publish Images
 
 ```bash
-make docker-buildx-release VERSION=0.1.3
+make docker-buildx-release VERSION=0.2.0
 
 config/samples/chaincodes/node_settlement/build_and_push.sh
 config/samples/chaincodes/go_settlement/build_and_push.sh
@@ -40,17 +40,17 @@ config/samples/chaincodes/java_settlement/build_and_push.sh
 
 The published release image names are:
 
-- `ghcr.io/dpereowei/fabricops:<version>`
-- `ghcr.io/dpereowei/fabricops-node-settlement:<version>`
-- `ghcr.io/dpereowei/fabricops-go-settlement:<version>`
-- `ghcr.io/dpereowei/fabricops-java-settlement:<version>`
+- `ghcr.io/lf-decentralized-trust-labs/fabricops:<version>`
+- `ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:<version>`
+- `ghcr.io/lf-decentralized-trust-labs/fabricops-go-settlement:<version>`
+- `ghcr.io/lf-decentralized-trust-labs/fabricops-java-settlement:<version>`
 
 ## Verify Public GHCR Visibility
 
 Run the unauthenticated registry check after pushing images:
 
 ```bash
-make release-check-ghcr VERSION=0.1.3
+make release-check-ghcr VERSION=0.2.0
 ```
 
 This check asks GHCR for anonymous pull tokens and then reads image manifests without Docker credentials. It should pass for the manager image and all sample chaincode images before release docs, bundles, or charts reference those tags.
@@ -60,7 +60,7 @@ If a newly published GHCR package is still private, open the package settings on
 ## Generate Release Artifacts
 
 ```bash
-make build-installer-release VERSION=0.1.3
+make build-installer-release VERSION=0.2.0
 helm lint dist/chart
 helm template fabricops dist/chart --namespace fabricops-system >/tmp/fabricops-chart.yaml
 ```
@@ -68,7 +68,7 @@ helm template fabricops dist/chart --namespace fabricops-system >/tmp/fabricops-
 Confirm the generated bundle uses the public manager image:
 
 ```bash
-grep 'image: ghcr.io/dpereowei/fabricops:0.1.3' dist/install.yaml
+grep 'image: ghcr.io/lf-decentralized-trust-labs/fabricops:0.2.0' dist/install.yaml
 ```
 
 Commit the generated `dist/install.yaml` changes for the release tag.
@@ -94,7 +94,7 @@ bin/fabricopsctl query -n default --org BankA --peer BankA/peer0 \
 
 ```bash
 kind create cluster --name fabricops-release-helm
-make helm-deploy-release VERSION=0.1.3
+make helm-deploy-release VERSION=0.2.0
 kubectl apply -k config/samples
 make build-fabricopsctl
 bin/fabricopsctl wait -n default --timeout 20m fabricnetwork-sample
