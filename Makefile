@@ -6,6 +6,8 @@ IMAGE_REGISTRY ?= ghcr.io/lf-decentralized-trust-labs
 IMAGE_REPOSITORY ?= fabricops
 VERSION ?= 0.2.0
 RELEASE_IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):$(VERSION)
+FABRICOPSCTL_VERSION ?= development
+FABRICOPSCTL_LDFLAGS ?= -X main.version=$(FABRICOPSCTL_VERSION)
 SAMPLE_CHAINCODE_IMAGES ?= $(IMAGE_REGISTRY)/fabricops-node-settlement:$(VERSION) $(IMAGE_REGISTRY)/fabricops-go-settlement:$(VERSION) $(IMAGE_REGISTRY)/fabricops-java-settlement:$(VERSION)
 RELEASE_CHECK_IMAGES ?= $(RELEASE_IMG) $(SAMPLE_CHAINCODE_IMAGES)
 # YEAR defines the year value used for substituting the YEAR placeholder in the boilerplate header.
@@ -177,7 +179,11 @@ build: manifests generate fmt vet ## Build manager binary.
 
 .PHONY: build-fabricopsctl
 build-fabricopsctl: fmt vet ## Build fabricopsctl helper binary.
-	go build -o bin/fabricopsctl ./cmd/fabricopsctl
+	go build -ldflags "$(FABRICOPSCTL_LDFLAGS)" -o bin/fabricopsctl ./cmd/fabricopsctl
+
+.PHONY: build-fabricopsctl-release
+build-fabricopsctl-release: ## Build fabricopsctl with VERSION embedded for a release.
+	$(MAKE) build-fabricopsctl FABRICOPSCTL_VERSION=$(VERSION)
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.

@@ -16,6 +16,7 @@ The workflow performs these release gates:
 - Validate the release tag and ensure the release does not already exist.
 - Update release-version files.
 - Run Go module tidy verification, unit/envtest tests, lint, and binary builds.
+- Build `fabricopsctl` with the release version embedded through Go linker flags.
 - Build and push the multi-platform manager image.
 - Build and push sample chaincode images.
 - Build `dist/install.yaml` and `dist/fabricops-<version>.tgz`.
@@ -25,6 +26,15 @@ The workflow performs these release gates:
 
 The commands below mirror the automated workflow and are useful for local
 debugging or release dry runs.
+
+## Verify The CLI Version
+
+Build the CLI with the same linker-injected version used by the release workflow:
+
+```bash
+make build-fabricopsctl-release VERSION=0.2.0
+test "$(bin/fabricopsctl version)" = "fabricopsctl 0.2.0"
+```
 
 ## Build And Publish Images
 

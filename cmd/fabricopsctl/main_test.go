@@ -29,6 +29,63 @@ import (
 	fabricopsv1alpha1 "github.com/LF-Decentralized-Trust-labs/FabricOps/api/v1alpha1"
 )
 
+func TestRunVersionPrintsDevelopmentVersion(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if err := run([]string{"version"}, &stdout, &stderr); err != nil {
+		t.Fatalf("run(version) error = %v", err)
+	}
+	if got, want := strings.TrimSpace(stdout.String()), "fabricopsctl development"; got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunVersionPrintsInjectedVersion(t *testing.T) {
+	originalVersion := version
+	t.Cleanup(func() { version = originalVersion })
+	version = "0.2.0"
+
+	var stdout, stderr bytes.Buffer
+	if err := run([]string{"version"}, &stdout, &stderr); err != nil {
+		t.Fatalf("run(version) error = %v", err)
+	}
+	if got, want := strings.TrimSpace(stdout.String()), "fabricopsctl 0.2.0"; got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestRunVersionRejectsArguments(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := run([]string{"version", "extra"}, &stdout, &stderr)
+	if !errors.Is(err, errUsage) {
+		t.Fatalf("run(version extra) error = %v, want errUsage", err)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+	if got, want := strings.TrimSpace(stderr.String()), "Usage: fabricopsctl version"; got != want {
+		t.Fatalf("stderr = %q, want %q", got, want)
+	}
+}
+
+func TestHelpListsVersionCommand(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if err := run([]string{"--help"}, &stdout, &stderr); err != nil {
+		t.Fatalf("run(--help) error = %v", err)
+	}
+	if !strings.Contains(stdout.String(), "fabricopsctl version") {
+		t.Fatalf("stdout does not list version command:\n%s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
 func TestWaitForFabricNetworkReadyReturnsOnReadyCondition(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := waitForFabricNetworkReady(

@@ -40,9 +40,10 @@ import (
 )
 
 const (
-	defaultNamespace = "default"
-	defaultWaitFor   = "condition=Ready"
-	defaultCondition = "Ready"
+	defaultNamespace   = "default"
+	defaultWaitFor     = "condition=Ready"
+	defaultCondition   = "Ready"
+	developmentVersion = "development"
 
 	connectionProfileJSONKey = "connection.json"
 	connectionProfileYAMLKey = "connection.yaml"
@@ -51,6 +52,7 @@ const (
 var (
 	errUsage  = errors.New("usage error")
 	cliScheme = runtime.NewScheme()
+	version   = developmentVersion
 )
 
 func init() {
@@ -83,6 +85,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 	case "help", "-h", "--help":
 		printUsage(stdout)
 		return nil
+	case "version":
+		return runVersion(args[1:], stdout, stderr)
 	case "status":
 		return runStatus(args[1:], stdout, stderr)
 	case "wait":
@@ -99,6 +103,15 @@ func run(args []string, stdout, stderr io.Writer) error {
 		printUsage(stderr)
 		return fmt.Errorf("%w: unknown command %q", errUsage, args[0])
 	}
+}
+
+func runVersion(args []string, stdout, stderr io.Writer) error {
+	if len(args) != 0 {
+		printLine(stderr, "Usage: fabricopsctl version")
+		return errUsage
+	}
+	printf(stdout, "fabricopsctl %s\n", version)
+	return nil
 }
 
 func runStatus(args []string, stdout, stderr io.Writer) error {
@@ -856,6 +869,7 @@ func printLine(out io.Writer, args ...any) {
 
 func printUsage(out io.Writer) {
 	printLine(out, `Usage:
+  fabricopsctl version
   fabricopsctl status [flags] <fabricnetwork>
   fabricopsctl status --participant [flags] <fabricparticipant>
   fabricopsctl wait [flags] <fabricnetwork>
@@ -878,6 +892,7 @@ Common flags:
       --context string     Kubeconfig context override
 
 Examples:
+  fabricopsctl version
   fabricopsctl status fabricnetwork-sample
   fabricopsctl status --participant bankb-participant
   fabricopsctl status -n default -o json fabricnetwork-sample
