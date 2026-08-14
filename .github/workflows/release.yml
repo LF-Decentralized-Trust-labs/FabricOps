@@ -100,7 +100,8 @@ jobs:
       - name: Build binaries
         run: |
           make build
-          make build-fabricopsctl
+          make build-fabricopsctl-release VERSION="${VERSION}"
+          test "$(bin/fabricopsctl version)" = "fabricopsctl ${VERSION}"
 
       - name: Build release artifacts
         run: |

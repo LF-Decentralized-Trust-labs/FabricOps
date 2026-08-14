@@ -115,6 +115,7 @@ Install the CLI with Go:
 ```bash
 go install github.com/LF-Decentralized-Trust-labs/FabricOps/cmd/fabricopsctl@latest
 export PATH="$(go env GOPATH)/bin:$PATH"
+fabricopsctl version
 fabricopsctl status -n default fabricnetwork-sample
 fabricopsctl wait -n default --timeout 20m fabricnetwork-sample
 fabricopsctl status --participant -n default bankb-participant
@@ -143,6 +144,7 @@ When building from source:
 
 ```bash
 make build-fabricopsctl
+bin/fabricopsctl version
 bin/fabricopsctl status -n default fabricnetwork-sample
 bin/fabricopsctl wait -n default --timeout 20m fabricnetwork-sample
 bin/fabricopsctl status --participant -n default bankb-participant
@@ -161,6 +163,10 @@ bin/fabricopsctl query --participant -n default --org BankB \
   --channel settlement --chaincode settlement --function readSettlement \
   --args '["settlement-001"]' bankb-participant
 ```
+
+Local source builds report `fabricopsctl development`. Release builds use
+`make build-fabricopsctl-release VERSION=<version>` to inject the release
+version into the binary with Go linker flags.
 
 Tools that render or apply FabricOps resources, including a future Fablo
 Kubernetes engine, can use the same CLI surface after applying the
@@ -397,6 +403,9 @@ and lint gates, builds and pushes the manager plus sample chaincode images,
 generates `install.yaml` and the Helm chart package, verifies GHCR public
 visibility, commits the release-prep changes, tags the commit, and creates the
 GitHub release with the generated assets.
+
+The workflow also builds `fabricopsctl` with the release version embedded and
+verifies the binary through the normal build gate.
 
 The local release helpers remain useful for debugging individual steps. For
 example:
