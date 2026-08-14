@@ -26,7 +26,7 @@ import (
 	"os"
 	"strings"
 	"time"
-
+	"sigs.k8s.io/yaml"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -121,7 +121,7 @@ func runStatus(args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("status", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	bindKubeFlags(flags, &kube)
-	flags.StringVar(&output, "o", "table", "Output format: table or json")
+	flags.StringVar(&output, "o", "table", "Output format: table, json, or yaml")
 	flags.BoolVar(&participant, "participant", false, "Treat the resource argument as a FabricParticipant")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -132,7 +132,7 @@ func runStatus(args []string, stdout, stderr io.Writer) error {
 	}
 
 	switch output {
-	case "json":
+	case "json", "yaml":
 	case "table":
 	default:
 		return fmt.Errorf("unsupported output format %q", output)
@@ -146,6 +146,8 @@ func runStatus(args []string, stdout, stderr io.Writer) error {
 		}
 		if output == "json" {
 			return writeJSON(stdout, participant.Status)
+		} else if output == "yaml" {
+			return writeYAML(stdout, participant.Status)
 		}
 		printParticipantStatus(stdout, participant)
 		return nil
@@ -157,6 +159,8 @@ func runStatus(args []string, stdout, stderr io.Writer) error {
 	}
 	if output == "json" {
 		return writeJSON(stdout, network.Status)
+	} else if output == "yaml" {
+		return writeYAML(stdout, network.Status)
 	}
 	printStatus(stdout, network)
 	return nil
@@ -844,6 +848,15 @@ func writeJSON(out io.Writer, value any) error {
 		return err
 	}
 	_, err = fmt.Fprintln(out, string(encoded))
+	return err
+}
+
+func writeYAML(out io.Writer, value any) error {
+	encoded, err := yaml.Marshal(value)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprint(out, string(encoded))
 	return err
 }
 
