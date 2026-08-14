@@ -32,5 +32,10 @@ jobs:
         run: |
           make test
 
+      - name: Verify fabricopsctl release version
+        run: |
+          make build-fabricopsctl-release VERSION=1.2.3
+          test "$(bin/fabricopsctl version)" = "fabricopsctl 1.2.3"
+
       - name: Verify generated files are committed
         run: git diff --exit-code
