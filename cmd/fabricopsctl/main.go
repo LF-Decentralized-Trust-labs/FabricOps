@@ -26,7 +26,7 @@ import (
 	"os"
 	"strings"
 	"time"
-	"sigs.k8s.io/yaml"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -35,6 +35,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
 
 	fabricopsv1alpha1 "github.com/LF-Decentralized-Trust-labs/FabricOps/api/v1alpha1"
 )
@@ -144,9 +145,10 @@ func runStatus(args []string, stdout, stderr io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if output == "json" {
+		switch output {
+		case "json":
 			return writeJSON(stdout, participant.Status)
-		} else if output == "yaml" {
+		case "yaml":
 			return writeYAML(stdout, participant.Status)
 		}
 		printParticipantStatus(stdout, participant)
@@ -157,9 +159,10 @@ func runStatus(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if output == "json" {
+	switch output {
+	case "json":
 		return writeJSON(stdout, network.Status)
-	} else if output == "yaml" {
+	case "yaml":
 		return writeYAML(stdout, network.Status)
 	}
 	printStatus(stdout, network)
