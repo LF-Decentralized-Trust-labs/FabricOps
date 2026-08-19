@@ -400,3 +400,27 @@ func fabricNetworkWithReadyStatus(
 		},
 	}
 }
+
+func TestRunStatusOutputsYAMLForNetwork(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := run([]string{"status", "-o", "yaml", "sample"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("run(status) error = nil, want error without a live cluster")
+	}
+
+	if strings.Contains(err.Error(), "unsupported output format") {
+		t.Fatalf("expected command to accept yaml, got format error: %v", err)
+	}
+}
+
+func TestRunStatusOutputsYAMLForParticipant(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := run([]string{"status", "--participant", "-o", "yaml", "bankb"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("run(status) error = nil, want error without a live cluster")
+	}
+
+	if strings.Contains(err.Error(), "unsupported output format") {
+		t.Fatalf("expected command to accept yaml, got format error: %v", err)
+	}
+}

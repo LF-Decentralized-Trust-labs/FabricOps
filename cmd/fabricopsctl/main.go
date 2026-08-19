@@ -35,6 +35,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
 
 	fabricopsv1alpha1 "github.com/LF-Decentralized-Trust-labs/FabricOps/api/v1alpha1"
 )
@@ -121,7 +122,7 @@ func runStatus(args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("status", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	bindKubeFlags(flags, &kube)
-	flags.StringVar(&output, "o", "table", "Output format: table or json")
+	flags.StringVar(&output, "o", "table", "Output format: table, json, or yaml")
 	flags.BoolVar(&participant, "participant", false, "Treat the resource argument as a FabricParticipant")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -132,7 +133,7 @@ func runStatus(args []string, stdout, stderr io.Writer) error {
 	}
 
 	switch output {
-	case "json":
+	case "json", "yaml":
 	case "table":
 	default:
 		return fmt.Errorf("unsupported output format %q", output)
@@ -144,8 +145,11 @@ func runStatus(args []string, stdout, stderr io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if output == "json" {
+		switch output {
+		case "json":
 			return writeJSON(stdout, participant.Status)
+		case "yaml":
+			return writeYAML(stdout, participant.Status)
 		}
 		printParticipantStatus(stdout, participant)
 		return nil
@@ -155,8 +159,11 @@ func runStatus(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if output == "json" {
+	switch output {
+	case "json":
 		return writeJSON(stdout, network.Status)
+	case "yaml":
+		return writeYAML(stdout, network.Status)
 	}
 	printStatus(stdout, network)
 	return nil
@@ -844,6 +851,15 @@ func writeJSON(out io.Writer, value any) error {
 		return err
 	}
 	_, err = fmt.Fprintln(out, string(encoded))
+	return err
+}
+
+func writeYAML(out io.Writer, value any) error {
+	encoded, err := yaml.Marshal(value)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprint(out, string(encoded))
 	return err
 }
 
