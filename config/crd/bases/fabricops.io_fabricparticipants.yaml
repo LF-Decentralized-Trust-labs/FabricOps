@@ -1259,6 +1259,10 @@ spec:
                           type: string
                         chaincodeAddress:
                           type: string
+                        database:
+                          description: Database is the peer state database backend
+                            requested for this peer.
+                          type: string
                         name:
                           type: string
                         operationsAddress:

@@ -2,7 +2,8 @@
 
 FabricOps e2e validation provisions a real kind cluster, installs the in-cluster
 manager, applies a runtime-specific sample `FabricNetwork` manifest, waits for
-`Ready=True`, and invokes the selected settlement CCaaS chaincode runtime.
+`Ready=True`, invokes the selected settlement CCaaS chaincode runtime, and
+queries the written state by key plus CouchDB rich query.
 
 ## Kind
 
@@ -45,7 +46,7 @@ When the test completes, it has validated:
 - generated install bundle deployment
 - runtime-specific sample manifest reconciliation to `Ready=True`
 - channel bootstrap, chaincode lifecycle, and CCaaS workload readiness
-- committed settlement chaincode invokes plus queries through BankA and BankB endorsement sets
+- committed settlement chaincode invokes, key reads, and CouchDB rich queries through BankA and BankB endorsement sets
 - Node lane private data collection lifecycle wiring, transient private write, authorized private read, non-member private read rejection, and non-member private hash query
 - Node lane peer scale changes, helper Job cleanup, and declarative sequence upgrade
 

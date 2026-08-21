@@ -487,10 +487,28 @@ Default sizes are:
 - CA: `1Gi`
 - Orderer: `5Gi`
 - Peer: `10Gi`
+- CouchDB peer state database: `10Gi`
 
-CA pods mount persistent data at `/etc/hyperledger/fabric-ca-server`. Orderer and peer pods mount persistent data at `/var/hyperledger/production`.
+CA pods mount persistent data at `/etc/hyperledger/fabric-ca-server`. Orderer and peer pods mount persistent data at `/var/hyperledger/production`. CouchDB pods mount persistent data at `/opt/couchdb/data` and use the peer storage size and storage class settings.
 
 Fabric component instances run as singleton Deployments with `Recreate` rollout strategy and one PVC per instance.
+
+## Peer State Databases
+
+Peers use `spec.orgs[].peer.db` to select their state database backend. `LevelDB` keeps Fabric's built-in peer database behavior. `CouchDB` creates one CouchDB Deployment, Service, PVC, and credential Secret per peer, wires the peer's Fabric CouchDB environment variables, and gates peer readiness on the CouchDB Deployment becoming ready.
+
+```yaml
+spec:
+  orgs:
+    - organization:
+        name: BankA
+      peer:
+        instances: 2
+        db: CouchDB
+        prefix: peer
+```
+
+Use CouchDB when chaincode needs rich queries or CouchDB indexes. Existing LevelDB peers remain unchanged unless `peer.db` is set to CouchDB.
 
 ## Job Cleanup
 

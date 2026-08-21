@@ -13,7 +13,9 @@ class SettlementContract extends Contract {
   async initLedger(ctx) {
     const settlements = [
       {
+        docType: "settlement",
         id: "settlement-001",
+        owner: "BankA",
         debtor: "BankA",
         creditor: "BankB",
         amount: "125000",
@@ -21,7 +23,9 @@ class SettlementContract extends Contract {
         status: "PENDING",
       },
       {
+        docType: "settlement",
         id: "settlement-002",
+        owner: "BankC",
         debtor: "BankC",
         creditor: "BankA",
         amount: "73000",
@@ -57,7 +61,9 @@ class SettlementContract extends Contract {
     }
 
     const settlement = {
+      docType: "settlement",
       id,
+      owner: debtor,
       debtor,
       creditor,
       amount,
@@ -98,6 +104,7 @@ class SettlementContract extends Contract {
 
     const settlement = JSON.parse(settlementBytes.toString("utf8"));
     settlement.id = id;
+    settlement.owner = settlement.owner || settlement.debtor;
     this.requireText(settlement.debtor, "debtor");
     this.requireText(settlement.creditor, "creditor");
     this.requireText(settlement.amount, "amount");
@@ -147,6 +154,23 @@ class SettlementContract extends Contract {
 
   async getAllSettlements(ctx) {
     const iterator = await ctx.stub.getStateByRange("", "");
+    return this.collectQueryResults(iterator);
+  }
+
+  async querySettlementsByOwner(ctx, owner) {
+    this.requireText(owner, "owner");
+
+    const query = {
+      selector: {
+        docType: "settlement",
+        owner,
+      },
+    };
+    const iterator = await ctx.stub.getQueryResult(JSON.stringify(query));
+    return this.collectQueryResults(iterator);
+  }
+
+  async collectQueryResults(iterator) {
     const settlements = [];
 
     try {

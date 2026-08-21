@@ -510,6 +510,9 @@ type PeerEndpointStatus struct {
 	TLSHostnameOverride string `json:"tlsHostnameOverride,omitempty"`
 	ChaincodeAddress    string `json:"chaincodeAddress,omitempty"`
 	OperationsAddress   string `json:"operationsAddress,omitempty"`
+	// Database is the peer state database backend requested for this peer.
+	// +optional
+	Database string `json:"database,omitempty"`
 }
 
 type OrgStatus struct {
