@@ -670,7 +670,7 @@ func buildExternalOrgUpdateJob(
 								channelExternalOrgApplicationFilePath(),
 								externalOrgUpdateFilePath(channel.Name, externalOrg),
 							)},
-							Resources: componentResourceRequirements(componentPeer),
+							Resources: componentResourceRequirements(componentFabricCLI),
 							VolumeMounts: []corev1.VolumeMount{
 								{Name: channelOutputVolumeName, MountPath: channelOutputDir},
 								{Name: externalOrgConfigVolumeName, MountPath: channelExternalOrgConfigDir, ReadOnly: true},

@@ -3013,6 +3013,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 			peerJoinContainer := peerJoinJob.Spec.Template.Spec.InitContainers[0]
 			Expect(peerJoinContainer.Name).To(Equal(joinPeerContainer))
 			Expect(peerJoinContainer.Image).To(Equal("hyperledger/fabric-tools:2.5.14"))
+			expectContainerResources(peerJoinContainer, defaultFabricCLIRequestCPU, defaultFabricCLIRequestMem, defaultFabricCLILimitCPU, defaultFabricCLILimitMem)
 			Expect(peerJoinContainer.Command[2]).To(ContainSubstring("peer channel join"))
 			Expect(peerJoinContainer.Command[2]).To(ContainSubstring("peer channel list"))
 			Expect(peerJoinContainer.Command[2]).To(ContainSubstring("CORE_PEER_LOCALMSPID=\"BankAMSP\""))
@@ -3108,6 +3109,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 			anchorContainer := anchorPeerJob.Spec.Template.Spec.InitContainers[0]
 			Expect(anchorContainer.Name).To(Equal(updateAnchorPeerContainer))
 			Expect(anchorContainer.Image).To(Equal("hyperledger/fabric-tools:2.5.14"))
+			expectContainerResources(anchorContainer, defaultFabricCLIRequestCPU, defaultFabricCLIRequestMem, defaultFabricCLILimitCPU, defaultFabricCLILimitMem)
 			Expect(anchorContainer.Command[2]).To(ContainSubstring("MSP_ID=\"BankAMSP\""))
 			Expect(anchorContainer.Command[2]).To(ContainSubstring("ANCHOR_HOST=\"peer0.banka.fabricops.io\""))
 			Expect(anchorContainer.Command[2]).To(ContainSubstring("ANCHOR_PORT=8051"))
@@ -3234,6 +3236,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 			installContainer := chaincodeInstallJob.Spec.Template.Spec.InitContainers[0]
 			Expect(installContainer.Name).To(Equal(installChaincodeContainer))
 			Expect(installContainer.Image).To(Equal("hyperledger/fabric-tools:2.5.14"))
+			expectContainerResources(installContainer, defaultFabricCLIRequestCPU, defaultFabricCLIRequestMem, defaultFabricCLILimitCPU, defaultFabricCLILimitMem)
 			Expect(installContainer.Command[2]).To(ContainSubstring("peer lifecycle chaincode install \"$PACKAGE_FILE\""))
 			Expect(installContainer.Command[2]).To(ContainSubstring("peer lifecycle chaincode queryinstalled --output json"))
 			Expect(installContainer.Command[2]).To(ContainSubstring("PACKAGE_FILE=\"$PACKAGE_INPUT_DIR/$PACKAGE_ARCHIVE\""))
@@ -3387,6 +3390,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(approveJob.Spec.Template.Spec.Containers).To(HaveLen(1))
 			approveContainer := approveJob.Spec.Template.Spec.InitContainers[0]
 			Expect(approveContainer.Name).To(Equal(approveChaincodeContainer))
+			expectContainerResources(approveContainer, defaultFabricCLIRequestCPU, defaultFabricCLIRequestMem, defaultFabricCLILimitCPU, defaultFabricCLILimitMem)
 			Expect(approveContainer.Command[2]).To(ContainSubstring("peer lifecycle chaincode approveformyorg"))
 			Expect(approveContainer.Command[2]).To(ContainSubstring("peer lifecycle chaincode queryapproved"))
 			Expect(approveContainer.Command[2]).To(ContainSubstring("--package-id \"$PACKAGE_ID\""))
@@ -3470,6 +3474,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(commitJob.Spec.Template.Spec.Containers).To(HaveLen(1))
 			commitContainer := commitJob.Spec.Template.Spec.InitContainers[0]
 			Expect(commitContainer.Name).To(Equal(commitChaincodeContainer))
+			expectContainerResources(commitContainer, defaultFabricCLIRequestCPU, defaultFabricCLIRequestMem, defaultFabricCLILimitCPU, defaultFabricCLILimitMem)
 			Expect(commitContainer.Command[2]).To(ContainSubstring("peer lifecycle chaincode commit"))
 			Expect(commitContainer.Command[2]).To(ContainSubstring("peer lifecycle chaincode querycommitted"))
 			Expect(commitContainer.Command[2]).To(ContainSubstring("set -- \"$@\" --peerAddresses \"peer0.fo-test-banka.svc.cluster.local:7051\""))

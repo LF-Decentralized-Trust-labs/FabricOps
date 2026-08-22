@@ -510,7 +510,7 @@ func buildParticipantChaincodeApproveJob(
 								strings.TrimSpace(participantChaincode.EndorsementPolicy),
 								"",
 							)},
-							Resources:    componentResourceRequirements(componentPeer),
+							Resources:    componentResourceRequirements(componentFabricCLI),
 							VolumeMounts: volumeMounts,
 						},
 					},
