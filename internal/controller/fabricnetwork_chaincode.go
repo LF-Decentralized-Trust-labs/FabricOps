@@ -2522,7 +2522,7 @@ func chaincodeResourceRequirements(chaincode fabricopsv1alpha1.Chaincode) corev1
 	if chaincode.CCAAS != nil && chaincode.CCAAS.Resources != nil {
 		return *chaincode.CCAAS.Resources.DeepCopy()
 	}
-	return componentResourceRequirements(componentPeer)
+	return componentResourceRequirements(componentChaincode)
 }
 
 func chaincodeServiceName(chaincode fabricopsv1alpha1.Chaincode, org fabricopsv1alpha1.Org, peerName string) string {

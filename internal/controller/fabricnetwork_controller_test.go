@@ -3370,7 +3370,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(envMap(chaincodeContainer)[envCCAASCoreChaincodeIDName]).To(Equal("settlement_settlement_0.0.1:abc123"))
 			Expect(envMap(chaincodeContainer)[envCCAASChaincodeServerAddress]).To(Equal("0.0.0.0:7052"))
 			Expect(envMap(chaincodeContainer)[envCCAASCoreChaincodeAddress]).To(Equal("0.0.0.0:7052"))
-			expectContainerResources(chaincodeContainer, defaultPeerRequestCPU, defaultPeerRequestMem, defaultPeerLimitCPU, defaultPeerLimitMem)
+			expectContainerResources(chaincodeContainer, defaultChaincodeRequestCPU, defaultChaincodeRequestMem, defaultChaincodeLimitCPU, defaultChaincodeLimitMem)
 
 			var approveJob batchv1.Job
 			Expect(k8sClient.Get(ctx, types.NamespacedName{

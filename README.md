@@ -261,7 +261,7 @@ FabricOps supports:
 - Fabric CA, orderer, peer, and CCaaS chaincode workloads
 - Fabric CA registrar bootstrap, admin enrollment, and workload enrollment Secrets
 - Fabric CA-backed MSP/TLS material for admins, orderers, and peers
-- Persistent storage and resource defaults for Fabric workloads
+- Persistent storage and resource defaults for Fabric workloads, CCaaS runtimes, and helper Jobs
 - Declarative channel config generation, channel block generation, orderer joins, peer joins, and anchor peer updates
 - CCaaS package metadata generation, install, approve, commit, and chaincode server workloads
 - Per-peer-org client connection profile ConfigMaps for in-cluster Gateway/application clients

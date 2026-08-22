@@ -128,6 +128,10 @@ const (
 	defaultPeerRequestMem      = "512Mi"
 	defaultPeerLimitCPU        = "1"
 	defaultPeerLimitMem        = "1Gi"
+	defaultChaincodeRequestCPU = "50m"
+	defaultChaincodeRequestMem = "128Mi"
+	defaultChaincodeLimitCPU   = "500m"
+	defaultChaincodeLimitMem   = "512Mi"
 	defaultCouchDBRequestCPU   = "100m"
 	defaultCouchDBRequestMem   = "512Mi"
 	defaultCouchDBLimitCPU     = "500m"
@@ -282,6 +286,8 @@ func componentResourceRequirements(component string) corev1.ResourceRequirements
 		return resourceRequirements(defaultOrdererRequestCPU, defaultOrdererRequestMem, defaultOrdererLimitCPU, defaultOrdererLimitMem)
 	case componentPeer:
 		return resourceRequirements(defaultPeerRequestCPU, defaultPeerRequestMem, defaultPeerLimitCPU, defaultPeerLimitMem)
+	case componentChaincode:
+		return resourceRequirements(defaultChaincodeRequestCPU, defaultChaincodeRequestMem, defaultChaincodeLimitCPU, defaultChaincodeLimitMem)
 	case componentCouchDB:
 		return resourceRequirements(defaultCouchDBRequestCPU, defaultCouchDBRequestMem, defaultCouchDBLimitCPU, defaultCouchDBLimitMem)
 	case componentFabricCLI:
