@@ -69,6 +69,7 @@ type sampleRuntimeConfig struct {
 	image                string
 	createFunction       string
 	readFunction         string
+	richQueryFunction    string
 	runNodeLifecycleFlow bool
 }
 
@@ -127,15 +128,18 @@ func selectedSampleRuntimeConfig() sampleRuntimeConfig {
 		config.chaincodeDir = filepath.Join("config", "samples", "chaincodes", "node_settlement")
 		config.createFunction = "createSettlement"
 		config.readFunction = "readSettlement"
+		config.richQueryFunction = "querySettlementsByOwner"
 		config.runNodeLifecycleFlow = true
 	case runtimeGo:
 		config.chaincodeDir = filepath.Join("config", "samples", "chaincodes", "go_settlement")
 		config.createFunction = "CreateSettlement"
 		config.readFunction = "ReadSettlement"
+		config.richQueryFunction = "QuerySettlementsByOwner"
 	case runtimeJava:
 		config.chaincodeDir = filepath.Join("config", "samples", "chaincodes", "java_settlement")
 		config.createFunction = "createSettlement"
 		config.readFunction = "readSettlement"
+		config.richQueryFunction = "querySettlementsByOwner"
 	default:
 		Fail(fmt.Sprintf("unsupported E2E_CHAINCODE_RUNTIME %q", runtime))
 	}
@@ -346,6 +350,21 @@ func invokeAndQuerySettlement(smokeID string, createFunction string, readFunctio
 			sampleName,
 		}
 		output := runFabricOpsctlEventually(5*time.Minute, queryArgs...)
+		Expect(output).To(ContainSubstring(smokeID))
+
+		richQueryArgs := []string{
+			"query",
+			"-n", sampleNamespace,
+			"--org", orgNameFromPeerSelector(peer),
+			"--peer", peer,
+			"--channel", "settlement",
+			"--chaincode", "settlement",
+			"--function", runtimeConfig.richQueryFunction,
+			"--args", jsonStringArray("alice"),
+			"-o", "json",
+			sampleName,
+		}
+		output = runFabricOpsctlEventually(5*time.Minute, richQueryArgs...)
 		Expect(output).To(ContainSubstring(smokeID))
 	}
 }

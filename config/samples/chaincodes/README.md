@@ -16,6 +16,7 @@ Each implementation exposes the same settlement operations:
 - `markSettled(id)`
 - `settlementExists(id)`
 - `getAllSettlements`
+- `querySettlementsByOwner(owner)` / `QuerySettlementsByOwner(owner)` in Go
 
 The Node sample also exposes private-data transactions for the sample `bank-a-private-settlements` collection:
 
@@ -66,7 +67,7 @@ CREATE_FUNCTION=CreateSettlement READ_FUNCTION=ReadSettlement \
   config/samples/chaincodes/node_settlement/invoke_smoke.sh
 ```
 
-The kind e2e proof rolls the declared `settlement` chaincode from the Node image to the Go image and then to the Java image with sequence bumps, invoking after each rollout. The Node private-data smoke remains Node-specific because the Go and Java samples intentionally cover the common public settlement operations only.
+The kind e2e proof invokes the selected runtime, reads the created settlement by key, and runs the owner rich query through CouchDB-backed peers. The Node lane also covers private data, peer scale changes, cleanup, and a declared chaincode upgrade.
 
 ## Compatibility Baseline
 

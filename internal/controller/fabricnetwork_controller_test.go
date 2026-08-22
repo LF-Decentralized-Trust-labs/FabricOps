@@ -329,6 +329,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(network.Status.OrgStatus[1].PeerEndpoints[0].Address).To(Equal("peer0.fo-test-banka.svc.cluster.local:7051"))
 			Expect(network.Status.OrgStatus[1].PeerEndpoints[0].ChaincodeAddress).To(Equal("peer0.fo-test-banka.svc.cluster.local:7052"))
 			Expect(network.Status.OrgStatus[1].PeerEndpoints[0].OperationsAddress).To(Equal("http://peer0-operations.fo-test-banka.svc.cluster.local:9443"))
+			Expect(network.Status.OrgStatus[1].PeerEndpoints[0].Database).To(Equal("CouchDB"))
 			Expect(network.Status.OrgStatus[1].Peers.Desired).To(Equal(int32(1)))
 			Expect(network.Status.OrgStatus[1].Peers.Ready).To(Equal(int32(0)))
 			Expect(network.Status.OrgStatus[1].PeersReady).To(BeFalse())
@@ -1086,6 +1087,13 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(peerEnv["CORE_PEER_TLS_CERT_FILE"]).To(Equal(peerTLSPath + "/server.crt"))
 			Expect(peerEnv["CORE_PEER_TLS_KEY_FILE"]).To(Equal(peerTLSPath + "/server.key"))
 			Expect(peerEnv["CORE_PEER_TLS_ROOTCERT_FILE"]).To(Equal(peerTLSPath + "/ca.crt"))
+			Expect(peerEnv["CORE_LEDGER_STATE_STATEDATABASE"]).To(Equal("CouchDB"))
+			Expect(peerEnv["CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS"]).To(Equal("peer0-couchdb.fo-test-banka.svc.cluster.local:5984"))
+			Expect(peerEnv["CORE_LEDGER_STATE_COUCHDBCONFIG_MAXRETRIES"]).To(Equal("10"))
+			Expect(peerEnv["CORE_LEDGER_STATE_COUCHDBCONFIG_MAXRETRIESONSTARTUP"]).To(Equal("10"))
+			Expect(peerEnv["CORE_LEDGER_STATE_COUCHDBCONFIG_REQUESTTIMEOUT"]).To(Equal("35s"))
+			Expect(envSecretRefs(peerContainer)).To(HaveKeyWithValue("CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME", "peer0-couchdb-auth/username"))
+			Expect(envSecretRefs(peerContainer)).To(HaveKeyWithValue("CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD", "peer0-couchdb-auth/password"))
 			Expect(peerDeploy.Labels[labelWorkload]).To(Equal("peer0"))
 			Expect(peerDeploy.Annotations[annotationOrg]).To(Equal("BankA"))
 			Expect(peerDeploy.Spec.Template.Annotations[annotationFabricNetwork]).To(Equal(resourceName))
@@ -1102,6 +1110,51 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(volumeMountPaths(peerContainer)).To(HaveKeyWithValue(secretKindTLS, peerTLSPath))
 			Expect(volumeMountPaths(peerContainer)).To(HaveKeyWithValue(dataVolumeName, fabricProductionPath))
 			expectPersistentVolumeClaim(ctx, bankNamespace, "peer0-data", "12Gi", "fabricops-peer")
+
+			var couchDBSecret corev1.Secret
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: bankNamespace,
+				Name:      "peer0-couchdb-auth",
+			}, &couchDBSecret)).To(Succeed())
+			Expect(couchDBSecret.Labels[labelAppComponent]).To(Equal(componentCouchDB))
+			Expect(couchDBSecret.Labels[labelWorkload]).To(Equal("peer0"))
+			Expect(string(couchDBSecret.Data[couchDBUsernameKey])).To(Equal("peer0-admin"))
+			Expect(string(couchDBSecret.Data[couchDBPasswordKey])).NotTo(BeEmpty())
+
+			var couchDBDeploy appsv1.Deployment
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: bankNamespace,
+				Name:      "peer0-couchdb",
+			}, &couchDBDeploy)).To(Succeed())
+			Expect(couchDBDeploy.Spec.Strategy.Type).To(Equal(appsv1.RecreateDeploymentStrategyType))
+			Expect(couchDBDeploy.Labels[labelAppComponent]).To(Equal(componentCouchDB))
+			Expect(couchDBDeploy.Labels[labelWorkload]).To(Equal("peer0"))
+			Expect(couchDBDeploy.Annotations[annotationOrg]).To(Equal("BankA"))
+			couchDBContainer := couchDBDeploy.Spec.Template.Spec.Containers[0]
+			Expect(couchDBContainer.Name).To(Equal(containerCouchDB))
+			Expect(couchDBContainer.Image).To(Equal(defaultCouchDBImage))
+			Expect(couchDBContainer.ImagePullPolicy).To(Equal(corev1.PullIfNotPresent))
+			Expect(couchDBContainer.Args).To(Equal(couchDBStartupArgs()))
+			Expect(envSecretRefs(couchDBContainer)).To(HaveKeyWithValue("COUCHDB_USER", "peer0-couchdb-auth/username"))
+			Expect(envSecretRefs(couchDBContainer)).To(HaveKeyWithValue("COUCHDB_PASSWORD", "peer0-couchdb-auth/password"))
+			Expect(containerPorts(couchDBContainer)).To(ContainElement(int32(5984)))
+			expectTCPProbe(couchDBContainer.ReadinessProbe, couchDBPort)
+			expectTCPProbe(couchDBContainer.LivenessProbe, couchDBPort)
+			expectContainerResources(couchDBContainer, defaultCouchDBRequestCPU, defaultCouchDBRequestMem, defaultCouchDBLimitCPU, defaultCouchDBLimitMem)
+			Expect(pvcVolumeNames(couchDBDeploy.Spec.Template.Spec)).To(HaveKeyWithValue(dataVolumeName, "peer0-couchdb-data"))
+			Expect(volumeMountPaths(couchDBContainer)).To(HaveKeyWithValue(dataVolumeName, couchDBDataPath))
+			expectPersistentVolumeClaim(ctx, bankNamespace, "peer0-couchdb-data", "12Gi", "fabricops-peer")
+
+			var couchDBSvc corev1.Service
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: bankNamespace,
+				Name:      "peer0-couchdb",
+			}, &couchDBSvc)).To(Succeed())
+			Expect(couchDBSvc.Labels[labelAppComponent]).To(Equal(componentCouchDB))
+			Expect(couchDBSvc.Labels[labelWorkload]).To(Equal("peer0"))
+			Expect(couchDBSvc.Spec.Selector[labelComponent]).To(Equal(componentCouchDB))
+			Expect(couchDBSvc.Spec.Selector[labelWorkload]).To(Equal("peer0"))
+			Expect(servicePorts(couchDBSvc)).To(ContainElement(int32(5984)))
 
 			var peerSvc corev1.Service
 			Expect(k8sClient.Get(ctx, types.NamespacedName{
@@ -1123,6 +1176,17 @@ var _ = Describe("FabricNetwork Controller", func() {
 			markDeploymentReady(ctx, ordererNamespace, "orderer0")
 			markDeploymentReady(ctx, bankNamespace, "peer0")
 
+			By("Reconciling while CouchDB is not ready")
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &network)).To(Succeed())
+			Expect(network.Status.OrgStatus[1].Peers.Ready).To(Equal(int32(0)))
+			Expect(network.Status.OrgStatus[1].PeersReady).To(BeFalse())
+
+			markDeploymentReady(ctx, bankNamespace, "peer0-couchdb")
+
 			By("Reconciling after workloads report readiness")
 			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
@@ -1143,6 +1207,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(network.Status.OrgStatus[1].IdentityReady).To(BeTrue())
 			Expect(network.Status.OrgStatus[1].CAReady).To(BeTrue())
 			Expect(network.Status.OrgStatus[1].PeerEndpoints[0].Address).To(Equal("peer0.fo-test-banka.svc.cluster.local:7051"))
+			Expect(network.Status.OrgStatus[1].PeerEndpoints[0].Database).To(Equal("CouchDB"))
 			Expect(network.Status.OrgStatus[1].Peers.Ready).To(Equal(int32(1)))
 			Expect(network.Status.OrgStatus[1].PeersReady).To(BeTrue())
 
@@ -1223,6 +1288,23 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(channels.Message).To(Equal("settlement: Waiting for Fabric components before channel bootstrap"))
 		})
 
+		It("should leave LevelDB peers on Fabric defaults", func() {
+			var network fabricopsv1alpha1.FabricNetwork
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &network)).To(Succeed())
+			bankOrg := network.Spec.Orgs[1]
+			bankOrg.Peer.DB = "LevelDB"
+
+			peerDeploy := buildPeerDeployment(&network, bankOrg, 0, "fo-test-banka")
+			peerEnv := envMap(peerDeploy.Spec.Template.Spec.Containers[0])
+			Expect(peerEnv).NotTo(HaveKey("CORE_LEDGER_STATE_STATEDATABASE"))
+			Expect(peerEnv).NotTo(HaveKey("CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS"))
+			Expect(envSecretRefs(peerDeploy.Spec.Template.Spec.Containers[0])).NotTo(HaveKey("CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME"))
+
+			endpoints := peerEndpointStatuses(bankOrg, "fo-test-banka")
+			Expect(endpoints).To(HaveLen(1))
+			Expect(endpoints[0].Database).To(Equal("LevelDB"))
+		})
+
 		It("should report invalid Fabric topology before reconciling child resources", func() {
 			var network fabricopsv1alpha1.FabricNetwork
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &network)).To(Succeed())
@@ -1236,7 +1318,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 					CA: fabricopsv1alpha1.CAConfig{DB: "sqlite"},
 					Peer: &fabricopsv1alpha1.PeerConfig{
 						Instances: 1,
-						DB:        "CouchDB",
+						DB:        "BadDB",
 						Prefix:    componentPeer,
 						ExternalEndpoints: []fabricopsv1alpha1.ExternalEndpoint{
 							{
@@ -1351,6 +1433,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(network.Status.Phase).To(Equal(fabricopsv1alpha1.PhaseFailed))
 			Expect(network.Status.Message).To(ContainSubstring("Invalid Fabric topology"))
 			Expect(network.Status.Message).To(ContainSubstring("at least one orderer instance is required"))
+			Expect(network.Status.Message).To(ContainSubstring(`org "BankA" peer.db "BadDB" is unsupported; supported values are LevelDB and CouchDB`))
 			Expect(network.Status.Message).To(ContainSubstring(`org "BankA" peer.externalEndpoints[0] references unknown workload "peer9"`))
 			Expect(network.Status.Message).To(ContainSubstring(`org "BankA" peer.externalEndpoints[0].address is invalid`))
 			Expect(network.Status.Message).To(ContainSubstring(`org "BankA" peer.externalEndpoints[0].tlsHosts[0] is required`))
@@ -1831,6 +1914,14 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(k8sClient.Create(ctx, peer1Deploy)).To(Succeed())
 			Expect(k8sClient.Create(ctx, buildPeerService(&network, bankOrg, 1, bankNamespace))).To(Succeed())
 			Expect(k8sClient.Create(ctx, buildPeerOperationsService(&network, bankOrg, 1, bankNamespace))).To(Succeed())
+			peer1CouchDBSecret, err := buildCouchDBSecret(&network, bankOrg, bankNamespace, "peer1")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Create(ctx, peer1CouchDBSecret)).To(Succeed())
+			peer1CouchDBPVC, err := buildDataPVC(&network, bankOrg, bankNamespace, couchDBName("peer1"), componentCouchDB)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k8sClient.Create(ctx, peer1CouchDBPVC)).To(Succeed())
+			Expect(k8sClient.Create(ctx, buildCouchDBDeployment(&network, bankOrg, "peer1", bankNamespace))).To(Succeed())
+			Expect(k8sClient.Create(ctx, buildCouchDBService(&network, bankOrg, "peer1", bankNamespace))).To(Succeed())
 
 			bankOrg.Peer.Instances = 1
 			status, err := controllerReconciler.reconcilePeers(ctx, &network, bankOrg, bankNamespace)
@@ -1851,7 +1942,15 @@ var _ = Describe("FabricNetwork Controller", func() {
 			expectDeploymentNotFound(ctx, bankNamespace, "peer1")
 			expectServiceNotFound(ctx, bankNamespace, "peer1")
 			expectServiceNotFound(ctx, bankNamespace, "peer1-operations")
+			expectDeploymentNotFound(ctx, bankNamespace, "peer1-couchdb")
+			expectServiceNotFound(ctx, bankNamespace, "peer1-couchdb")
 			expectPersistentVolumeClaim(ctx, bankNamespace, "peer1-data", "12Gi", "fabricops-peer")
+			expectPersistentVolumeClaim(ctx, bankNamespace, "peer1-couchdb-data", "12Gi", "fabricops-peer")
+			var peer1CouchDBAuth corev1.Secret
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: bankNamespace,
+				Name:      "peer1-couchdb-auth",
+			}, &peer1CouchDBAuth)).To(Succeed())
 		})
 
 		It("should remove stale CCaaS workloads when a peer leaves chaincode targets", func() {
@@ -2605,6 +2704,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			markDeploymentReady(ctx, ordererNamespace, "orderer0")
+			markPeerCouchDBReadyIfPresent(ctx, bankNamespace, "peer0")
 			markDeploymentReady(ctx, bankNamespace, "peer0")
 
 			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
@@ -2913,6 +3013,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 			peerJoinContainer := peerJoinJob.Spec.Template.Spec.InitContainers[0]
 			Expect(peerJoinContainer.Name).To(Equal(joinPeerContainer))
 			Expect(peerJoinContainer.Image).To(Equal("hyperledger/fabric-tools:2.5.14"))
+			expectContainerResources(peerJoinContainer, defaultFabricCLIRequestCPU, defaultFabricCLIRequestMem, defaultFabricCLILimitCPU, defaultFabricCLILimitMem)
 			Expect(peerJoinContainer.Command[2]).To(ContainSubstring("peer channel join"))
 			Expect(peerJoinContainer.Command[2]).To(ContainSubstring("peer channel list"))
 			Expect(peerJoinContainer.Command[2]).To(ContainSubstring("CORE_PEER_LOCALMSPID=\"BankAMSP\""))
@@ -3008,6 +3109,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 			anchorContainer := anchorPeerJob.Spec.Template.Spec.InitContainers[0]
 			Expect(anchorContainer.Name).To(Equal(updateAnchorPeerContainer))
 			Expect(anchorContainer.Image).To(Equal("hyperledger/fabric-tools:2.5.14"))
+			expectContainerResources(anchorContainer, defaultFabricCLIRequestCPU, defaultFabricCLIRequestMem, defaultFabricCLILimitCPU, defaultFabricCLILimitMem)
 			Expect(anchorContainer.Command[2]).To(ContainSubstring("MSP_ID=\"BankAMSP\""))
 			Expect(anchorContainer.Command[2]).To(ContainSubstring("ANCHOR_HOST=\"peer0.banka.fabricops.io\""))
 			Expect(anchorContainer.Command[2]).To(ContainSubstring("ANCHOR_PORT=8051"))
@@ -3134,6 +3236,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 			installContainer := chaincodeInstallJob.Spec.Template.Spec.InitContainers[0]
 			Expect(installContainer.Name).To(Equal(installChaincodeContainer))
 			Expect(installContainer.Image).To(Equal("hyperledger/fabric-tools:2.5.14"))
+			expectContainerResources(installContainer, defaultFabricCLIRequestCPU, defaultFabricCLIRequestMem, defaultFabricCLILimitCPU, defaultFabricCLILimitMem)
 			Expect(installContainer.Command[2]).To(ContainSubstring("peer lifecycle chaincode install \"$PACKAGE_FILE\""))
 			Expect(installContainer.Command[2]).To(ContainSubstring("peer lifecycle chaincode queryinstalled --output json"))
 			Expect(installContainer.Command[2]).To(ContainSubstring("PACKAGE_FILE=\"$PACKAGE_INPUT_DIR/$PACKAGE_ARCHIVE\""))
@@ -3267,7 +3370,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(envMap(chaincodeContainer)[envCCAASCoreChaincodeIDName]).To(Equal("settlement_settlement_0.0.1:abc123"))
 			Expect(envMap(chaincodeContainer)[envCCAASChaincodeServerAddress]).To(Equal("0.0.0.0:7052"))
 			Expect(envMap(chaincodeContainer)[envCCAASCoreChaincodeAddress]).To(Equal("0.0.0.0:7052"))
-			expectContainerResources(chaincodeContainer, defaultPeerRequestCPU, defaultPeerRequestMem, defaultPeerLimitCPU, defaultPeerLimitMem)
+			expectContainerResources(chaincodeContainer, defaultChaincodeRequestCPU, defaultChaincodeRequestMem, defaultChaincodeLimitCPU, defaultChaincodeLimitMem)
 
 			var approveJob batchv1.Job
 			Expect(k8sClient.Get(ctx, types.NamespacedName{
@@ -3287,6 +3390,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(approveJob.Spec.Template.Spec.Containers).To(HaveLen(1))
 			approveContainer := approveJob.Spec.Template.Spec.InitContainers[0]
 			Expect(approveContainer.Name).To(Equal(approveChaincodeContainer))
+			expectContainerResources(approveContainer, defaultFabricCLIRequestCPU, defaultFabricCLIRequestMem, defaultFabricCLILimitCPU, defaultFabricCLILimitMem)
 			Expect(approveContainer.Command[2]).To(ContainSubstring("peer lifecycle chaincode approveformyorg"))
 			Expect(approveContainer.Command[2]).To(ContainSubstring("peer lifecycle chaincode queryapproved"))
 			Expect(approveContainer.Command[2]).To(ContainSubstring("--package-id \"$PACKAGE_ID\""))
@@ -3370,6 +3474,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(commitJob.Spec.Template.Spec.Containers).To(HaveLen(1))
 			commitContainer := commitJob.Spec.Template.Spec.InitContainers[0]
 			Expect(commitContainer.Name).To(Equal(commitChaincodeContainer))
+			expectContainerResources(commitContainer, defaultFabricCLIRequestCPU, defaultFabricCLIRequestMem, defaultFabricCLILimitCPU, defaultFabricCLILimitMem)
 			Expect(commitContainer.Command[2]).To(ContainSubstring("peer lifecycle chaincode commit"))
 			Expect(commitContainer.Command[2]).To(ContainSubstring("peer lifecycle chaincode querycommitted"))
 			Expect(commitContainer.Command[2]).To(ContainSubstring("set -- \"$@\" --peerAddresses \"peer0.fo-test-banka.svc.cluster.local:7051\""))
@@ -3883,6 +3988,20 @@ func markDeploymentReady(ctx context.Context, namespace, name string) {
 	Expect(k8sClient.Status().Update(ctx, &deploy)).To(Succeed())
 }
 
+func markPeerCouchDBReadyIfPresent(ctx context.Context, namespace, peerName string) {
+	var deploy appsv1.Deployment
+	err := k8sClient.Get(ctx, types.NamespacedName{
+		Namespace: namespace,
+		Name:      couchDBName(peerName),
+	}, &deploy)
+	if errors.IsNotFound(err) {
+		return
+	}
+	Expect(err).NotTo(HaveOccurred())
+
+	markDeploymentReady(ctx, namespace, couchDBName(peerName))
+}
+
 func markJobFailed(ctx context.Context, namespace, name string) {
 	var job batchv1.Job
 	Expect(k8sClient.Get(ctx, types.NamespacedName{
@@ -4094,6 +4213,7 @@ func prepareLocalChannelReady(
 	Expect(err).NotTo(HaveOccurred())
 
 	markDeploymentReady(ctx, ordererNamespace, "orderer0")
+	markPeerCouchDBReadyIfPresent(ctx, peerNamespace, "peer0")
 	markDeploymentReady(ctx, peerNamespace, "peer0")
 
 	_, err = controllerReconciler.Reconcile(ctx, request)

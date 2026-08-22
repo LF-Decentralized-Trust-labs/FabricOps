@@ -42,7 +42,7 @@ that proof is already present.
 | Admin/orderer/peer registration and enrollment | n/a | n/a | Supported | README | | Fabric CA Jobs publish real MSP/TLS material into Secrets |
 | MSP/TLS Secret validation | n/a | n/a | Supported | | | Invalid or missing material is surfaced in status |
 | Persistent data for CAs/orderers/peers | n/a | n/a | Supported | README | | One PVC per Fabric component instance |
-| Resource request/limit defaults | n/a | n/a | Supported | README | | Applies to Fabric workloads and helper Jobs |
+| Resource request/limit defaults | n/a | n/a | Supported | README | | Applies to Fabric workloads, CCaaS runtimes, and helper Jobs |
 | Succeeded helper Job cleanup | n/a | n/a | Supported | API | | Opt-in `spec.global.jobs.succeededHistoryTTLSeconds` cleans completed output-backed enrollment, channel block, orderer join, peer join, anchor peer update, and chaincode lifecycle Jobs while retaining failures |
 | Status conditions | n/a | n/a | Supported | README | | `Ready`, `IdentityMaterialReady`, `ChannelsReady`, and `ObservabilityReady` |
 | Endpoint discovery status | n/a | n/a | Supported | README, API | | Org status exposes CA, advertised orderer/peer, chaincode, and operations endpoint addresses |
@@ -72,8 +72,8 @@ that proof is already present.
 | Peer dev mode | yes | no | Planned | | | Kubernetes workflow still undecided |
 | Post-bootstrap peer scale-up | n/a | n/a | Supported | samples | | Kind e2e patches a ready network to add a new peer, joins it to declared channels, installs CCaaS packages, and invokes through the new peer |
 | Safe peer scale-down | n/a | n/a | Supported | samples | | Removes stale peer and peer-specific CCaaS workload surfaces while retaining peer PVCs and identity material |
-| Peer DB - LevelDB | yes | yes | Supported | | | Default Fabric peer state database path; explicitly documented support still needed |
-| Peer DB - CouchDB | yes | yes | Planned | | | `spec.orgs[].peer.db` exists but CouchDB sidecars/services are not wired yet |
+| Peer DB - LevelDB | yes | yes | Supported | README | | Default Fabric peer state database path; envtest guards that LevelDB peers do not receive CouchDB runtime wiring |
+| Peer DB - CouchDB | yes | yes | Supported | README | | `spec.orgs[].peer.db: CouchDB` reconciles one CouchDB Deployment, Service, PVC, and credential Secret per peer, wires peer CouchDB env vars, gates peer readiness on CouchDB availability, and is covered by the sample rich-query kind e2e path |
 | CA DB - SQLite | yes | yes | Supported | README | | Fabric CA default path used by current workloads |
 | CA DB - Postgres | yes | yes | Planned | | | `spec.orgs[].ca.db` exists but external DB wiring is not implemented |
 | CA DB - MySQL | yes | yes | Planned | | | External DB wiring is not implemented |

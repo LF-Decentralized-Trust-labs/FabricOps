@@ -105,6 +105,27 @@ public final class SettlementContract implements ContractInterface {
         return settlements.toString();
     }
 
+    @Transaction
+    public String querySettlementsByOwner(final Context ctx, final String owner) {
+        requireText("owner", owner);
+
+        JSONObject query = new JSONObject()
+            .put("selector", new JSONObject()
+                .put("docType", "settlement")
+                .put("owner", owner));
+        JSONArray settlements = new JSONArray();
+
+        try (QueryResultsIterator<KeyValue> results = ctx.getStub().getQueryResult(query.toString())) {
+            for (KeyValue result : results) {
+                settlements.put(new JSONObject(result.getStringValue()));
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Could not query settlements", e);
+        }
+
+        return settlements.toString();
+    }
+
     private Settlement newSettlement(
         final String id,
         final String debtor,
@@ -113,7 +134,9 @@ public final class SettlementContract implements ContractInterface {
         final String currency
     ) {
         Settlement settlement = new Settlement();
+        settlement.setDocType("settlement");
         settlement.setId(id);
+        settlement.setOwner(debtor);
         settlement.setDebtor(debtor);
         settlement.setCreditor(creditor);
         settlement.setAmount(amount);

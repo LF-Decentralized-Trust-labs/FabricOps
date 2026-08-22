@@ -1493,7 +1493,7 @@ func buildPeerJoinJob(
 							Name:      joinPeerContainer,
 							Image:     fabricToolsImage(net.Spec.Global.FabricVersion),
 							Command:   []string{"sh", "-ec", joinPeerScript(channel.Name, org.Organization.MSPName, peerAddress(peer), channelOrgMSPPath(org), channelOrdererAdminTLSPath(org))},
-							Resources: componentResourceRequirements(componentPeer),
+							Resources: componentResourceRequirements(componentFabricCLI),
 							VolumeMounts: []corev1.VolumeMount{
 								{Name: channelOutputVolumeName, MountPath: channelOutputDir},
 								{Name: channelBlockVolumeName, MountPath: channelBlockDir, ReadOnly: true},
@@ -1615,7 +1615,7 @@ func buildAnchorPeerUpdateJob(
 								channelOrdererTLSPath(orderer.name),
 								anchorPeerUpdateFilePath(channel.Name, org),
 							)},
-							Resources:    componentResourceRequirements(componentPeer),
+							Resources:    componentResourceRequirements(componentFabricCLI),
 							VolumeMounts: volumeMounts,
 						},
 					},

@@ -73,6 +73,7 @@ func peerEndpointStatuses(org fabricopsv1alpha1.Org, namespace string) []fabrico
 			TLSHostnameOverride: peerTLSHostnameOverride(peer),
 			ChaincodeAddress:    serviceDNS(name, namespace, peerChaincodePort),
 			OperationsAddress:   "http://" + serviceDNS(operationsServiceName(name), namespace, peerOpsPort),
+			Database:            peerDatabaseStatus(org),
 		})
 	}
 

@@ -14,7 +14,9 @@ type SettlementContract struct {
 }
 
 type Settlement struct {
+	DocType  string `json:"docType"`
 	ID       string `json:"id"`
+	Owner    string `json:"owner"`
 	Debtor   string `json:"debtor"`
 	Creditor string `json:"creditor"`
 	Amount   string `json:"amount"`
@@ -25,7 +27,9 @@ type Settlement struct {
 func (c *SettlementContract) InitLedger(ctx contractapi.TransactionContextInterface) ([]*Settlement, error) {
 	settlements := []*Settlement{
 		{
+			DocType:  "settlement",
 			ID:       "settlement-001",
+			Owner:    "BankA",
 			Debtor:   "BankA",
 			Creditor: "BankB",
 			Amount:   "125000",
@@ -33,7 +37,9 @@ func (c *SettlementContract) InitLedger(ctx contractapi.TransactionContextInterf
 			Status:   "PENDING",
 		},
 		{
+			DocType:  "settlement",
 			ID:       "settlement-002",
+			Owner:    "BankC",
 			Debtor:   "BankC",
 			Creditor: "BankA",
 			Amount:   "73000",
@@ -100,7 +106,9 @@ func (c *SettlementContract) CreateSettlement(
 	}
 
 	settlement := &Settlement{
+		DocType:  "settlement",
 		ID:       id,
+		Owner:    debtor,
 		Debtor:   debtor,
 		Creditor: creditor,
 		Amount:   amount,
@@ -140,6 +148,44 @@ func (c *SettlementContract) MarkSettled(ctx contractapi.TransactionContextInter
 
 func (c *SettlementContract) GetAllSettlements(ctx contractapi.TransactionContextInterface) ([]*Settlement, error) {
 	iterator, err := ctx.GetStub().GetStateByRange("", "")
+	if err != nil {
+		return nil, err
+	}
+	defer iterator.Close()
+
+	settlements := []*Settlement{}
+	for iterator.HasNext() {
+		result, err := iterator.Next()
+		if err != nil {
+			return nil, err
+		}
+
+		settlement := &Settlement{}
+		if err := json.Unmarshal(result.Value, settlement); err != nil {
+			return nil, err
+		}
+		settlements = append(settlements, settlement)
+	}
+
+	return settlements, nil
+}
+
+func (c *SettlementContract) QuerySettlementsByOwner(ctx contractapi.TransactionContextInterface, owner string) ([]*Settlement, error) {
+	if err := requireText("owner", owner); err != nil {
+		return nil, err
+	}
+
+	queryBytes, err := json.Marshal(map[string]any{
+		"selector": map[string]string{
+			"docType": "settlement",
+			"owner":   owner,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	iterator, err := ctx.GetStub().GetQueryResult(string(queryBytes))
 	if err != nil {
 		return nil, err
 	}

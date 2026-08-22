@@ -48,6 +48,7 @@ func validateFabricNetworkTopology(net *fabricopsv1alpha1.FabricNetwork) []strin
 		for _, group := range org.Orderers {
 			ordererCount += group.Instances
 		}
+		problems = append(problems, validateOrgPeerDatabase(org)...)
 		problems = append(problems, validateOrgExternalEndpoints(org)...)
 	}
 
@@ -139,6 +140,23 @@ func validateFabricNetworkTopology(net *fabricopsv1alpha1.FabricNetwork) []strin
 	}
 
 	return problems
+}
+
+func validateOrgPeerDatabase(org fabricopsv1alpha1.Org) []string {
+	if org.Peer == nil {
+		return nil
+	}
+	if _, ok := normalizePeerDatabase(org.Peer.DB); ok {
+		return nil
+	}
+
+	return []string{
+		fmt.Sprintf(
+			"org %q peer.db %q is unsupported; supported values are LevelDB and CouchDB",
+			org.Organization.Name,
+			org.Peer.DB,
+		),
+	}
 }
 
 func validateChannelExternalOrgs(

@@ -1050,7 +1050,7 @@ func buildChaincodeInstallJob(
 							Name:         installChaincodeContainer,
 							Image:        fabricToolsImage(net.Spec.Global.FabricVersion),
 							Command:      []string{"sh", "-ec", installChaincodePackageScript(org, peerName, namespace, net.Spec.Global.TLS)},
-							Resources:    componentResourceRequirements(componentPeer),
+							Resources:    componentResourceRequirements(componentFabricCLI),
 							VolumeMounts: volumeMounts,
 						},
 					},
@@ -1227,7 +1227,7 @@ func buildChaincodeApproveJob(
 								packageID,
 								orderer,
 							)},
-							Resources:    componentResourceRequirements(componentPeer),
+							Resources:    componentResourceRequirements(componentFabricCLI),
 							VolumeMounts: volumeMounts,
 						},
 					},
@@ -1636,7 +1636,7 @@ func buildChaincodeCommitJob(
 								orderer,
 								peers,
 							)},
-							Resources:    componentResourceRequirements(componentPeer),
+							Resources:    componentResourceRequirements(componentFabricCLI),
 							VolumeMounts: volumeMounts,
 						},
 					},
@@ -2522,7 +2522,7 @@ func chaincodeResourceRequirements(chaincode fabricopsv1alpha1.Chaincode) corev1
 	if chaincode.CCAAS != nil && chaincode.CCAAS.Resources != nil {
 		return *chaincode.CCAAS.Resources.DeepCopy()
 	}
-	return componentResourceRequirements(componentPeer)
+	return componentResourceRequirements(componentChaincode)
 }
 
 func chaincodeServiceName(chaincode fabricopsv1alpha1.Chaincode, org fabricopsv1alpha1.Org, peerName string) string {

@@ -74,6 +74,8 @@ const (
 	componentAdmin     = "admin"
 	componentChannel   = "channel"
 	componentChaincode = "chaincode"
+	componentCouchDB   = "couchdb"
+	componentFabricCLI = "fabric-cli"
 	componentMonitor   = "monitor"
 	componentNetwork   = "network"
 	componentOrderer   = "orderer"
@@ -83,6 +85,7 @@ const (
 	endpointOperations = "operations"
 
 	containerCA      = "fabric-ca"
+	containerCouchDB = "couchdb"
 	containerOrderer = "orderer"
 	containerPeer    = "peer"
 
@@ -90,6 +93,7 @@ const (
 	ordererPort       int32 = 7050
 	ordererAdminPort  int32 = 9443
 	ordererOpsPort    int32 = 8443
+	couchDBPort       int32 = 5984
 	peerPort          int32 = 7051
 	peerChaincodePort int32 = 7052
 	peerOpsPort       int32 = 9443
@@ -104,30 +108,45 @@ const (
 
 	dataVolumeName        = "data"
 	caHomePath            = "/etc/hyperledger/fabric-ca-server"
+	couchDBDataPath       = "/opt/couchdb/data"
 	fabricProductionPath  = "/var/hyperledger/production"
+	defaultCouchDBImage   = "couchdb:3.3.3"
 	defaultCAStorage      = "1Gi"
 	defaultOrdererStorage = "5Gi"
 	defaultPeerStorage    = "10Gi"
+	defaultCouchDBStorage = "10Gi"
 
-	defaultCARequestCPU      = "100m"
-	defaultCARequestMemory   = "128Mi"
-	defaultCALimitCPU        = "500m"
-	defaultCALimitMemory     = "512Mi"
-	defaultOrdererRequestCPU = "250m"
-	defaultOrdererRequestMem = "256Mi"
-	defaultOrdererLimitCPU   = "1"
-	defaultOrdererLimitMem   = "1Gi"
-	defaultPeerRequestCPU    = "250m"
-	defaultPeerRequestMem    = "512Mi"
-	defaultPeerLimitCPU      = "1"
-	defaultPeerLimitMem      = "1Gi"
-	defaultKubectlRequestCPU = "50m"
-	defaultKubectlRequestMem = "64Mi"
-	defaultKubectlLimitCPU   = "250m"
-	defaultKubectlLimitMem   = "128Mi"
-	defaultScrapeInterval    = "30s"
-	defaultScrapeTimeout     = "10s"
-	orgBoundaryPolicyName    = "fabricops-org-boundary"
+	defaultCARequestCPU        = "100m"
+	defaultCARequestMemory     = "128Mi"
+	defaultCALimitCPU          = "500m"
+	defaultCALimitMemory       = "512Mi"
+	defaultOrdererRequestCPU   = "250m"
+	defaultOrdererRequestMem   = "256Mi"
+	defaultOrdererLimitCPU     = "1"
+	defaultOrdererLimitMem     = "1Gi"
+	defaultPeerRequestCPU      = "250m"
+	defaultPeerRequestMem      = "512Mi"
+	defaultPeerLimitCPU        = "1"
+	defaultPeerLimitMem        = "1Gi"
+	defaultChaincodeRequestCPU = "50m"
+	defaultChaincodeRequestMem = "128Mi"
+	defaultChaincodeLimitCPU   = "500m"
+	defaultChaincodeLimitMem   = "512Mi"
+	defaultCouchDBRequestCPU   = "100m"
+	defaultCouchDBRequestMem   = "512Mi"
+	defaultCouchDBLimitCPU     = "500m"
+	defaultCouchDBLimitMem     = "2Gi"
+	defaultFabricCLIRequestCPU = "50m"
+	defaultFabricCLIRequestMem = "128Mi"
+	defaultFabricCLILimitCPU   = "500m"
+	defaultFabricCLILimitMem   = "512Mi"
+	defaultKubectlRequestCPU   = "50m"
+	defaultKubectlRequestMem   = "64Mi"
+	defaultKubectlLimitCPU     = "250m"
+	defaultKubectlLimitMem     = "128Mi"
+	defaultScrapeInterval      = "30s"
+	defaultScrapeTimeout       = "10s"
+	orgBoundaryPolicyName      = "fabricops-org-boundary"
 
 	secretKindMSP = "msp"
 	secretKindTLS = "tls"
@@ -267,6 +286,12 @@ func componentResourceRequirements(component string) corev1.ResourceRequirements
 		return resourceRequirements(defaultOrdererRequestCPU, defaultOrdererRequestMem, defaultOrdererLimitCPU, defaultOrdererLimitMem)
 	case componentPeer:
 		return resourceRequirements(defaultPeerRequestCPU, defaultPeerRequestMem, defaultPeerLimitCPU, defaultPeerLimitMem)
+	case componentChaincode:
+		return resourceRequirements(defaultChaincodeRequestCPU, defaultChaincodeRequestMem, defaultChaincodeLimitCPU, defaultChaincodeLimitMem)
+	case componentCouchDB:
+		return resourceRequirements(defaultCouchDBRequestCPU, defaultCouchDBRequestMem, defaultCouchDBLimitCPU, defaultCouchDBLimitMem)
+	case componentFabricCLI:
+		return resourceRequirements(defaultFabricCLIRequestCPU, defaultFabricCLIRequestMem, defaultFabricCLILimitCPU, defaultFabricCLILimitMem)
 	case componentKubectl:
 		return resourceRequirements(defaultKubectlRequestCPU, defaultKubectlRequestMem, defaultKubectlLimitCPU, defaultKubectlLimitMem)
 	default:
@@ -422,6 +447,8 @@ func defaultStorageSize(component string) string {
 		return defaultOrdererStorage
 	case componentPeer:
 		return defaultPeerStorage
+	case componentCouchDB:
+		return defaultCouchDBStorage
 	default:
 		return defaultPeerStorage
 	}
@@ -437,6 +464,8 @@ func storageConfigForComponent(
 	case componentOrderer:
 		return config.Orderer
 	case componentPeer:
+		return config.Peer
+	case componentCouchDB:
 		return config.Peer
 	default:
 		return nil
@@ -1693,6 +1722,9 @@ func buildPeerDeployment(
 			corev1.EnvVar{Name: "CORE_PEER_TLS_ROOTCERT_FILE", Value: peerTLSPath + "/ca.crt"},
 		)
 	}
+	if peerUsesCouchDB(org) {
+		env = append(env, couchDBPeerEnv(name, namespace)...)
+	}
 
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1918,6 +1950,15 @@ func (r *FabricNetworkReconciler) reconcilePeers(
 
 	for i := 0; i < org.Peer.Instances; i++ {
 		deploy := buildPeerDeployment(net, org, i, namespace)
+		peerDatabaseReady := true
+		if peerUsesCouchDB(org) {
+			ready, err := r.reconcilePeerCouchDB(ctx, net, org, namespace, deploy.Name)
+			if err != nil {
+				return status, err
+			}
+			peerDatabaseReady = ready
+		}
+
 		pvc, err := buildDataPVC(net, org, namespace, deploy.Name, componentPeer)
 		if err != nil {
 			return status, err
@@ -1945,7 +1986,9 @@ func (r *FabricNetworkReconciler) reconcilePeers(
 			return status, err
 		}
 		status.Desired += deploymentStatus.Desired
-		status.Ready += deploymentStatus.Ready
+		if peerDatabaseReady {
+			status.Ready += deploymentStatus.Ready
+		}
 	}
 
 	if err := r.cleanupScaledDownPeerWorkloads(ctx, net, org, namespace, desiredPeers); err != nil {
@@ -1955,6 +1998,42 @@ func (r *FabricNetworkReconciler) reconcilePeers(
 	return status, nil
 }
 
+func (r *FabricNetworkReconciler) reconcilePeerCouchDB(
+	ctx context.Context,
+	net *fabricopsv1alpha1.FabricNetwork,
+	org fabricopsv1alpha1.Org,
+	namespace string,
+	peerName string,
+) (bool, error) {
+	secret, err := buildCouchDBSecret(net, org, namespace, peerName)
+	if err != nil {
+		return false, err
+	}
+	if err := r.ensureSecret(ctx, secret, couchDBSecretValidationError); err != nil {
+		return false, err
+	}
+
+	pvc, err := buildDataPVC(net, org, namespace, couchDBName(peerName), componentCouchDB)
+	if err != nil {
+		return false, err
+	}
+	if err := r.ensurePersistentVolumeClaim(ctx, pvc); err != nil {
+		return false, err
+	}
+
+	deploy := buildCouchDBDeployment(net, org, peerName, namespace)
+	if err := r.ensureDeployment(ctx, deploy); err != nil {
+		return false, err
+	}
+
+	svc := buildCouchDBService(net, org, peerName, namespace)
+	if err := r.ensureService(ctx, svc); err != nil {
+		return false, err
+	}
+
+	return r.isDeploymentReady(ctx, namespace, deploy.Name)
+}
+
 func (r *FabricNetworkReconciler) cleanupScaledDownPeerWorkloads(
 	ctx context.Context,
 	net *fabricopsv1alpha1.FabricNetwork,
@@ -1962,16 +2041,37 @@ func (r *FabricNetworkReconciler) cleanupScaledDownPeerWorkloads(
 	namespace string,
 	desiredPeers map[string]struct{},
 ) error {
+	if err := r.cleanupScaledDownComponentWorkloads(ctx, net, org, namespace, componentPeer, desiredPeers); err != nil {
+		return err
+	}
+
+	desiredCouchDBs := map[string]struct{}{}
+	if peerUsesCouchDB(org) {
+		for peerName := range desiredPeers {
+			desiredCouchDBs[couchDBName(peerName)] = struct{}{}
+		}
+	}
+	return r.cleanupScaledDownComponentWorkloads(ctx, net, org, namespace, componentCouchDB, desiredCouchDBs)
+}
+
+func (r *FabricNetworkReconciler) cleanupScaledDownComponentWorkloads(
+	ctx context.Context,
+	net *fabricopsv1alpha1.FabricNetwork,
+	org fabricopsv1alpha1.Org,
+	namespace string,
+	component string,
+	desiredWorkloads map[string]struct{},
+) error {
 	selector := client.MatchingLabels{
 		labelFabricNetwork:          sanitizeName(net.Name),
 		labelFabricNetworkNamespace: sanitizeName(net.Namespace),
 		labelOrg:                    sanitizeName(org.Organization.Name),
-		labelComponent:              componentPeer,
+		labelComponent:              component,
 	}
 	expectedOwner := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:   namespace,
-			Labels:      orgLabels(net, org, componentPeer),
+			Labels:      orgLabels(net, org, component),
 			Annotations: resourceAnnotations(net, org),
 		},
 	}
@@ -1982,7 +2082,7 @@ func (r *FabricNetworkReconciler) cleanupScaledDownPeerWorkloads(
 	}
 	for i := range deployments.Items {
 		deployment := &deployments.Items[i]
-		if _, ok := desiredPeers[deployment.Name]; ok {
+		if _, ok := desiredWorkloads[deployment.Name]; ok {
 			continue
 		}
 		expectedOwner.Name = deployment.Name
@@ -1992,9 +2092,11 @@ func (r *FabricNetworkReconciler) cleanupScaledDownPeerWorkloads(
 	}
 
 	desiredServices := map[string]struct{}{}
-	for name := range desiredPeers {
+	for name := range desiredWorkloads {
 		desiredServices[name] = struct{}{}
-		desiredServices[operationsServiceName(name)] = struct{}{}
+		if component == componentPeer {
+			desiredServices[operationsServiceName(name)] = struct{}{}
+		}
 	}
 
 	var services corev1.ServiceList
