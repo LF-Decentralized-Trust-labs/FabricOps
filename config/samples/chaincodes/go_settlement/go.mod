@@ -2,7 +2,11 @@ module github.com/LF-Decentralized-Trust-labs/FabricOps/config/samples/chaincode
 
 go 1.25.0
 
-require github.com/hyperledger/fabric-contract-api-go v1.2.2
+require (
+	github.com/hyperledger/fabric-chaincode-go v0.0.0-20230731094759-d626e9ab09b9
+	github.com/hyperledger/fabric-contract-api-go v1.2.2
+	github.com/hyperledger/fabric-protos-go v0.3.0
+)
 
 require (
 	github.com/go-openapi/jsonpointer v0.20.0 // indirect
@@ -13,8 +17,6 @@ require (
 	github.com/gobuffalo/packd v1.0.2 // indirect
 	github.com/gobuffalo/packr v1.30.1 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
-	github.com/hyperledger/fabric-chaincode-go v0.0.0-20230731094759-d626e9ab09b9 // indirect
-	github.com/hyperledger/fabric-protos-go v0.3.0 // indirect
 	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect

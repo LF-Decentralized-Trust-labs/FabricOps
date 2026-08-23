@@ -24,6 +24,15 @@ The Node sample also exposes private-data transactions for the sample `bank-a-pr
 - `readPrivateSettlement(collection, id)`
 - `readPrivateSettlementHash(collection, id)`
 
+## Go Contract Unit Tests
+
+The Go settlement contract tests use Fabric's in-memory `MockStub`, so they do not require a Kubernetes cluster or a running Fabric network:
+
+```bash
+cd config/samples/chaincodes/go_settlement
+go test ./...
+```
+
 Default images can be built with each directory's `build_and_push.sh`:
 
 ```bash
