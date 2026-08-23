@@ -1,0 +1,70 @@
+name: Bug report
+description: Report a reproducible problem with FabricOps
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Observed and expected behavior
+      description: Describe what happened and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: List the smallest sequence of steps that reproduces the problem.
+      placeholder: |
+        1. Install FabricOps with ...
+        2. Apply ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: input
+    id: fabricops-version
+    attributes:
+      label: FabricOps version
+      placeholder: "Example: v0.1.0 or commit SHA"
+    validations:
+      required: true
+
+  - type: input
+    id: kubernetes-version
+    attributes:
+      label: Kubernetes version
+      placeholder: "Example: v1.31.4"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: installation-method
+    attributes:
+      label: Installation method
+      options:
+        - Helm
+        - Kustomize or raw manifests
+        - Source or development build
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: custom-resource-status
+    attributes:
+      label: Custom resource status
+      description: Paste the relevant FabricOps custom resource status.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste the relevant controller, job, peer, orderer, or CA logs.
+      render: shell
+    validations:
+      required: true
