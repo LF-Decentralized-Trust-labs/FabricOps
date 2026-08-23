@@ -3,6 +3,8 @@
 ![FabricOps](./fabricops-lockup-ink.png#gh-light-mode-only)
 ![FabricOps](./logo.png#gh-dark-mode-only)
 
+[Documentation](https://fabricops.io) | [Releases](https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases) | [Supported features](SUPPORTED_FEATURES.md)
+
 FabricOps is an LF Decentralized Trust Lab and Kubernetes operator for
 provisioning multi-organization Hyperledger Fabric networks from declarative
 configuration.
