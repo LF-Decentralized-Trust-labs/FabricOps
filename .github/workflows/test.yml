@@ -32,6 +32,10 @@ jobs:
         run: |
           make test
 
+      - name: Run Go settlement sample contract tests
+        working-directory: config/samples/chaincodes/go_settlement
+        run: go test ./...
+
       - name: Verify fabricopsctl release version
         run: |
           make build-fabricopsctl-release VERSION=1.2.3
