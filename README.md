@@ -302,6 +302,13 @@ fo-<control-namespace>-<network>-<org>
 
 ## For Contributors
 
+Use the [bug report](.github/ISSUE_TEMPLATE/bug_report.yml) or
+[feature request](.github/ISSUE_TEMPLATE/feature_request.yml) issue form when
+opening an issue. Pull requests should follow the
+[pull request template](.github/PULL_REQUEST_TEMPLATE.md), including the related
+issue, exact tests run, documentation and breaking-change impact, and DCO
+sign-off checklist.
+
 Contributor requirements:
 
 - Go >= 1.23
