@@ -1221,6 +1221,12 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(identity.Status).To(Equal(metav1.ConditionTrue))
 			Expect(identity.Reason).To(Equal("IdentityMaterialPresent"))
 
+			certificates := apiMeta.FindStatusCondition(network.Status.Conditions, conditionCertificateLifecycleReady)
+			Expect(certificates).NotTo(BeNil())
+			Expect(certificates.Status).To(Equal(metav1.ConditionTrue))
+			Expect(certificates.Reason).To(Equal("CertificateLifecycleReady"))
+			Expect(network.Status.OrgStatus[1].Certificates).NotTo(BeEmpty())
+
 			channels := apiMeta.FindStatusCondition(network.Status.Conditions, conditionChannelsReady)
 			Expect(channels).NotTo(BeNil())
 			Expect(channels.Status).To(Equal(metav1.ConditionTrue))
@@ -1230,6 +1236,137 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(observability).NotTo(BeNil())
 			Expect(observability.Status).To(Equal(metav1.ConditionTrue))
 			Expect(observability.Reason).To(Equal("OperationsEndpointsReady"))
+		})
+
+		It("should surface certificate renewal state without replacing last-known-good material on failure", func() {
+			controllerReconciler := &FabricNetworkReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			request := reconcile.Request{NamespacedName: typeNamespacedName}
+			_, err := controllerReconciler.Reconcile(ctx, request)
+			Expect(err).NotTo(HaveOccurred())
+
+			ordererNamespace := "fo-test-orderer"
+			bankNamespace := "fo-test-banka"
+			markDeploymentReady(ctx, ordererNamespace, "orderer-ca")
+			markDeploymentReady(ctx, bankNamespace, "banka-ca")
+
+			_, err = controllerReconciler.Reconcile(ctx, request)
+			Expect(err).NotTo(HaveOccurred())
+
+			var network fabricopsv1alpha1.FabricNetwork
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &network)).To(Succeed())
+			writeEnrolledOrgIdentitySecrets(ctx, &network, network.Spec.Orgs[0], ordererNamespace)
+			writeEnrolledOrgIdentitySecrets(ctx, &network, network.Spec.Orgs[1], bankNamespace)
+
+			bankOrg := network.Spec.Orgs[1]
+			authority, err := generateTestIdentityAuthority(bankOrg)
+			Expect(err).NotTo(HaveOccurred())
+			nearExpiryCert, nearExpiryKey, err := issueTestCertificateWithValidity(
+				"peer0",
+				componentPeer,
+				nil,
+				authority.mspCACertPEM,
+				authority.mspCAKey,
+				x509.KeyUsageDigitalSignature,
+				nil,
+				24*time.Hour,
+			)
+			Expect(err).NotTo(HaveOccurred())
+
+			var peerMSP corev1.Secret
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: bankNamespace,
+				Name:      "peer0-msp",
+			}, &peerMSP)).To(Succeed())
+			peerMSP.Data[mspCACertKey] = authority.mspCACertPEM
+			peerMSP.Data[mspSignCertKey] = nearExpiryCert
+			peerMSP.Data[mspKeyStoreKey] = nearExpiryKey
+			Expect(k8sClient.Update(ctx, &peerMSP)).To(Succeed())
+
+			By("Reconciling with a peer MSP certificate inside the renewal window")
+			_, err = controllerReconciler.Reconcile(ctx, request)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &network)).To(Succeed())
+			peerCert := findCertificateStatus(network.Status.OrgStatus, "BankA", "peer0-msp", mspSignCertKey)
+			Expect(peerCert.State).To(Equal(fabricopsv1alpha1.CertificateStateRenewing))
+			Expect(peerCert.RenewalJobName).NotTo(BeEmpty())
+			Expect(peerCert.Renewable).To(BeTrue())
+			Expect(network.Status.OrgStatus[1].CertificateRenewalRequired).To(BeTrue())
+
+			var renewalJob batchv1.Job
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: bankNamespace,
+				Name:      peerCert.RenewalJobName,
+			}, &renewalJob)).To(Succeed())
+			Expect(renewalJob.Labels[labelIdentityKind]).To(Equal(identityKindRenewal))
+			Expect(renewalJob.Labels[labelWorkload]).To(Equal("peer0"))
+			Expect(renewalJob.Spec.Template.Labels[labelIdentityKind]).To(Equal(identityKindRenewal))
+
+			certificateCondition := apiMeta.FindStatusCondition(network.Status.Conditions, conditionCertificateLifecycleReady)
+			Expect(certificateCondition).NotTo(BeNil())
+			Expect(certificateCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(certificateCondition.Reason).To(Equal("CertificateRenewalRunning"))
+
+			var peerDeploy appsv1.Deployment
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: bankNamespace,
+				Name:      "peer0",
+			}, &peerDeploy)).To(Succeed())
+			nearExpiryRevision := peerDeploy.Spec.Template.Annotations[annotationIdentityRevision]
+			Expect(nearExpiryRevision).NotTo(BeEmpty())
+			lastKnownGood := append([]byte(nil), peerMSP.Data[mspSignCertKey]...)
+
+			By("Marking the renewal job failed")
+			markJobFailed(ctx, bankNamespace, peerCert.RenewalJobName)
+
+			_, err = controllerReconciler.Reconcile(ctx, request)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &network)).To(Succeed())
+			peerCert = findCertificateStatus(network.Status.OrgStatus, "BankA", "peer0-msp", mspSignCertKey)
+			Expect(peerCert.State).To(Equal(fabricopsv1alpha1.CertificateStateRenewalFailed))
+			Expect(network.Status.OrgStatus[1].CertificateRenewalError).To(ContainSubstring(peerCert.RenewalJobName))
+
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: bankNamespace,
+				Name:      "peer0-msp",
+			}, &peerMSP)).To(Succeed())
+			Expect(peerMSP.Data[mspSignCertKey]).To(Equal(lastKnownGood))
+
+			By("Publishing replacement identity material")
+			freshCert, freshKey, err := issueTestCertificateWithValidity(
+				"peer0",
+				componentPeer,
+				nil,
+				authority.mspCACertPEM,
+				authority.mspCAKey,
+				x509.KeyUsageDigitalSignature,
+				nil,
+				365*24*time.Hour,
+			)
+			Expect(err).NotTo(HaveOccurred())
+			peerMSP.Data[mspSignCertKey] = freshCert
+			peerMSP.Data[mspKeyStoreKey] = freshKey
+			Expect(k8sClient.Update(ctx, &peerMSP)).To(Succeed())
+
+			_, err = controllerReconciler.Reconcile(ctx, request)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &network)).To(Succeed())
+			peerCert = findCertificateStatus(network.Status.OrgStatus, "BankA", "peer0-msp", mspSignCertKey)
+			Expect(peerCert.State).To(Equal(fabricopsv1alpha1.CertificateStateValid))
+			Expect(network.Status.OrgStatus[1].CertificateRenewalRequired).To(BeFalse())
+			Expect(network.Status.OrgStatus[1].CertificateRenewalError).To(BeEmpty())
+
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: bankNamespace,
+				Name:      "peer0",
+			}, &peerDeploy)).To(Succeed())
+			Expect(peerDeploy.Spec.Template.Annotations[annotationIdentityRevision]).NotTo(Equal(nearExpiryRevision))
 		})
 
 		It("should map declared channel memberships into status", func() {
@@ -4528,6 +4665,28 @@ func issueTestCertificate(
 	keyUsage x509.KeyUsage,
 	usages []x509.ExtKeyUsage,
 ) ([]byte, []byte, error) {
+	return issueTestCertificateWithValidity(
+		commonName,
+		organizationalUnit,
+		dnsNames,
+		caCertPEM,
+		caKey,
+		keyUsage,
+		usages,
+		365*24*time.Hour,
+	)
+}
+
+func issueTestCertificateWithValidity(
+	commonName string,
+	organizationalUnit string,
+	dnsNames []string,
+	caCertPEM []byte,
+	caKey *ecdsa.PrivateKey,
+	keyUsage x509.KeyUsage,
+	usages []x509.ExtKeyUsage,
+	validFor time.Duration,
+) ([]byte, []byte, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, nil, err
@@ -4551,7 +4710,7 @@ func issueTestCertificate(
 		},
 		DNSNames:              dnsNames,
 		NotBefore:             time.Now().Add(-time.Hour),
-		NotAfter:              time.Now().AddDate(1, 0, 0),
+		NotAfter:              time.Now().Add(validFor),
 		KeyUsage:              keyUsage,
 		ExtKeyUsage:           usages,
 		BasicConstraintsValid: true,
@@ -4568,6 +4727,27 @@ func issueTestCertificate(
 	}
 
 	return pemEncodeTestCertificate(certDER), pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}), nil
+}
+
+func findCertificateStatus(
+	orgStatuses []fabricopsv1alpha1.OrgStatus,
+	orgName string,
+	secretName string,
+	key string,
+) fabricopsv1alpha1.CertificateStatus {
+	for _, orgStatus := range orgStatuses {
+		if orgStatus.Name != orgName {
+			continue
+		}
+		for _, certificate := range orgStatus.Certificates {
+			if certificate.SecretName == secretName && certificate.Key == key {
+				return certificate
+			}
+		}
+	}
+
+	Fail(fmt.Sprintf("certificate status %s/%s for org %s was not found", secretName, key, orgName))
+	return fabricopsv1alpha1.CertificateStatus{}
 }
 
 func randomTestSerial() (*big.Int, error) {

@@ -263,6 +263,7 @@ FabricOps supports:
 - Fabric CA, orderer, peer, and CCaaS chaincode workloads
 - Fabric CA registrar bootstrap, admin enrollment, and workload enrollment Secrets
 - Fabric CA-backed MSP/TLS material for admins, orderers, and peers
+- Certificate expiry inventory and Fabric CA renewal Jobs for admin, orderer, and peer leaf identities
 - Persistent storage and resource defaults for Fabric workloads, CCaaS runtimes, and helper Jobs
 - Declarative channel config generation, channel block generation, orderer joins, peer joins, and anchor peer updates
 - CCaaS package metadata generation, install, approve, commit, and chaincode server workloads
@@ -270,7 +271,7 @@ FabricOps supports:
 - Optional external endpoint advertising, TLS SAN enrollment hosts, and local-test TLS hostname overrides for federated peer/orderer access
 - Endpoint discovery in status for Fabric CAs, peers, orderers, operations Services, and peer chaincode Services
 - `fabricopsctl` helper commands for status, connection profile lookup, join bundle handoff, and chaincode invoke/query against `FabricNetwork` or `FabricParticipant` resources when built from source
-- Kubernetes status conditions for component, identity, channel, chaincode, and observability readiness
+- Kubernetes status conditions for component, identity, certificate lifecycle, channel, chaincode, and observability readiness
 - Fabric peer/orderer operations endpoints and optional Prometheus Operator `ServiceMonitor` resources
 - Optional org-boundary NetworkPolicies for FabricOps-managed pods
 - Opt-in cleanup for successful helper Jobs whose outputs are stored in durable FabricOps resources
@@ -487,6 +488,13 @@ Fabric CA pods receive `<org>-ca-bootstrap/user-pass` through `FABRIC_CA_SERVER_
 
 Orderers mount identity Secrets at `/var/hyperledger/orderer/msp` and `/var/hyperledger/orderer/tls`. Peers mount them at `/etc/hyperledger/fabric/peer/msp` and `/etc/hyperledger/fabric/peer/tls`.
 
+FabricOps inventories managed MSP/TLS certificates in status, starts Fabric CA
+renewal Jobs for admin, orderer, and peer leaf identities inside the renewal
+window, and rolls workloads when mounted identity material changes. See
+[docs/certificate-lifecycle.md](docs/certificate-lifecycle.md) for recovery
+paths and the boundary between leaf identity renewal, CA root rollover, and CA
+bootstrap registrar rotation.
+
 ## Storage
 
 Persistent data is configured through `spec.global.storage.ca`, `spec.global.storage.orderer`, and `spec.global.storage.peer`. Each component accepts a `size` and optional `storageClassName`.
@@ -530,7 +538,7 @@ spec:
       succeededHistoryTTLSeconds: 600
 ```
 
-This currently applies to enrollment Jobs, channel block generation Jobs, orderer join Jobs, peer join Jobs, anchor peer update Jobs, chaincode install Jobs, chaincode approval Jobs, and chaincode commit Jobs.
+This currently applies to enrollment Jobs, certificate renewal Jobs, channel block generation Jobs, orderer join Jobs, peer join Jobs, anchor peer update Jobs, chaincode install Jobs, chaincode approval Jobs, and chaincode commit Jobs.
 
 The sample `FabricNetwork` opts into a 10-minute successful helper Job history window so local runs stay inspectable without accumulating every completed output-backed Job forever.
 

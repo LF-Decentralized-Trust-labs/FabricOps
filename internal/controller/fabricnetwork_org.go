@@ -1901,6 +1901,9 @@ func (r *FabricNetworkReconciler) reconcileOrderers(
 	for _, group := range org.Orderers {
 		for i := 0; i < group.Instances; i++ {
 			deploy := buildOrdererDeployment(net, org, group, i, namespace)
+			if err := r.setDeploymentIdentityRevision(ctx, deploy, net, deploy.Name); err != nil {
+				return status, err
+			}
 			pvc, err := buildDataPVC(net, org, namespace, deploy.Name, componentOrderer)
 			if err != nil {
 				return status, err
@@ -1950,6 +1953,9 @@ func (r *FabricNetworkReconciler) reconcilePeers(
 
 	for i := 0; i < org.Peer.Instances; i++ {
 		deploy := buildPeerDeployment(net, org, i, namespace)
+		if err := r.setDeploymentIdentityRevision(ctx, deploy, net, deploy.Name); err != nil {
+			return status, err
+		}
 		peerDatabaseReady := true
 		if peerUsesCouchDB(org) {
 			ready, err := r.reconcilePeerCouchDB(ctx, net, org, namespace, deploy.Name)

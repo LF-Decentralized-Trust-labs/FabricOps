@@ -1203,6 +1203,66 @@ spec:
                     type: string
                   caReady:
                     type: boolean
+                  certificateRenewalError:
+                    description: |-
+                      CertificateRenewalError summarizes renewal failures without replacing the
+                      last-known-good identity material.
+                    type: string
+                  certificateRenewalRequired:
+                    description: |-
+                      CertificateRenewalRequired is true when at least one managed certificate
+                      is expired, near expiry, currently renewing, or otherwise needs operator
+                      attention.
+                    type: boolean
+                  certificates:
+                    description: |-
+                      Certificates inventories MSP and TLS certificates found in managed
+                      identity Secrets for this org.
+                    items:
+                      properties:
+                        component:
+                          type: string
+                        issuer:
+                          type: string
+                        key:
+                          type: string
+                        message:
+                          type: string
+                        name:
+                          type: string
+                        namespace:
+                          type: string
+                        notAfter:
+                          format: date-time
+                          type: string
+                        notBefore:
+                          format: date-time
+                          type: string
+                        renewable:
+                          type: boolean
+                        renewalJobName:
+                          type: string
+                        renewalTime:
+                          format: date-time
+                          type: string
+                        secretKind:
+                          type: string
+                        secretName:
+                          type: string
+                        state:
+                          type: string
+                        subject:
+                          type: string
+                        workloadName:
+                          type: string
+                      required:
+                      - key
+                      - name
+                      - secretKind
+                      - secretName
+                      - state
+                      type: object
+                    type: array
                   connectionProfileConfigMapName:
                     description: |-
                       ConnectionProfileConfigMapName points application clients at the
@@ -1261,6 +1321,10 @@ spec:
                         address:
                           type: string
                         chaincodeAddress:
+                          type: string
+                        database:
+                          description: Database is the peer state database backend
+                            requested for this peer.
                           type: string
                         name:
                           type: string

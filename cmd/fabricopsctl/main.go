@@ -661,6 +661,12 @@ func printOrgStatuses(out io.Writer, statuses []fabricopsv1alpha1.OrgStatus) {
 		if status.ConnectionProfileConfigMapName != "" {
 			printf(out, "  connectionProfile: %s/%s\n", status.Namespace, status.ConnectionProfileConfigMapName)
 		}
+		if summary := certificateStatusSummary(status); summary != "" {
+			printf(out, "  certificates: %s\n", summary)
+		}
+		if status.CertificateRenewalError != "" {
+			printf(out, "  certificateRenewalError: %s\n", status.CertificateRenewalError)
+		}
 		for _, endpoint := range status.OrdererEndpoints {
 			printf(
 				out,
@@ -682,6 +688,45 @@ func printOrgStatuses(out io.Writer, statuses []fabricopsv1alpha1.OrgStatus) {
 			)
 		}
 	}
+}
+
+func certificateStatusSummary(status fabricopsv1alpha1.OrgStatus) string {
+	if len(status.Certificates) == 0 {
+		return ""
+	}
+
+	counts := map[fabricopsv1alpha1.CertificateState]int{}
+	needsAttention := status.CertificateRenewalRequired
+	for _, certificate := range status.Certificates {
+		if certificate.State == "" || certificate.State == fabricopsv1alpha1.CertificateStateValid {
+			continue
+		}
+		counts[certificate.State]++
+		needsAttention = true
+	}
+
+	if !needsAttention {
+		return fmt.Sprintf("%d tracked, all valid", len(status.Certificates))
+	}
+
+	parts := []string{}
+	for _, state := range []fabricopsv1alpha1.CertificateState{
+		fabricopsv1alpha1.CertificateStateRenewalFailed,
+		fabricopsv1alpha1.CertificateStateExpired,
+		fabricopsv1alpha1.CertificateStateInvalid,
+		fabricopsv1alpha1.CertificateStateMissing,
+		fabricopsv1alpha1.CertificateStateRenewing,
+		fabricopsv1alpha1.CertificateStateRenewalDue,
+	} {
+		if counts[state] > 0 {
+			parts = append(parts, fmt.Sprintf("%s=%d", state, counts[state]))
+		}
+	}
+	if len(parts) == 0 {
+		return fmt.Sprintf("%d tracked, attention required", len(status.Certificates))
+	}
+
+	return fmt.Sprintf("%d tracked, %s", len(status.Certificates), strings.Join(parts, ", "))
 }
 
 func printChannelStatuses(out io.Writer, statuses []fabricopsv1alpha1.ChannelStatus) {

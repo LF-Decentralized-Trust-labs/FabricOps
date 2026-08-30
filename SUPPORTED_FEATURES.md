@@ -43,8 +43,8 @@ that proof is already present.
 | MSP/TLS Secret validation | n/a | n/a | Supported | | | Invalid or missing material is surfaced in status |
 | Persistent data for CAs/orderers/peers | n/a | n/a | Supported | README | | One PVC per Fabric component instance |
 | Resource request/limit defaults | n/a | n/a | Supported | README | | Applies to Fabric workloads, CCaaS runtimes, and helper Jobs |
-| Succeeded helper Job cleanup | n/a | n/a | Supported | API | | Opt-in `spec.global.jobs.succeededHistoryTTLSeconds` cleans completed output-backed enrollment, channel block, orderer join, peer join, anchor peer update, and chaincode lifecycle Jobs while retaining failures |
-| Status conditions | n/a | n/a | Supported | README | | `Ready`, `IdentityMaterialReady`, `ChannelsReady`, and `ObservabilityReady` |
+| Succeeded helper Job cleanup | n/a | n/a | Supported | API | | Opt-in `spec.global.jobs.succeededHistoryTTLSeconds` cleans completed output-backed enrollment, certificate renewal, channel block, orderer join, peer join, anchor peer update, and chaincode lifecycle Jobs while retaining failures |
+| Status conditions | n/a | n/a | Supported | README | | `Ready`, `IdentityMaterialReady`, `CertificateLifecycleReady`, `ChannelsReady`, and `ObservabilityReady` |
 | Endpoint discovery status | n/a | n/a | Supported | README, API | | Org status exposes CA, advertised orderer/peer, chaincode, and operations endpoint addresses |
 | External endpoint advertising | n/a | n/a | Partial | API, docs/federated-join.md | | `externalEndpoints` on orderer groups and peer configs advertise remote-reachable endpoints, add TLS SAN hosts during enrollment, and support local-test `tlsHostnameOverride` for Fabric client/orderer CLI paths; production anchor peer/gossip paths still require DNS/SAN alignment |
 | Federated join bundle export | n/a | n/a | Partial | README, CLI | | `fabricopsctl join-bundle --org` and `join-bundle participant` export public MSP config/root material, TLS roots, peer/orderer endpoints, anchor peer hints, membership policy/signer hints, and relevant chaincode definitions; `join-bundle validate` checks saved artifacts offline; `join-bundle plan` renders founder/participant next steps; `join-bundle render-org` emits Application org JSON for channel config updates; `join-bundle render-update` emits an unsigned config-update script |
@@ -54,7 +54,7 @@ that proof is already present.
 | Finalizer cleanup | n/a | n/a | Supported | README | | Deletes owned org namespaces after ownership-label checks |
 | Fabric operations endpoints | n/a | n/a | Supported | README | | Peer/orderer `/healthz` and `/metrics` Services |
 | Prometheus `ServiceMonitor` output | n/a | n/a | Supported | README | | Opt-in via `spec.global.observability.serviceMonitor`; requires Prometheus Operator CRDs |
-| TLS certificate rotation | n/a | n/a | Planned | | | Production hardening follow-up |
+| TLS certificate rotation | n/a | n/a | Partial | docs/certificate-lifecycle.md | | Fabric CA-managed admin/orderer/peer leaf MSP and TLS certificates are inventoried, renewed through renewal Jobs, and trigger workload rollouts through identity revision annotations; CA root rollover and bootstrap registrar rotation remain planned |
 | Operations endpoint TLS | n/a | n/a | Planned | | | Local-dev path currently uses HTTP operations endpoints |
 | NetworkPolicy generation | n/a | n/a | Supported | README, API | | Opt-in org-boundary policies via `spec.global.networkPolicy.enabled` |
 | Packaged install bundle | n/a | n/a | Supported | README | | `dist/install.yaml` is generated from `config/default` and published with releases |

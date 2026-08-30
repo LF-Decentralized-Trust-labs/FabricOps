@@ -515,6 +515,37 @@ type PeerEndpointStatus struct {
 	Database string `json:"database,omitempty"`
 }
 
+type CertificateState string
+
+const (
+	CertificateStateValid         CertificateState = "Valid"
+	CertificateStateRenewalDue    CertificateState = "RenewalDue"
+	CertificateStateRenewing      CertificateState = "Renewing"
+	CertificateStateRenewalFailed CertificateState = "RenewalFailed"
+	CertificateStateExpired       CertificateState = "Expired"
+	CertificateStateMissing       CertificateState = "Missing"
+	CertificateStateInvalid       CertificateState = "Invalid"
+)
+
+type CertificateStatus struct {
+	Name           string           `json:"name"`
+	Namespace      string           `json:"namespace,omitempty"`
+	SecretName     string           `json:"secretName"`
+	SecretKind     string           `json:"secretKind"`
+	Key            string           `json:"key"`
+	Component      string           `json:"component,omitempty"`
+	WorkloadName   string           `json:"workloadName,omitempty"`
+	Renewable      bool             `json:"renewable,omitempty"`
+	State          CertificateState `json:"state"`
+	Subject        string           `json:"subject,omitempty"`
+	Issuer         string           `json:"issuer,omitempty"`
+	NotBefore      metav1.Time      `json:"notBefore,omitempty"`
+	NotAfter       metav1.Time      `json:"notAfter,omitempty"`
+	RenewalTime    metav1.Time      `json:"renewalTime,omitempty"`
+	RenewalJobName string           `json:"renewalJobName,omitempty"`
+	Message        string           `json:"message,omitempty"`
+}
+
 type OrgStatus struct {
 	Name          string `json:"name"`
 	Namespace     string `json:"namespace,omitempty"`
@@ -540,7 +571,19 @@ type OrgStatus struct {
 	// generated Fabric connection profile ConfigMap for this org.
 	// +optional
 	ConnectionProfileConfigMapName string `json:"connectionProfileConfigMapName,omitempty"`
-	Ready                          bool   `json:"ready"`
+	// Certificates inventories MSP and TLS certificates found in managed
+	// identity Secrets for this org.
+	// +optional
+	Certificates []CertificateStatus `json:"certificates,omitempty"`
+	// CertificateRenewalRequired is true when at least one managed certificate
+	// is expired, near expiry, currently renewing, or otherwise needs operator
+	// attention.
+	CertificateRenewalRequired bool `json:"certificateRenewalRequired,omitempty"`
+	// CertificateRenewalError summarizes renewal failures without replacing the
+	// last-known-good identity material.
+	// +optional
+	CertificateRenewalError string `json:"certificateRenewalError,omitempty"`
+	Ready                   bool   `json:"ready"`
 }
 
 type ChannelOrgStatus struct {
