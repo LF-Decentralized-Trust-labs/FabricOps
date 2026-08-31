@@ -31,7 +31,7 @@ Requirements:
 Install the latest published release bundle:
 
 ```bash
-kubectl apply -f https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.0/install.yaml
+kubectl apply -f https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.1/install.yaml
 kubectl rollout status deployment/fabricops-controller-manager -n fabricops-system --timeout=120s
 ```
 
@@ -47,7 +47,7 @@ Install the release chart directly from the GitHub release:
 
 ```bash
 helm upgrade --install fabricops \
-  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.0/fabricops-0.2.0.tgz \
+  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.1/fabricops-0.2.0.tgz \
   --namespace fabricops-system \
   --create-namespace \
   --wait
@@ -59,7 +59,7 @@ Override the manager image if needed:
 
 ```bash
 helm upgrade --install fabricops \
-  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.0/fabricops-0.2.0.tgz \
+  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.1/fabricops-0.2.0.tgz \
   --namespace fabricops-system \
   --create-namespace \
   --set manager.image.repository=ghcr.io/lf-decentralized-trust-labs/fabricops \
@@ -73,7 +73,7 @@ If you want to review the Kubernetes objects before applying them:
 
 ```bash
 helm template fabricops \
-  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.0/fabricops-0.2.0.tgz \
+  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.1/fabricops-0.2.0.tgz \
   --namespace fabricops-system > fabricops-install.yaml
 
 kubectl apply -f fabricops-install.yaml
@@ -85,7 +85,7 @@ kubectl rollout status deployment/fabricops-controller-manager -n fabricops-syst
 After installing the operator, apply the sample `FabricNetwork`:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/LF-Decentralized-Trust-labs/FabricOps/v0.2.0/config/samples/fabricops_v1alpha1_fabricnetwork.yaml
+kubectl apply -f https://raw.githubusercontent.com/LF-Decentralized-Trust-labs/FabricOps/v0.2.1/config/samples/fabricops_v1alpha1_fabricnetwork.yaml
 kubectl wait fabricnetwork/fabricnetwork-sample -n default --for=condition=Ready --timeout=20m
 ```
 
@@ -137,7 +137,7 @@ fabricopsctl query --participant -n default --org BankB \
 ```
 
 For reproducible installs, replace `@latest` with a release tag such as
-`@v0.2.0`.
+`@v0.2.1`.
 
 If `go install` succeeds but your shell cannot find `fabricopsctl`, make the
 PATH export permanent in your shell profile, for example `~/.zshrc`.
@@ -231,7 +231,7 @@ Delete `FabricNetwork` resources before removing the operator so FabricOps final
 
 ```bash
 kubectl delete fabricnetwork fabricnetwork-sample -n default --ignore-not-found
-kubectl delete -f https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.0/install.yaml
+kubectl delete -f https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.1/install.yaml
 ```
 
 For Helm installs:
@@ -243,7 +243,7 @@ helm uninstall fabricops -n fabricops-system
 
 ## Release Artifacts
 
-Release `v0.2.0` publishes:
+Release `v0.2.1` publishes:
 
 - `install.yaml`: single-file Kubernetes install bundle
 - `fabricops-0.2.0.tgz`: Helm chart archive

@@ -7,7 +7,7 @@ Use this checklist before publishing a FabricOps release tag or pointing users a
 Use the `Release` GitHub Actions workflow from the GitHub UI.
 
 - Run it from the `main` branch.
-- Enter the intended release tag, for example `v0.2.0`.
+- Enter the intended release tag, for example `v0.2.1`.
 - The workflow creates the release-prep commit, pushes the release tag, and
   publishes the GitHub release assets.
 
