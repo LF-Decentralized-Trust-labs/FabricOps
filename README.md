@@ -31,7 +31,7 @@ Requirements:
 Install the latest published release bundle:
 
 ```bash
-kubectl apply -f https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.0/install.yaml
+kubectl apply -f https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.1/install.yaml
 kubectl rollout status deployment/fabricops-controller-manager -n fabricops-system --timeout=120s
 ```
 
@@ -47,7 +47,7 @@ Install the release chart directly from the GitHub release:
 
 ```bash
 helm upgrade --install fabricops \
-  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.0/fabricops-0.2.0.tgz \
+  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.1/fabricops-0.2.0.tgz \
   --namespace fabricops-system \
   --create-namespace \
   --wait
@@ -59,7 +59,7 @@ Override the manager image if needed:
 
 ```bash
 helm upgrade --install fabricops \
-  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.0/fabricops-0.2.0.tgz \
+  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.1/fabricops-0.2.0.tgz \
   --namespace fabricops-system \
   --create-namespace \
   --set manager.image.repository=ghcr.io/lf-decentralized-trust-labs/fabricops \
@@ -73,7 +73,7 @@ If you want to review the Kubernetes objects before applying them:
 
 ```bash
 helm template fabricops \
-  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.0/fabricops-0.2.0.tgz \
+  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.1/fabricops-0.2.0.tgz \
   --namespace fabricops-system > fabricops-install.yaml
 
 kubectl apply -f fabricops-install.yaml
@@ -85,7 +85,7 @@ kubectl rollout status deployment/fabricops-controller-manager -n fabricops-syst
 After installing the operator, apply the sample `FabricNetwork`:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/LF-Decentralized-Trust-labs/FabricOps/v0.2.0/config/samples/fabricops_v1alpha1_fabricnetwork.yaml
+kubectl apply -f https://raw.githubusercontent.com/LF-Decentralized-Trust-labs/FabricOps/v0.2.1/config/samples/fabricops_v1alpha1_fabricnetwork.yaml
 kubectl wait fabricnetwork/fabricnetwork-sample -n default --for=condition=Ready --timeout=20m
 ```
 
@@ -137,7 +137,7 @@ fabricopsctl query --participant -n default --org BankB \
 ```
 
 For reproducible installs, replace `@latest` with a release tag such as
-`@v0.2.0`.
+`@v0.2.1`.
 
 If `go install` succeeds but your shell cannot find `fabricopsctl`, make the
 PATH export permanent in your shell profile, for example `~/.zshrc`.
@@ -231,7 +231,7 @@ Delete `FabricNetwork` resources before removing the operator so FabricOps final
 
 ```bash
 kubectl delete fabricnetwork fabricnetwork-sample -n default --ignore-not-found
-kubectl delete -f https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.0/install.yaml
+kubectl delete -f https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.1/install.yaml
 ```
 
 For Helm installs:
@@ -243,7 +243,7 @@ helm uninstall fabricops -n fabricops-system
 
 ## Release Artifacts
 
-Release `v0.2.0` publishes:
+Release `v0.2.1` publishes:
 
 - `install.yaml`: single-file Kubernetes install bundle
 - `fabricops-0.2.0.tgz`: Helm chart archive
@@ -263,6 +263,7 @@ FabricOps supports:
 - Fabric CA, orderer, peer, and CCaaS chaincode workloads
 - Fabric CA registrar bootstrap, admin enrollment, and workload enrollment Secrets
 - Fabric CA-backed MSP/TLS material for admins, orderers, and peers
+- Certificate expiry inventory and Fabric CA renewal Jobs for admin, orderer, and peer leaf identities
 - Persistent storage and resource defaults for Fabric workloads, CCaaS runtimes, and helper Jobs
 - Declarative channel config generation, channel block generation, orderer joins, peer joins, and anchor peer updates
 - CCaaS package metadata generation, install, approve, commit, and chaincode server workloads
@@ -270,7 +271,7 @@ FabricOps supports:
 - Optional external endpoint advertising, TLS SAN enrollment hosts, and local-test TLS hostname overrides for federated peer/orderer access
 - Endpoint discovery in status for Fabric CAs, peers, orderers, operations Services, and peer chaincode Services
 - `fabricopsctl` helper commands for status, connection profile lookup, join bundle handoff, and chaincode invoke/query against `FabricNetwork` or `FabricParticipant` resources when built from source
-- Kubernetes status conditions for component, identity, channel, chaincode, and observability readiness
+- Kubernetes status conditions for component, identity, certificate lifecycle, channel, chaincode, and observability readiness
 - Fabric peer/orderer operations endpoints and optional Prometheus Operator `ServiceMonitor` resources
 - Optional org-boundary NetworkPolicies for FabricOps-managed pods
 - Opt-in cleanup for successful helper Jobs whose outputs are stored in durable FabricOps resources
@@ -475,6 +476,8 @@ FabricOps uses Fabric CA enrollment as the identity material path. The determini
 
 ```text
 <org>-ca-bootstrap: username, password, user-pass
+<org>-ca-bootstrap-next-<hash>: username, password, user-pass
+<org>-ca-bootstrap-previous: username, password, user-pass
 <org>-admin-enrollment: username, password, user-pass
 <workload>-enrollment: username, password, user-pass
 <workload>-msp: config.yaml, cacert.pem, tlscacert.pem, signcert.pem, keystore.pem
@@ -485,7 +488,20 @@ FabricOps uses Fabric CA enrollment as the identity material path. The determini
 
 Fabric CA pods receive `<org>-ca-bootstrap/user-pass` through `FABRIC_CA_SERVER_BOOTSTRAP_USER_PASS`. Admin enrollment Jobs use `<org>-admin-enrollment` to register and enroll the org admin identity, then publish enrolled MSP/TLS material to `<org>-admin-msp` and `<org>-admin-tls`. Workload enrollment Jobs use `<workload>-enrollment` to register and enroll orderer and peer identities, then publish enrolled material to `<workload>-msp` and `<workload>-tls`.
 
+When `spec.orgs[].ca.registrar.rotation.requestID` is set, FabricOps stages a
+new bootstrap registrar Secret, validates it through Fabric CA, promotes it
+into the stable `<org>-ca-bootstrap` Secret only after the rotation Job
+succeeds, and preserves the previous credential in
+`<org>-ca-bootstrap-previous` for manual recovery.
+
 Orderers mount identity Secrets at `/var/hyperledger/orderer/msp` and `/var/hyperledger/orderer/tls`. Peers mount them at `/etc/hyperledger/fabric/peer/msp` and `/etc/hyperledger/fabric/peer/tls`.
+
+FabricOps inventories managed MSP/TLS certificates in status, starts Fabric CA
+renewal Jobs for admin, orderer, and peer leaf identities inside the renewal
+window, and rolls workloads when mounted identity material changes. See
+[docs/certificate-lifecycle.md](docs/certificate-lifecycle.md) for recovery
+paths and the boundary between leaf identity renewal, bootstrap registrar
+rotation, and CA root rollover.
 
 ## Storage
 
@@ -530,7 +546,7 @@ spec:
       succeededHistoryTTLSeconds: 600
 ```
 
-This currently applies to enrollment Jobs, channel block generation Jobs, orderer join Jobs, peer join Jobs, anchor peer update Jobs, chaincode install Jobs, chaincode approval Jobs, and chaincode commit Jobs.
+This currently applies to enrollment Jobs, certificate renewal Jobs, channel block generation Jobs, orderer join Jobs, peer join Jobs, anchor peer update Jobs, chaincode install Jobs, chaincode approval Jobs, and chaincode commit Jobs.
 
 The sample `FabricNetwork` opts into a 10-minute successful helper Job history window so local runs stay inspectable without accumulating every completed output-backed Job forever.
 

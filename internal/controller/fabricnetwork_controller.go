@@ -53,11 +53,12 @@ type FabricNetworkReconciler struct {
 }
 
 const (
-	conditionReady                 = "Ready"
-	conditionIdentityMaterialReady = "IdentityMaterialReady"
-	conditionChannelsReady         = "ChannelsReady"
-	conditionObservabilityReady    = "ObservabilityReady"
-	fabricNetworkFinalizer         = "fabricops.io/finalizer"
+	conditionReady                     = "Ready"
+	conditionIdentityMaterialReady     = "IdentityMaterialReady"
+	conditionCertificateLifecycleReady = "CertificateLifecycleReady"
+	conditionChannelsReady             = "ChannelsReady"
+	conditionObservabilityReady        = "ObservabilityReady"
+	fabricNetworkFinalizer             = "fabricops.io/finalizer"
 )
 
 func orgNamespaceName(net *fabricopsv1alpha1.FabricNetwork, org fabricopsv1alpha1.Org) string {
@@ -373,7 +374,14 @@ func (r *FabricNetworkReconciler) reconcileOrg(
 	}
 	status.CAReady = caReady
 
-	if caReady {
+	registrarRotation, err := r.reconcileCARegistrarRotation(ctx, net, org, namespace, status.CAReady)
+	if err != nil {
+		return status, err
+	}
+	status.CARegistrarRotation = registrarRotation
+	registrarRotationBlocksWork := caRegistrarRotationBlocksWork(registrarRotation)
+
+	if caReady && !registrarRotationBlocksWork {
 		if err := r.reconcileAdminEnrollment(ctx, net, org, namespace); err != nil {
 			return status, err
 		}
@@ -388,6 +396,22 @@ func (r *FabricNetworkReconciler) reconcileOrg(
 	}
 	status.IdentityReady = identityReady
 	status.IdentityError = identityError
+
+	certificates, renewalRequired, renewalError, err := r.reconcileCertificateLifecycle(
+		ctx,
+		net,
+		org,
+		namespace,
+		status.CAReady,
+		status.IdentityReady,
+		registrarRotationBlocksWork,
+	)
+	if err != nil {
+		return status, err
+	}
+	status.Certificates = certificates
+	status.CertificateRenewalRequired = renewalRequired
+	status.CertificateRenewalError = renewalError
 
 	if !status.IdentityReady {
 		status.Orderers = desiredOrdererStatus(org)
@@ -535,6 +559,25 @@ func identityMaterialCondition(
 	return conditions
 }
 
+func certificateLifecycleCondition(
+	net *fabricopsv1alpha1.FabricNetwork,
+	conditions []metav1.Condition,
+	status metav1.ConditionStatus,
+	reason string,
+	message string,
+) []metav1.Condition {
+	conditions = append([]metav1.Condition(nil), conditions...)
+	apiMeta.SetStatusCondition(&conditions, metav1.Condition{
+		Type:               conditionCertificateLifecycleReady,
+		Status:             status,
+		Reason:             reason,
+		Message:            message,
+		ObservedGeneration: net.Generation,
+	})
+
+	return conditions
+}
+
 func channelsReadyCondition(
 	net *fabricopsv1alpha1.FabricNetwork,
 	conditions []metav1.Condition,
@@ -611,12 +654,18 @@ func topologyInvalidConditions(net *fabricopsv1alpha1.FabricNetwork, message str
 		net,
 		channelsReadyCondition(
 			net,
-			identityMaterialCondition(
+			certificateLifecycleCondition(
 				net,
-				readyCondition(net, metav1.ConditionFalse, "TopologyInvalid", message),
+				identityMaterialCondition(
+					net,
+					readyCondition(net, metav1.ConditionFalse, "TopologyInvalid", message),
+					metav1.ConditionUnknown,
+					"TopologyInvalid",
+					"Topology validation failed before identity material check: "+message,
+				),
 				metav1.ConditionUnknown,
 				"TopologyInvalid",
-				"Topology validation failed before identity material check: "+message,
+				"Topology validation failed before certificate lifecycle check: "+message,
 			),
 			metav1.ConditionUnknown,
 			"TopologyInvalid",
@@ -768,12 +817,18 @@ func (r *FabricNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 				&network,
 				channelsReadyCondition(
 					&network,
-					identityMaterialCondition(
+					certificateLifecycleCondition(
 						&network,
-						readyCondition(&network, metav1.ConditionFalse, "ReconcileError", "Failed to reconcile orgs: "+err.Error()),
+						identityMaterialCondition(
+							&network,
+							readyCondition(&network, metav1.ConditionFalse, "ReconcileError", "Failed to reconcile orgs: "+err.Error()),
+							metav1.ConditionUnknown,
+							"ReconcileError",
+							"Failed to check identity material: "+err.Error(),
+						),
 						metav1.ConditionUnknown,
 						"ReconcileError",
-						"Failed to check identity material: "+err.Error(),
+						"Failed to check certificate lifecycle: "+err.Error(),
 					),
 					metav1.ConditionUnknown,
 					"ReconcileError",
@@ -804,12 +859,18 @@ func (r *FabricNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 				&network,
 				channelsReadyCondition(
 					&network,
-					identityMaterialCondition(
+					certificateLifecycleCondition(
 						&network,
-						readyCondition(&network, metav1.ConditionFalse, "ReconcileError", "Failed to reconcile channels: "+err.Error()),
+						identityMaterialCondition(
+							&network,
+							readyCondition(&network, metav1.ConditionFalse, "ReconcileError", "Failed to reconcile channels: "+err.Error()),
+							metav1.ConditionUnknown,
+							"ReconcileError",
+							"Failed to check identity material: "+err.Error(),
+						),
 						metav1.ConditionUnknown,
 						"ReconcileError",
-						"Failed to check identity material: "+err.Error(),
+						"Failed to check certificate lifecycle: "+err.Error(),
 					),
 					metav1.ConditionUnknown,
 					"ReconcileError",
@@ -852,12 +913,18 @@ func (r *FabricNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 				&network,
 				channelsReadyCondition(
 					&network,
-					identityMaterialCondition(
+					certificateLifecycleCondition(
 						&network,
-						readyCondition(&network, metav1.ConditionFalse, "ReconcileError", "Failed to reconcile chaincodes: "+err.Error()),
+						identityMaterialCondition(
+							&network,
+							readyCondition(&network, metav1.ConditionFalse, "ReconcileError", "Failed to reconcile chaincodes: "+err.Error()),
+							metav1.ConditionUnknown,
+							"ReconcileError",
+							"Failed to check identity material: "+err.Error(),
+						),
 						metav1.ConditionUnknown,
 						"ReconcileError",
-						"Failed to check identity material: "+err.Error(),
+						"Failed to check certificate lifecycle: "+err.Error(),
 					),
 					channelsStatus,
 					channelsReason,
@@ -888,12 +955,18 @@ func (r *FabricNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 				&network,
 				channelsReadyCondition(
 					&network,
-					identityMaterialCondition(
+					certificateLifecycleCondition(
 						&network,
-						readyCondition(&network, metav1.ConditionFalse, "ReconcileError", "Failed to reconcile connection profiles: "+err.Error()),
+						identityMaterialCondition(
+							&network,
+							readyCondition(&network, metav1.ConditionFalse, "ReconcileError", "Failed to reconcile connection profiles: "+err.Error()),
+							metav1.ConditionUnknown,
+							"ReconcileError",
+							"Failed to check identity material: "+err.Error(),
+						),
 						metav1.ConditionUnknown,
 						"ReconcileError",
-						"Failed to check identity material: "+err.Error(),
+						"Failed to check certificate lifecycle: "+err.Error(),
 					),
 					channelsStatus,
 					channelsReason,
@@ -917,6 +990,7 @@ func (r *FabricNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		identityReason = "IdentityMaterialPresent"
 	}
 	identityMessage := identityMaterialMessage(orgStatuses)
+	certificateStatus, certificateReason, certificateMessage := certificateLifecycleConditionStatus(orgStatuses)
 
 	observabilityStatus := metav1.ConditionFalse
 	observabilityReason := "OperationsEndpointsPending"
@@ -926,7 +1000,7 @@ func (r *FabricNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		observabilityReason = "OperationsEndpointsReady"
 	}
 
-	if allOrgsReady(orgStatuses) && channelsReady && chaincodesReady {
+	if allOrgsReady(orgStatuses) && channelsReady && chaincodesReady && certificateStatus == metav1.ConditionTrue {
 		readyReason := "ComponentsReady"
 		readyMessage := "All Fabric components are ready"
 		if len(channelStatuses) > 0 && len(chaincodeStatuses) > 0 {
@@ -951,12 +1025,18 @@ func (r *FabricNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 				&network,
 				channelsReadyCondition(
 					&network,
-					identityMaterialCondition(
+					certificateLifecycleCondition(
 						&network,
-						readyCondition(&network, metav1.ConditionTrue, readyReason, readyMessage),
-						identityStatus,
-						identityReason,
-						identityMessage,
+						identityMaterialCondition(
+							&network,
+							readyCondition(&network, metav1.ConditionTrue, readyReason, readyMessage),
+							identityStatus,
+							identityReason,
+							identityMessage,
+						),
+						certificateStatus,
+						certificateReason,
+						certificateMessage,
 					),
 					channelsStatus,
 					channelsReason,
@@ -983,6 +1063,9 @@ func (r *FabricNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if !identityReady {
 		readyReason = "IdentityMaterialMissing"
 		readyMessage = "Waiting for required Fabric identity material"
+	} else if allOrgsReady(orgStatuses) && certificateStatus != metav1.ConditionTrue {
+		readyReason = "CertificateLifecyclePending"
+		readyMessage = "Waiting for Fabric certificate lifecycle to become ready"
 	} else if allOrgsReady(orgStatuses) && !channelsReady {
 		readyReason = "ChannelsNotReady"
 		readyMessage = "Waiting for Fabric channels to become ready"
@@ -1003,12 +1086,18 @@ func (r *FabricNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			&network,
 			channelsReadyCondition(
 				&network,
-				identityMaterialCondition(
+				certificateLifecycleCondition(
 					&network,
-					readyCondition(&network, metav1.ConditionFalse, readyReason, readyMessage),
-					identityStatus,
-					identityReason,
-					identityMessage,
+					identityMaterialCondition(
+						&network,
+						readyCondition(&network, metav1.ConditionFalse, readyReason, readyMessage),
+						identityStatus,
+						identityReason,
+						identityMessage,
+					),
+					certificateStatus,
+					certificateReason,
+					certificateMessage,
 				),
 				channelsStatus,
 				channelsReason,

@@ -150,6 +150,49 @@ type CAConfig struct {
 	// +kubebuilder:validation:MaxLength=32
 	// +kubebuilder:validation:Pattern="^[A-Za-z0-9_-]+$"
 	DB string `json:"db"`
+	// Registrar controls Fabric CA bootstrap registrar lifecycle behavior.
+	// +optional
+	Registrar *CARegistrarConfig `json:"registrar,omitempty"`
+}
+
+type CARegistrarConfig struct {
+	// Rotation requests safe rotation of the Fabric CA bootstrap registrar
+	// credentials used by FabricOps helper Jobs. Changing requestID starts a
+	// new one-time rotation.
+	// +optional
+	Rotation *CARegistrarRotationSpec `json:"rotation,omitempty"`
+}
+
+type CARegistrarRotationSpec struct {
+	// RequestID is an operator-visible nonce for a requested registrar rotation.
+	// Set a new value to request a new rotation.
+	// +optional
+	// +kubebuilder:validation:MaxLength=128
+	// +kubebuilder:validation:Pattern="^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$"
+	RequestID string `json:"requestID,omitempty"`
+}
+
+type CARegistrarRotationPhase string
+
+const (
+	CARegistrarRotationPhaseIdle         CARegistrarRotationPhase = "Idle"
+	CARegistrarRotationPhaseWaitingForCA CARegistrarRotationPhase = "WaitingForCA"
+	CARegistrarRotationPhaseStaging      CARegistrarRotationPhase = "Staging"
+	CARegistrarRotationPhaseRotating     CARegistrarRotationPhase = "Rotating"
+	CARegistrarRotationPhaseReady        CARegistrarRotationPhase = "Ready"
+	CARegistrarRotationPhaseFailed       CARegistrarRotationPhase = "Failed"
+)
+
+type CARegistrarRotationStatus struct {
+	ObservedRequestID  string                   `json:"observedRequestID,omitempty"`
+	Phase              CARegistrarRotationPhase `json:"phase,omitempty"`
+	ActiveSecretName   string                   `json:"activeSecretName,omitempty"`
+	ActiveUsername     string                   `json:"activeUsername,omitempty"`
+	PreviousSecretName string                   `json:"previousSecretName,omitempty"`
+	StagedSecretName   string                   `json:"stagedSecretName,omitempty"`
+	RotationJobName    string                   `json:"rotationJobName,omitempty"`
+	LastRotationTime   metav1.Time              `json:"lastRotationTime,omitempty"`
+	Message            string                   `json:"message,omitempty"`
 }
 
 type OrdererGroup struct {
@@ -515,6 +558,37 @@ type PeerEndpointStatus struct {
 	Database string `json:"database,omitempty"`
 }
 
+type CertificateState string
+
+const (
+	CertificateStateValid         CertificateState = "Valid"
+	CertificateStateRenewalDue    CertificateState = "RenewalDue"
+	CertificateStateRenewing      CertificateState = "Renewing"
+	CertificateStateRenewalFailed CertificateState = "RenewalFailed"
+	CertificateStateExpired       CertificateState = "Expired"
+	CertificateStateMissing       CertificateState = "Missing"
+	CertificateStateInvalid       CertificateState = "Invalid"
+)
+
+type CertificateStatus struct {
+	Name           string           `json:"name"`
+	Namespace      string           `json:"namespace,omitempty"`
+	SecretName     string           `json:"secretName"`
+	SecretKind     string           `json:"secretKind"`
+	Key            string           `json:"key"`
+	Component      string           `json:"component,omitempty"`
+	WorkloadName   string           `json:"workloadName,omitempty"`
+	Renewable      bool             `json:"renewable,omitempty"`
+	State          CertificateState `json:"state"`
+	Subject        string           `json:"subject,omitempty"`
+	Issuer         string           `json:"issuer,omitempty"`
+	NotBefore      metav1.Time      `json:"notBefore,omitempty"`
+	NotAfter       metav1.Time      `json:"notAfter,omitempty"`
+	RenewalTime    metav1.Time      `json:"renewalTime,omitempty"`
+	RenewalJobName string           `json:"renewalJobName,omitempty"`
+	Message        string           `json:"message,omitempty"`
+}
+
 type OrgStatus struct {
 	Name          string `json:"name"`
 	Namespace     string `json:"namespace,omitempty"`
@@ -540,7 +614,23 @@ type OrgStatus struct {
 	// generated Fabric connection profile ConfigMap for this org.
 	// +optional
 	ConnectionProfileConfigMapName string `json:"connectionProfileConfigMapName,omitempty"`
-	Ready                          bool   `json:"ready"`
+	// Certificates inventories MSP and TLS certificates found in managed
+	// identity Secrets for this org.
+	// +optional
+	Certificates []CertificateStatus `json:"certificates,omitempty"`
+	// CertificateRenewalRequired is true when at least one managed certificate
+	// is expired, near expiry, currently renewing, or otherwise needs operator
+	// attention.
+	CertificateRenewalRequired bool `json:"certificateRenewalRequired,omitempty"`
+	// CertificateRenewalError summarizes renewal failures without replacing the
+	// last-known-good identity material.
+	// +optional
+	CertificateRenewalError string `json:"certificateRenewalError,omitempty"`
+	// CARegistrarRotation reports bootstrap registrar credential rotation state
+	// for the org Fabric CA.
+	// +optional
+	CARegistrarRotation CARegistrarRotationStatus `json:"caRegistrarRotation,omitempty"`
+	Ready               bool                      `json:"ready"`
 }
 
 type ChannelOrgStatus struct {

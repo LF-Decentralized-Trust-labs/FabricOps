@@ -300,6 +300,34 @@ func TestRunWaitRejectsUnsupportedWaitTarget(t *testing.T) {
 	}
 }
 
+func TestCARegistrarRotationStatusSummary(t *testing.T) {
+	summary := caRegistrarRotationStatusSummary(fabricopsv1alpha1.CARegistrarRotationStatus{
+		ObservedRequestID: "rotate-001",
+		Phase:             fabricopsv1alpha1.CARegistrarRotationPhaseRotating,
+		ActiveUsername:    "admin",
+		RotationJobName:   "banka-ca-bootstrap-rotate-5595695e53",
+		Message:           "Registrar rotation job is running",
+	})
+
+	for _, want := range []string{
+		"Rotating",
+		"requestID=rotate-001",
+		"active=admin",
+		"job=banka-ca-bootstrap-rotate-5595695e53",
+		`message="Registrar rotation job is running"`,
+	} {
+		if !strings.Contains(summary, want) {
+			t.Fatalf("summary %q does not contain %q", summary, want)
+		}
+	}
+
+	if got := caRegistrarRotationStatusSummary(fabricopsv1alpha1.CARegistrarRotationStatus{
+		Phase: fabricopsv1alpha1.CARegistrarRotationPhaseIdle,
+	}); got != "" {
+		t.Fatalf("idle summary = %q, want empty", got)
+	}
+}
+
 func TestWaitConditionTypeRejectsEmptyCondition(t *testing.T) {
 	_, err := waitConditionType("condition=")
 	if err == nil {
