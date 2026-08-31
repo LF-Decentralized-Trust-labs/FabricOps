@@ -32,14 +32,14 @@ debugging or release dry runs.
 Build the CLI with the same linker-injected version used by the release workflow:
 
 ```bash
-make build-fabricopsctl-release VERSION=0.2.0
-test "$(bin/fabricopsctl version)" = "fabricopsctl 0.2.0"
+make build-fabricopsctl-release VERSION=0.2.1
+test "$(bin/fabricopsctl version)" = "fabricopsctl 0.2.1"
 ```
 
 ## Build And Publish Images
 
 ```bash
-make docker-buildx-release VERSION=0.2.0
+make docker-buildx-release VERSION=0.2.1
 
 config/samples/chaincodes/node_settlement/build_and_push.sh
 config/samples/chaincodes/go_settlement/build_and_push.sh
@@ -60,7 +60,7 @@ The published release image names are:
 Run the unauthenticated registry check after pushing images:
 
 ```bash
-make release-check-ghcr VERSION=0.2.0
+make release-check-ghcr VERSION=0.2.1
 ```
 
 This check asks GHCR for anonymous pull tokens and then reads image manifests without Docker credentials. It should pass for the manager image and all sample chaincode images before release docs, bundles, or charts reference those tags.
@@ -70,7 +70,7 @@ If a newly published GHCR package is still private, open the package settings on
 ## Generate Release Artifacts
 
 ```bash
-make build-installer-release VERSION=0.2.0
+make build-installer-release VERSION=0.2.1
 helm lint dist/chart
 helm template fabricops dist/chart --namespace fabricops-system >/tmp/fabricops-chart.yaml
 ```
@@ -78,7 +78,7 @@ helm template fabricops dist/chart --namespace fabricops-system >/tmp/fabricops-
 Confirm the generated bundle uses the public manager image:
 
 ```bash
-grep 'image: ghcr.io/lf-decentralized-trust-labs/fabricops:0.2.0' dist/install.yaml
+grep 'image: ghcr.io/lf-decentralized-trust-labs/fabricops:0.2.1' dist/install.yaml
 ```
 
 Commit the generated `dist/install.yaml` changes for the release tag.
@@ -104,7 +104,7 @@ bin/fabricopsctl query -n default --org BankA --peer BankA/peer0 \
 
 ```bash
 kind create cluster --name fabricops-release-helm
-make helm-deploy-release VERSION=0.2.0
+make helm-deploy-release VERSION=0.2.1
 kubectl apply -k config/samples
 make build-fabricopsctl
 bin/fabricopsctl wait -n default --timeout 20m fabricnetwork-sample

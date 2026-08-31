@@ -1028,7 +1028,7 @@ func joinBundleTestParticipant() *fabricopsv1alpha1.FabricParticipant {
 					PackageLabel:      "settlement_settlement_1.0",
 					Sequence:          1,
 					EndorsementPolicy: "AND('BankAMSP.member','BankBMSP.member')",
-					Image:             "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.0",
+					Image:             "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.1",
 				},
 			},
 		},

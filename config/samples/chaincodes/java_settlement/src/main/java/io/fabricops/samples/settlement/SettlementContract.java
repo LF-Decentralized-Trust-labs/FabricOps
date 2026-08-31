@@ -20,7 +20,7 @@ import org.json.JSONObject;
     info = @Info(
         title = "FabricOps settlement sample",
         description = "Small settlement contract for CCaaS lifecycle tests",
-        version = "0.2.0",
+        version = "0.2.1",
         license = @License(name = "Apache-2.0", url = "https://www.apache.org/licenses/LICENSE-2.0"),
         contact = @Contact(name = "FabricOps", email = "fabricops@example.com")
     )
