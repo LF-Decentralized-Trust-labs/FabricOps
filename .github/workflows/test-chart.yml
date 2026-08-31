@@ -91,26 +91,42 @@ jobs:
 
       - name: Invoke and query with fabricopsctl
         run: |
-          settlement_id="chart-$(date +%s)"
-          bin/fabricopsctl invoke -n default \
-            --org BankA \
-            --peer BankA/peer0 \
-            --peer BankB/peer0 \
-            --channel settlement \
-            --chaincode settlement \
-            --function createSettlement \
-            --args "[\"${settlement_id}\",\"alice\",\"bob\",\"100\",\"USD\"]" \
-            -o json \
-            fabricnetwork-sample
-          bin/fabricopsctl query -n default \
-            --org BankA \
-            --peer BankA/peer0 \
-            --channel settlement \
-            --chaincode settlement \
-            --function readSettlement \
-            --args "[\"${settlement_id}\"]" \
-            -o json \
-            fabricnetwork-sample
+          set -euo pipefail
+
+          for attempt in 1 2 3 4 5; do
+            settlement_id="chart-${attempt}-$(date +%s)"
+            if bin/fabricopsctl invoke -n default \
+              --org BankA \
+              --peer BankA/peer0 \
+              --peer BankB/peer0 \
+              --channel settlement \
+              --chaincode settlement \
+              --function createSettlement \
+              --args "[\"${settlement_id}\",\"alice\",\"bob\",\"100\",\"USD\"]" \
+              -o json \
+              fabricnetwork-sample && \
+              bin/fabricopsctl query -n default \
+              --org BankA \
+              --peer BankA/peer0 \
+              --channel settlement \
+              --chaincode settlement \
+              --function readSettlement \
+              --args "[\"${settlement_id}\"]" \
+              -o json \
+              fabricnetwork-sample; then
+              exit 0
+            fi
+
+            echo "fabricopsctl invoke/query attempt ${attempt} failed; waiting before retry"
+            kubectl get pods -n fo-sample-banka -l fabricops.io/component=chaincode -o wide || true
+            kubectl get pods -n fo-sample-bankb -l fabricops.io/component=chaincode -o wide || true
+            kubectl get endpoints -n fo-sample-banka || true
+            kubectl get endpoints -n fo-sample-bankb || true
+            sleep 15
+          done
+
+          echo "fabricopsctl invoke/query did not succeed after retries"
+          exit 1
 
       - name: Cleanup kind cluster
         if: always()
