@@ -374,7 +374,14 @@ func (r *FabricNetworkReconciler) reconcileOrg(
 	}
 	status.CAReady = caReady
 
-	if caReady {
+	registrarRotation, err := r.reconcileCARegistrarRotation(ctx, net, org, namespace, status.CAReady)
+	if err != nil {
+		return status, err
+	}
+	status.CARegistrarRotation = registrarRotation
+	registrarRotationBlocksWork := caRegistrarRotationBlocksWork(registrarRotation)
+
+	if caReady && !registrarRotationBlocksWork {
 		if err := r.reconcileAdminEnrollment(ctx, net, org, namespace); err != nil {
 			return status, err
 		}
@@ -390,7 +397,15 @@ func (r *FabricNetworkReconciler) reconcileOrg(
 	status.IdentityReady = identityReady
 	status.IdentityError = identityError
 
-	certificates, renewalRequired, renewalError, err := r.reconcileCertificateLifecycle(ctx, net, org, namespace, status.CAReady, status.IdentityReady)
+	certificates, renewalRequired, renewalError, err := r.reconcileCertificateLifecycle(
+		ctx,
+		net,
+		org,
+		namespace,
+		status.CAReady,
+		status.IdentityReady,
+		registrarRotationBlocksWork,
+	)
 	if err != nil {
 		return status, err
 	}

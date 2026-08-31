@@ -1369,6 +1369,165 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(peerDeploy.Spec.Template.Annotations[annotationIdentityRevision]).NotTo(Equal(nearExpiryRevision))
 		})
 
+		It("should rotate CA bootstrap registrar credentials only after the staged registrar is validated", func() {
+			controllerReconciler := &FabricNetworkReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+			request := reconcile.Request{NamespacedName: typeNamespacedName}
+
+			var network fabricopsv1alpha1.FabricNetwork
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &network)).To(Succeed())
+			network.Spec.Orgs[1].CA.Registrar = &fabricopsv1alpha1.CARegistrarConfig{
+				Rotation: &fabricopsv1alpha1.CARegistrarRotationSpec{
+					RequestID: "rotate-001",
+				},
+			}
+			Expect(k8sClient.Update(ctx, &network)).To(Succeed())
+
+			_, err := controllerReconciler.Reconcile(ctx, request)
+			Expect(err).NotTo(HaveOccurred())
+
+			bankNamespace := "fo-test-banka"
+			bankOrg := network.Spec.Orgs[1]
+			activeName := caBootstrapSecretName(bankOrg)
+			stagedName := caRegistrarStagedSecretName(bankOrg, "rotate-001")
+			rotationJobName := caRegistrarRotationJobName(bankOrg, "rotate-001")
+
+			var active corev1.Secret
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: bankNamespace,
+				Name:      activeName,
+			}, &active)).To(Succeed())
+			originalActiveData := copySecretData(active.Data)
+
+			var staged corev1.Secret
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: bankNamespace,
+				Name:      stagedName,
+			}, &staged)).To(Succeed())
+			Expect(staged.Labels[labelIdentityKind]).To(Equal(secretKindCABootstrapNext))
+			Expect(caBootstrapSecretValidationError(staged)).To(BeEmpty())
+			Expect(string(staged.Data[caBootstrapUsernameKey])).To(Equal(caRegistrarNextUsername("rotate-001")))
+			Expect(staged.Data[caBootstrapUserPassKey]).NotTo(Equal(active.Data[caBootstrapUserPassKey]))
+
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &network)).To(Succeed())
+			rotationStatus := network.Status.OrgStatus[1].CARegistrarRotation
+			Expect(rotationStatus.Phase).To(Equal(fabricopsv1alpha1.CARegistrarRotationPhaseWaitingForCA))
+			Expect(rotationStatus.ActiveSecretName).To(Equal(activeName))
+			Expect(rotationStatus.StagedSecretName).To(Equal(stagedName))
+			Expect(rotationStatus.RotationJobName).To(Equal(rotationJobName))
+
+			markDeploymentReady(ctx, bankNamespace, "banka-ca")
+
+			_, err = controllerReconciler.Reconcile(ctx, request)
+			Expect(err).NotTo(HaveOccurred())
+
+			var rotationJob batchv1.Job
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: bankNamespace,
+				Name:      rotationJobName,
+			}, &rotationJob)).To(Succeed())
+			Expect(rotationJob.Labels[labelIdentityKind]).To(Equal(identityKindCARegistrarRotate))
+			Expect(rotationJob.Annotations[annotationSucceededJobCleanup]).To(Equal("true"))
+			Expect(rotationJob.Spec.Template.Spec.ServiceAccountName).To(Equal(enrollmentServiceAccountName(bankOrg)))
+			Expect(rotationJob.Spec.Template.Spec.Containers).To(HaveLen(1))
+
+			rotateContainer := rotationJob.Spec.Template.Spec.Containers[0]
+			Expect(rotateContainer.Image).To(Equal(caImage()))
+			Expect(envMap(rotateContainer)[envCAAddress]).To(Equal("banka-ca.fo-test-banka.svc.cluster.local:7054"))
+			Expect(envSecretRefs(rotateContainer)).To(HaveKeyWithValue(envCABootstrapUserPass, activeName+"/user-pass"))
+			Expect(envSecretRefs(rotateContainer)).To(HaveKeyWithValue(envCARegistrarNextUsername, stagedName+"/username"))
+			Expect(envSecretRefs(rotateContainer)).To(HaveKeyWithValue(envCARegistrarNextPassword, stagedName+"/password"))
+			Expect(rotateContainer.Command[2]).To(ContainSubstring("fabric-ca-client register"))
+			Expect(rotateContainer.Command[2]).To(ContainSubstring("fabric-ca-client enroll"))
+			Expect(rotateContainer.Command[2]).To(ContainSubstring("validating staged credentials"))
+
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &network)).To(Succeed())
+			rotationStatus = network.Status.OrgStatus[1].CARegistrarRotation
+			Expect(rotationStatus.Phase).To(Equal(fabricopsv1alpha1.CARegistrarRotationPhaseRotating))
+			certificateCondition := apiMeta.FindStatusCondition(network.Status.Conditions, conditionCertificateLifecycleReady)
+			Expect(certificateCondition).NotTo(BeNil())
+			Expect(certificateCondition.Status).To(Equal(metav1.ConditionFalse))
+			Expect(certificateCondition.Reason).To(Equal("CertificateMaterialMissing"))
+			Expect(certificateCondition.Message).To(ContainSubstring("BankA CA registrar rotation Rotating"))
+
+			By("Retaining the active bootstrap Secret when the rotation Job fails")
+			markJobFailed(ctx, bankNamespace, rotationJobName)
+
+			_, err = controllerReconciler.Reconcile(ctx, request)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: bankNamespace,
+				Name:      activeName,
+			}, &active)).To(Succeed())
+			Expect(active.Data).To(Equal(originalActiveData))
+
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &network)).To(Succeed())
+			rotationStatus = network.Status.OrgStatus[1].CARegistrarRotation
+			Expect(rotationStatus.Phase).To(Equal(fabricopsv1alpha1.CARegistrarRotationPhaseFailed))
+			Expect(rotationStatus.Message).To(ContainSubstring("active bootstrap Secret was retained"))
+
+			By("Using a new request ID to retry and promote after successful validation")
+			network.Spec.Orgs[1].CA.Registrar.Rotation.RequestID = "rotate-002"
+			Expect(k8sClient.Update(ctx, &network)).To(Succeed())
+
+			_, err = controllerReconciler.Reconcile(ctx, request)
+			Expect(err).NotTo(HaveOccurred())
+
+			retryStagedName := caRegistrarStagedSecretName(bankOrg, "rotate-002")
+			retryJobName := caRegistrarRotationJobName(bankOrg, "rotate-002")
+			var retryStaged corev1.Secret
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: bankNamespace,
+				Name:      retryStagedName,
+			}, &retryStaged)).To(Succeed())
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: bankNamespace,
+				Name:      retryJobName,
+			}, &rotationJob)).To(Succeed())
+
+			markJobComplete(ctx, bankNamespace, retryJobName)
+
+			_, err = controllerReconciler.Reconcile(ctx, request)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: bankNamespace,
+				Name:      activeName,
+			}, &active)).To(Succeed())
+			Expect(active.Data).To(Equal(retryStaged.Data))
+			Expect(active.Labels[labelIdentityKind]).To(Equal(secretKindCABootstrap))
+			Expect(active.Annotations[annotationCARegistrarRotationRequestID]).To(Equal("rotate-002"))
+			Expect(active.Annotations[annotationCARegistrarPreviousSecret]).To(Equal(caRegistrarPreviousSecretName(bankOrg)))
+
+			var previous corev1.Secret
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: bankNamespace,
+				Name:      caRegistrarPreviousSecretName(bankOrg),
+			}, &previous)).To(Succeed())
+			Expect(previous.Data).To(Equal(originalActiveData))
+			Expect(previous.Labels[labelIdentityKind]).To(Equal(secretKindCABootstrapPrevious))
+
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &network)).To(Succeed())
+			rotationStatus = network.Status.OrgStatus[1].CARegistrarRotation
+			Expect(rotationStatus.Phase).To(Equal(fabricopsv1alpha1.CARegistrarRotationPhaseReady))
+			Expect(rotationStatus.ActiveUsername).To(Equal(caRegistrarNextUsername("rotate-002")))
+			Expect(rotationStatus.PreviousSecretName).To(Equal(caRegistrarPreviousSecretName(bankOrg)))
+			Expect(rotationStatus.LastRotationTime.IsZero()).To(BeFalse())
+			certificateCondition = apiMeta.FindStatusCondition(network.Status.Conditions, conditionCertificateLifecycleReady)
+			Expect(certificateCondition).NotTo(BeNil())
+			Expect(certificateCondition.Reason).NotTo(Equal("CARegistrarRotationRunning"))
+
+			var adminJob batchv1.Job
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: bankNamespace,
+				Name:      adminEnrollmentJobName(bankOrg),
+			}, &adminJob)).To(Succeed())
+			Expect(envSecretRefs(adminJob.Spec.Template.Spec.InitContainers[0])).To(HaveKeyWithValue(envCABootstrapUserPass, activeName+"/user-pass"))
+		})
+
 		It("should map declared channel memberships into status", func() {
 			var network fabricopsv1alpha1.FabricNetwork
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &network)).To(Succeed())

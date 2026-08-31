@@ -476,6 +476,8 @@ FabricOps uses Fabric CA enrollment as the identity material path. The determini
 
 ```text
 <org>-ca-bootstrap: username, password, user-pass
+<org>-ca-bootstrap-next-<hash>: username, password, user-pass
+<org>-ca-bootstrap-previous: username, password, user-pass
 <org>-admin-enrollment: username, password, user-pass
 <workload>-enrollment: username, password, user-pass
 <workload>-msp: config.yaml, cacert.pem, tlscacert.pem, signcert.pem, keystore.pem
@@ -486,14 +488,20 @@ FabricOps uses Fabric CA enrollment as the identity material path. The determini
 
 Fabric CA pods receive `<org>-ca-bootstrap/user-pass` through `FABRIC_CA_SERVER_BOOTSTRAP_USER_PASS`. Admin enrollment Jobs use `<org>-admin-enrollment` to register and enroll the org admin identity, then publish enrolled MSP/TLS material to `<org>-admin-msp` and `<org>-admin-tls`. Workload enrollment Jobs use `<workload>-enrollment` to register and enroll orderer and peer identities, then publish enrolled material to `<workload>-msp` and `<workload>-tls`.
 
+When `spec.orgs[].ca.registrar.rotation.requestID` is set, FabricOps stages a
+new bootstrap registrar Secret, validates it through Fabric CA, promotes it
+into the stable `<org>-ca-bootstrap` Secret only after the rotation Job
+succeeds, and preserves the previous credential in
+`<org>-ca-bootstrap-previous` for manual recovery.
+
 Orderers mount identity Secrets at `/var/hyperledger/orderer/msp` and `/var/hyperledger/orderer/tls`. Peers mount them at `/etc/hyperledger/fabric/peer/msp` and `/etc/hyperledger/fabric/peer/tls`.
 
 FabricOps inventories managed MSP/TLS certificates in status, starts Fabric CA
 renewal Jobs for admin, orderer, and peer leaf identities inside the renewal
 window, and rolls workloads when mounted identity material changes. See
 [docs/certificate-lifecycle.md](docs/certificate-lifecycle.md) for recovery
-paths and the boundary between leaf identity renewal, CA root rollover, and CA
-bootstrap registrar rotation.
+paths and the boundary between leaf identity renewal, bootstrap registrar
+rotation, and CA root rollover.
 
 ## Storage
 

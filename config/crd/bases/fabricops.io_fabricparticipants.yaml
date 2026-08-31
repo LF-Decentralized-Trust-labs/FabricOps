@@ -896,6 +896,25 @@ spec:
                         minLength: 1
                         pattern: ^[A-Za-z0-9_-]+$
                         type: string
+                      registrar:
+                        description: Registrar controls Fabric CA bootstrap registrar
+                          lifecycle behavior.
+                        properties:
+                          rotation:
+                            description: |-
+                              Rotation requests safe rotation of the Fabric CA bootstrap registrar
+                              credentials used by FabricOps helper Jobs. Changing requestID starts a
+                              new one-time rotation.
+                            properties:
+                              requestID:
+                                description: |-
+                                  RequestID is an operator-visible nonce for a requested registrar rotation.
+                                  Set a new value to request a new rotation.
+                                maxLength: 128
+                                pattern: ^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$
+                                type: string
+                            type: object
+                        type: object
                     required:
                     - db
                     type: object
@@ -1200,6 +1219,31 @@ spec:
                     type: string
                   caReady:
                     type: boolean
+                  caRegistrarRotation:
+                    description: |-
+                      CARegistrarRotation reports bootstrap registrar credential rotation state
+                      for the org Fabric CA.
+                    properties:
+                      activeSecretName:
+                        type: string
+                      activeUsername:
+                        type: string
+                      lastRotationTime:
+                        format: date-time
+                        type: string
+                      message:
+                        type: string
+                      observedRequestID:
+                        type: string
+                      phase:
+                        type: string
+                      previousSecretName:
+                        type: string
+                      rotationJobName:
+                        type: string
+                      stagedSecretName:
+                        type: string
+                    type: object
                   certificateRenewalError:
                     description: |-
                       CertificateRenewalError summarizes renewal failures without replacing the

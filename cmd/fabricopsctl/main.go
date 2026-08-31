@@ -658,6 +658,9 @@ func printOrgStatuses(out io.Writer, statuses []fabricopsv1alpha1.OrgStatus) {
 		if status.CAEndpoint != "" {
 			printf(out, "  ca: %s\n", status.CAEndpoint)
 		}
+		if summary := caRegistrarRotationStatusSummary(status.CARegistrarRotation); summary != "" {
+			printf(out, "  caRegistrarRotation: %s\n", summary)
+		}
 		if status.ConnectionProfileConfigMapName != "" {
 			printf(out, "  connectionProfile: %s/%s\n", status.Namespace, status.ConnectionProfileConfigMapName)
 		}
@@ -688,6 +691,28 @@ func printOrgStatuses(out io.Writer, statuses []fabricopsv1alpha1.OrgStatus) {
 			)
 		}
 	}
+}
+
+func caRegistrarRotationStatusSummary(status fabricopsv1alpha1.CARegistrarRotationStatus) string {
+	if status.Phase == "" || status.Phase == fabricopsv1alpha1.CARegistrarRotationPhaseIdle {
+		return ""
+	}
+
+	parts := []string{string(status.Phase)}
+	if status.ObservedRequestID != "" {
+		parts = append(parts, "requestID="+status.ObservedRequestID)
+	}
+	if status.ActiveUsername != "" {
+		parts = append(parts, "active="+status.ActiveUsername)
+	}
+	if status.RotationJobName != "" {
+		parts = append(parts, "job="+status.RotationJobName)
+	}
+	if status.Message != "" {
+		parts = append(parts, fmt.Sprintf("message=%q", status.Message))
+	}
+
+	return strings.Join(parts, " ")
 }
 
 func certificateStatusSummary(status fabricopsv1alpha1.OrgStatus) string {

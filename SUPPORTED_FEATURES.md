@@ -54,7 +54,7 @@ that proof is already present.
 | Finalizer cleanup | n/a | n/a | Supported | README | | Deletes owned org namespaces after ownership-label checks |
 | Fabric operations endpoints | n/a | n/a | Supported | README | | Peer/orderer `/healthz` and `/metrics` Services |
 | Prometheus `ServiceMonitor` output | n/a | n/a | Supported | README | | Opt-in via `spec.global.observability.serviceMonitor`; requires Prometheus Operator CRDs |
-| TLS certificate rotation | n/a | n/a | Partial | docs/certificate-lifecycle.md | | Fabric CA-managed admin/orderer/peer leaf MSP and TLS certificates are inventoried, renewed through renewal Jobs, and trigger workload rollouts through identity revision annotations; CA root rollover and bootstrap registrar rotation remain planned |
+| TLS certificate and registrar rotation | n/a | n/a | Partial | docs/certificate-lifecycle.md | | Fabric CA-managed admin/orderer/peer leaf MSP and TLS certificates are inventoried, renewed through renewal Jobs, and trigger workload rollouts through identity revision annotations; CA bootstrap registrar credentials rotate through staged Secrets and validation Jobs; CA root rollover remains planned |
 | Operations endpoint TLS | n/a | n/a | Planned | | | Local-dev path currently uses HTTP operations endpoints |
 | NetworkPolicy generation | n/a | n/a | Supported | README, API | | Opt-in org-boundary policies via `spec.global.networkPolicy.enabled` |
 | Packaged install bundle | n/a | n/a | Supported | README | | `dist/install.yaml` is generated from `config/default` and published with releases |

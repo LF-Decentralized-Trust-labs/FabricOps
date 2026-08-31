@@ -150,6 +150,49 @@ type CAConfig struct {
 	// +kubebuilder:validation:MaxLength=32
 	// +kubebuilder:validation:Pattern="^[A-Za-z0-9_-]+$"
 	DB string `json:"db"`
+	// Registrar controls Fabric CA bootstrap registrar lifecycle behavior.
+	// +optional
+	Registrar *CARegistrarConfig `json:"registrar,omitempty"`
+}
+
+type CARegistrarConfig struct {
+	// Rotation requests safe rotation of the Fabric CA bootstrap registrar
+	// credentials used by FabricOps helper Jobs. Changing requestID starts a
+	// new one-time rotation.
+	// +optional
+	Rotation *CARegistrarRotationSpec `json:"rotation,omitempty"`
+}
+
+type CARegistrarRotationSpec struct {
+	// RequestID is an operator-visible nonce for a requested registrar rotation.
+	// Set a new value to request a new rotation.
+	// +optional
+	// +kubebuilder:validation:MaxLength=128
+	// +kubebuilder:validation:Pattern="^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$"
+	RequestID string `json:"requestID,omitempty"`
+}
+
+type CARegistrarRotationPhase string
+
+const (
+	CARegistrarRotationPhaseIdle         CARegistrarRotationPhase = "Idle"
+	CARegistrarRotationPhaseWaitingForCA CARegistrarRotationPhase = "WaitingForCA"
+	CARegistrarRotationPhaseStaging      CARegistrarRotationPhase = "Staging"
+	CARegistrarRotationPhaseRotating     CARegistrarRotationPhase = "Rotating"
+	CARegistrarRotationPhaseReady        CARegistrarRotationPhase = "Ready"
+	CARegistrarRotationPhaseFailed       CARegistrarRotationPhase = "Failed"
+)
+
+type CARegistrarRotationStatus struct {
+	ObservedRequestID  string                   `json:"observedRequestID,omitempty"`
+	Phase              CARegistrarRotationPhase `json:"phase,omitempty"`
+	ActiveSecretName   string                   `json:"activeSecretName,omitempty"`
+	ActiveUsername     string                   `json:"activeUsername,omitempty"`
+	PreviousSecretName string                   `json:"previousSecretName,omitempty"`
+	StagedSecretName   string                   `json:"stagedSecretName,omitempty"`
+	RotationJobName    string                   `json:"rotationJobName,omitempty"`
+	LastRotationTime   metav1.Time              `json:"lastRotationTime,omitempty"`
+	Message            string                   `json:"message,omitempty"`
 }
 
 type OrdererGroup struct {
@@ -583,7 +626,11 @@ type OrgStatus struct {
 	// last-known-good identity material.
 	// +optional
 	CertificateRenewalError string `json:"certificateRenewalError,omitempty"`
-	Ready                   bool   `json:"ready"`
+	// CARegistrarRotation reports bootstrap registrar credential rotation state
+	// for the org Fabric CA.
+	// +optional
+	CARegistrarRotation CARegistrarRotationStatus `json:"caRegistrarRotation,omitempty"`
+	Ready               bool                      `json:"ready"`
 }
 
 type ChannelOrgStatus struct {

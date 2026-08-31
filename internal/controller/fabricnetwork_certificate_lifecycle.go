@@ -82,6 +82,7 @@ func (r *FabricNetworkReconciler) reconcileCertificateLifecycle(
 	namespace string,
 	caReady bool,
 	identityReady bool,
+	registrarRotationBlocksWork bool,
 ) ([]fabricopsv1alpha1.CertificateStatus, bool, string, error) {
 	items, err := r.identityCertificateInventory(ctx, net, org, namespace, time.Now())
 	if err != nil {
@@ -100,6 +101,9 @@ func (r *FabricNetworkReconciler) reconcileCertificateLifecycle(
 	}
 	if !caReady {
 		return statuses, renewalRequired, "Fabric CA is not ready; certificate renewal is waiting", nil
+	}
+	if registrarRotationBlocksWork {
+		return statuses, renewalRequired, "CA registrar rotation is in progress; certificate renewal is waiting", nil
 	}
 	if err := r.ensureEnrollmentRBAC(ctx, net, org, namespace); err != nil {
 		return statuses, renewalRequired, "", err
@@ -518,9 +522,16 @@ func certificateStatusesNeedRenewal(statuses []fabricopsv1alpha1.CertificateStat
 func certificateLifecycleConditionStatus(
 	statuses []fabricopsv1alpha1.OrgStatus,
 ) (metav1.ConditionStatus, string, string) {
-	problems := []string{}
+	rotationProblems := []string{}
+	certificateProblems := []string{}
 	reason := "CertificateLifecycleReady"
 	for _, orgStatus := range statuses {
+		if problem, priority, ok := caRegistrarRotationConditionProblem(orgStatus.Name, orgStatus.CARegistrarRotation); ok {
+			if reason == "CertificateLifecycleReady" || priority > certificateReasonPriority(reason) {
+				reason = caRegistrarRotationReason(orgStatus.CARegistrarRotation.Phase)
+			}
+			rotationProblems = append(rotationProblems, problem)
+		}
 		for _, certificate := range orgStatus.Certificates {
 			if certificate.State == "" || certificate.State == fabricopsv1alpha1.CertificateStateValid {
 				continue
@@ -528,10 +539,11 @@ func certificateLifecycleConditionStatus(
 			if reason == "CertificateLifecycleReady" || certificateStatePriority(certificate.State) > certificateReasonPriority(reason) {
 				reason = certificateReason(certificate.State)
 			}
-			problems = append(problems, certificateProblemMessage(orgStatus.Name, certificate))
+			certificateProblems = append(certificateProblems, certificateProblemMessage(orgStatus.Name, certificate))
 		}
 	}
 
+	problems := append(rotationProblems, certificateProblems...)
 	if len(problems) == 0 {
 		return metav1.ConditionTrue, reason, "All Fabric certificates are valid"
 	}
@@ -582,6 +594,8 @@ func certificateStatePriority(state fabricopsv1alpha1.CertificateState) int {
 
 func certificateReasonPriority(reason string) int {
 	switch reason {
+	case "CARegistrarRotationFailed":
+		return 70
 	case "CertificateRenewalFailed":
 		return 60
 	case "CertificateExpired":
@@ -590,12 +604,31 @@ func certificateReasonPriority(reason string) int {
 		return 40
 	case "CertificateMaterialMissing":
 		return 30
+	case "CARegistrarRotationWaitingForCA",
+		"CARegistrarRotationStaging",
+		"CARegistrarRotationRunning":
+		return 25
 	case "CertificateRenewalRunning":
 		return 20
 	case "CertificateRenewalRequired":
 		return 10
 	default:
 		return 0
+	}
+}
+
+func caRegistrarRotationReason(phase fabricopsv1alpha1.CARegistrarRotationPhase) string {
+	switch phase {
+	case fabricopsv1alpha1.CARegistrarRotationPhaseFailed:
+		return "CARegistrarRotationFailed"
+	case fabricopsv1alpha1.CARegistrarRotationPhaseWaitingForCA:
+		return "CARegistrarRotationWaitingForCA"
+	case fabricopsv1alpha1.CARegistrarRotationPhaseStaging:
+		return "CARegistrarRotationStaging"
+	case fabricopsv1alpha1.CARegistrarRotationPhaseRotating:
+		return "CARegistrarRotationRunning"
+	default:
+		return "CARegistrarRotationPending"
 	}
 }
 

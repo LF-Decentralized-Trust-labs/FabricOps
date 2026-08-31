@@ -42,6 +42,39 @@ or peer Deployment pod template with `fabricops.io/identity-revision`. The
 annotation is based on the mounted MSP/TLS Secret contents, so Kubernetes rolls
 the workload without recreating the network.
 
+## Bootstrap Registrar Rotation
+
+Fabric CA bootstrap registrar credentials are long-lived operational
+credentials used by FabricOps enrollment and renewal Jobs. They can be rotated
+per org with an explicit request ID:
+
+```yaml
+orgs:
+  - organization:
+      name: BankA
+    ca:
+      db: sqlite
+      registrar:
+        rotation:
+          requestID: rotate-2026-08-31
+```
+
+Changing `requestID` starts a new one-time rotation. FabricOps creates a staged
+`<org>-ca-bootstrap-next-<hash>` Secret, starts a Fabric CA rotation Job that
+uses the current `<org>-ca-bootstrap` credential to register and test-enroll the
+new registrar identity, and promotes the staged data into the stable
+`<org>-ca-bootstrap` Secret only after that Job succeeds.
+
+The previous active credential is copied to `<org>-ca-bootstrap-previous` before
+promotion. Failed rotation Jobs are retained, and the active bootstrap Secret is
+left unchanged. Use a new `requestID` to retry after fixing the Fabric CA state
+or credentials.
+
+Enrollment and certificate renewal Jobs keep using the stable
+`<org>-ca-bootstrap` Secret. While a requested rotation is waiting for the CA or
+actively running, FabricOps waits before starting new enrollment or renewal work
+for that org.
+
 ## Status Signals
 
 `FabricNetwork.status.orgStatus[].certificates[]` contains the detailed
@@ -54,9 +87,13 @@ inventory. The top-level `CertificateLifecycleReady` condition reports:
 - `False / CertificateRenewalFailed` when a renewal Job failed
 - `False / CertificateExpired`, `CertificateMaterialMissing`, or
   `CertificateMaterialInvalid` when material needs intervention
+- `False / CARegistrarRotationRunning`,
+  `CARegistrarRotationWaitingForCA`, `CARegistrarRotationStaging`, or
+  `CARegistrarRotationFailed` when bootstrap registrar rotation needs attention
 
 The plain `fabricopsctl status` output prints a compact per-org certificate
-summary. Use JSON or YAML output for the full inventory:
+summary and any active CA registrar rotation phase. Use JSON or YAML output for
+the full inventory:
 
 ```bash
 fabricopsctl status -n default -o yaml fabricnetwork-sample
@@ -91,7 +128,12 @@ If CA root material is near expiry or expired, plan a CA rollover and refresh th
 affected enrollment output. FabricOps reports the condition, but it does not yet
 perform root CA migration or channel MSP config updates automatically.
 
-Fabric CA bootstrap registrar credential rotation is also intentionally separate
-from leaf certificate renewal. Rotate the registrar only after validating the CA
-database state and any admin enrollment Jobs that still depend on those
-credentials.
+For bootstrap registrar rotation failures, inspect the retained rotation Job and
+confirm that the active `<org>-ca-bootstrap` Secret still authenticates to the
+Fabric CA:
+
+```bash
+kubectl logs -n <org-namespace> job/<rotation-job-name> --all-containers
+kubectl get secret -n <org-namespace> <org>-ca-bootstrap -o yaml
+kubectl get secret -n <org-namespace> <org>-ca-bootstrap-previous -o yaml
+```
