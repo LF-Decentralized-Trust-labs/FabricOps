@@ -38,7 +38,7 @@ kubectl rollout status deployment/fabricops-controller-manager -n fabricops-syst
 The bundle installs the `FabricNetwork` CRD, RBAC, ServiceAccount, manager Deployment, and metrics Service. The manager image is pinned to the release tag:
 
 ```text
-ghcr.io/lf-decentralized-trust-labs/fabricops:0.2.0
+ghcr.io/lf-decentralized-trust-labs/fabricops:0.2.1
 ```
 
 ### Install With Helm
@@ -47,7 +47,7 @@ Install the release chart directly from the GitHub release:
 
 ```bash
 helm upgrade --install fabricops \
-  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.1/fabricops-0.2.0.tgz \
+  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.1/fabricops-0.2.1.tgz \
   --namespace fabricops-system \
   --create-namespace \
   --wait
@@ -59,7 +59,7 @@ Override the manager image if needed:
 
 ```bash
 helm upgrade --install fabricops \
-  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.1/fabricops-0.2.0.tgz \
+  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.1/fabricops-0.2.1.tgz \
   --namespace fabricops-system \
   --create-namespace \
   --set manager.image.repository=ghcr.io/lf-decentralized-trust-labs/fabricops \
@@ -73,7 +73,7 @@ If you want to review the Kubernetes objects before applying them:
 
 ```bash
 helm template fabricops \
-  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.1/fabricops-0.2.0.tgz \
+  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.1/fabricops-0.2.1.tgz \
   --namespace fabricops-system > fabricops-install.yaml
 
 kubectl apply -f fabricops-install.yaml
@@ -246,11 +246,11 @@ helm uninstall fabricops -n fabricops-system
 Release `v0.2.1` publishes:
 
 - `install.yaml`: single-file Kubernetes install bundle
-- `fabricops-0.2.0.tgz`: Helm chart archive
-- `ghcr.io/lf-decentralized-trust-labs/fabricops:0.2.0`: multi-platform manager image
-- `ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.0`: Node CCaaS sample
-- `ghcr.io/lf-decentralized-trust-labs/fabricops-go-settlement:0.2.0`: Go CCaaS sample
-- `ghcr.io/lf-decentralized-trust-labs/fabricops-java-settlement:0.2.0`: Java CCaaS sample
+- `fabricops-0.2.1.tgz`: Helm chart archive
+- `ghcr.io/lf-decentralized-trust-labs/fabricops:0.2.1`: multi-platform manager image
+- `ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.1`: Node CCaaS sample
+- `ghcr.io/lf-decentralized-trust-labs/fabricops-go-settlement:0.2.1`: Go CCaaS sample
+- `ghcr.io/lf-decentralized-trust-labs/fabricops-java-settlement:0.2.1`: Java CCaaS sample
 
 ## Capabilities
 
@@ -421,8 +421,8 @@ The local release helpers remain useful for debugging individual steps. For
 example:
 
 ```bash
-make docker-buildx-release VERSION=0.2.0
-make build-installer-release VERSION=0.2.0
+make docker-buildx-release VERSION=0.2.1
+make build-installer-release VERSION=0.2.1
 ```
 
 `docker-buildx-release` publishes the manager image for all configured `PLATFORMS`. For local single-platform sanity checks, use `docker-build-release` and `docker-push-release`.
@@ -430,7 +430,7 @@ make build-installer-release VERSION=0.2.0
 Use that same tag for Helm installs:
 
 ```bash
-make helm-deploy-release VERSION=0.2.0
+make helm-deploy-release VERSION=0.2.1
 ```
 
 The release helpers derive `RELEASE_IMG` from `IMAGE_REGISTRY`, `IMAGE_REPOSITORY`, and `VERSION`. Override those variables if the image moves to another registry or repository.
@@ -438,7 +438,7 @@ The release helpers derive `RELEASE_IMG` from `IMAGE_REGISTRY`, `IMAGE_REPOSITOR
 Before publishing release instructions, verify that the manager image and sample chaincode images are publicly pullable from GHCR:
 
 ```bash
-make release-check-ghcr VERSION=0.2.0
+make release-check-ghcr VERSION=0.2.1
 ```
 
 See [docs/first-release-checklist.md](docs/first-release-checklist.md) for the full release checklist.
@@ -644,7 +644,7 @@ spec:
     - name: settlement
       version: "0.0.1"
       channel: settlement
-      image: ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.0
+      image: ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.1
       sequence: 1
       ccaas:
         replicas: 1

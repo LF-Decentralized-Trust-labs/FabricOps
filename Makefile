@@ -4,7 +4,7 @@ IMG ?= $(LOCAL_IMG)
 # Canonical manager image location for release builds.
 IMAGE_REGISTRY ?= ghcr.io/lf-decentralized-trust-labs
 IMAGE_REPOSITORY ?= fabricops
-VERSION ?= 0.2.0
+VERSION ?= 0.2.1
 RELEASE_IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):$(VERSION)
 FABRICOPSCTL_VERSION ?= development
 FABRICOPSCTL_LDFLAGS ?= -X main.version=$(FABRICOPSCTL_VERSION)

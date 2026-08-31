@@ -62,4 +62,4 @@ spec:
       packageLabel: settlement_settlement_1.0
       sequence: 1
       endorsementPolicy: AND('BankAMSP.member','BankBMSP.member')
-      image: ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.0
+      image: ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.1

@@ -1663,7 +1663,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 					Name:    "settlement",
 					Version: "0.0.1",
 					Channel: "payments",
-					Image:   "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.0",
+					Image:   "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.1",
 				},
 				{
 					Name:         "audit",
@@ -1829,7 +1829,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 					Name:     "settlement",
 					Version:  "0.0.1",
 					Channel:  "settlement",
-					Image:    "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.0",
+					Image:    "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.1",
 					Sequence: 1,
 					CouchDBIndexes: []fabricopsv1alpha1.CouchDBIndex{
 						{
@@ -1943,7 +1943,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 					Name:     "settlement",
 					Version:  "0.0.1",
 					Channel:  "settlement",
-					Image:    "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.0",
+					Image:    "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.1",
 					Sequence: 1,
 					CCAAS: &fabricopsv1alpha1.ChaincodeAsAService{
 						ServicePort: 7052,
@@ -2050,7 +2050,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 				Name:              "settlement",
 				Version:           "0.0.1",
 				Channel:           "settlement",
-				Image:             "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.0",
+				Image:             "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.1",
 				Sequence:          1,
 				EndorsementPolicy: "AND('BankAMSP.member','BankBMSP.member')",
 				CCAAS: &fabricopsv1alpha1.ChaincodeAsAService{
@@ -2182,7 +2182,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 				Name:    "settlement",
 				Version: "0.0.1",
 				Channel: "settlement",
-				Image:   "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.0",
+				Image:   "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.1",
 			}
 			peer1InstallJob := buildChaincodeInstallJob(&network, chaincode, bankAOrg, "peer1")
 			Expect(peer1InstallJob.Name).To(Equal("settlement-settlement-0-0-1-banka-peer1-install"))
@@ -2274,7 +2274,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 				Name:    "settlement",
 				Version: "0.0.1",
 				Channel: "settlement",
-				Image:   "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.0",
+				Image:   "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.1",
 				CCAAS: &fabricopsv1alpha1.ChaincodeAsAService{
 					ServicePort: 7052,
 				},
@@ -2317,7 +2317,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 				Name:     "settlement",
 				Version:  "0.0.1",
 				Channel:  "settlement",
-				Image:    "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.0",
+				Image:    "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.1",
 				Sequence: 1,
 				PrivateData: []fabricopsv1alpha1.PrivateDataCollection{
 					{
@@ -2533,7 +2533,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 							Name:              "settlement",
 							Version:           "1.0",
 							Channel:           "settlement",
-							Image:             "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.0",
+							Image:             "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.1",
 							EndorsementPolicy: "AND('BankAMSP.member','BankBMSP.member')",
 						},
 					},
@@ -2945,7 +2945,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 					Name:    "settlement",
 					Version: "0.0.1",
 					Channel: "settlement",
-					Image:   "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.0",
+					Image:   "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.1",
 					CCAAS: &fabricopsv1alpha1.ChaincodeAsAService{
 						ServicePort: 7052,
 					},
@@ -3657,7 +3657,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 
 			chaincodeContainer := chaincodeDeployment.Spec.Template.Spec.Containers[0]
 			Expect(chaincodeContainer.Name).To(Equal(chaincodeServerContainer))
-			Expect(chaincodeContainer.Image).To(Equal("ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.0"))
+			Expect(chaincodeContainer.Image).To(Equal("ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.1"))
 			Expect(chaincodeContainer.ImagePullPolicy).To(Equal(corev1.PullIfNotPresent))
 			Expect(containerPorts(chaincodeContainer)).To(ContainElement(int32(7052)))
 			expectTCPProbe(chaincodeContainer.ReadinessProbe, 7052)
@@ -3830,7 +3830,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &network)).To(Succeed())
 			network.Spec.Chaincodes[0].Version = "0.0.2"
 			network.Spec.Chaincodes[0].Sequence = 2
-			network.Spec.Chaincodes[0].Image = "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.0"
+			network.Spec.Chaincodes[0].Image = "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.1"
 			Expect(k8sClient.Update(ctx, &network)).To(Succeed())
 
 			upgradedChaincode := network.Spec.Chaincodes[0]
@@ -3922,7 +3922,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 				Name:      "settlement-settlement-banka-peer0-ccaas",
 			}, &chaincodeDeployment)).To(Succeed())
 			chaincodeContainer = chaincodeDeployment.Spec.Template.Spec.Containers[0]
-			Expect(chaincodeContainer.Image).To(Equal("ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.0"))
+			Expect(chaincodeContainer.Image).To(Equal("ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.2.1"))
 			Expect(envMap(chaincodeContainer)[envCCAASChaincodeID]).To(Equal(upgradePackageID))
 			Expect(envMap(chaincodeContainer)[envCCAASCoreChaincodeIDName]).To(Equal(upgradePackageID))
 			Expect(chaincodeDeployment.Status.ReadyReplicas).To(Equal(int32(1)))
