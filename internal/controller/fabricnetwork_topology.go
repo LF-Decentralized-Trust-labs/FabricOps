@@ -30,6 +30,7 @@ func validateFabricNetworkTopology(net *fabricopsv1alpha1.FabricNetwork) []strin
 	problems := []string{}
 	orgs := map[string]fabricopsv1alpha1.Org{}
 	ordererCount := 0
+	ordererConsensusTypes := map[string]struct{}{}
 
 	if len(net.Spec.Orgs) == 0 {
 		problems = append(problems, "spec.orgs must include at least one organization")
@@ -47,13 +48,18 @@ func validateFabricNetworkTopology(net *fabricopsv1alpha1.FabricNetwork) []strin
 
 		for _, group := range org.Orderers {
 			ordererCount += group.Instances
+			ordererConsensusTypes[ordererConsensusType(group.Type)] = struct{}{}
 		}
+		problems = append(problems, validateOrgOrdererConsensus(net, org)...)
 		problems = append(problems, validateOrgPeerDatabase(org)...)
 		problems = append(problems, validateOrgExternalEndpoints(org)...)
 	}
 
 	if ordererCount == 0 {
 		problems = append(problems, "at least one orderer instance is required")
+	}
+	if len(ordererConsensusTypes) > 1 {
+		problems = append(problems, "orderer consensus types must match across all orderer groups")
 	}
 	if len(net.Spec.Channels) > 0 && !net.Spec.Global.TLS {
 		problems = append(problems, "spec.global.tls must be true when channels are declared")
@@ -137,6 +143,35 @@ func validateFabricNetworkTopology(net *fabricopsv1alpha1.FabricNetwork) []strin
 			problems = append(problems, validateChaincodePrivateDataTopology(chaincode, channel, orgs)...)
 			problems = append(problems, validateChaincodeCouchDBIndexes(chaincode)...)
 		}
+	}
+
+	return problems
+}
+
+func validateOrgOrdererConsensus(net *fabricopsv1alpha1.FabricNetwork, org fabricopsv1alpha1.Org) []string {
+	problems := []string{}
+	consensusTypes := map[string]struct{}{}
+
+	for i, group := range org.Orderers {
+		consensus := ordererConsensusType(group.Type)
+		consensusTypes[consensus] = struct{}{}
+		if consensus == ordererConsensusBFT && !fabricCapabilities(net.Spec.Global.FabricVersion).isV3 {
+			problems = append(
+				problems,
+				fmt.Sprintf(
+					"org %q orderers[%d].type %q requires spec.global.fabricVersion 3.x",
+					org.Organization.Name,
+					i,
+					group.Type,
+				),
+			)
+		}
+	}
+	if len(consensusTypes) > 1 {
+		problems = append(
+			problems,
+			fmt.Sprintf("org %q mixes orderer consensus types; all orderer groups must use the same consensus type", org.Organization.Name),
+		)
 	}
 
 	return problems

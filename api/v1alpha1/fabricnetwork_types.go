@@ -200,6 +200,8 @@ type OrdererGroup struct {
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern="^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$"
 	GroupName string `json:"groupName"`
+	// Type declares the orderer consensus implementation. Supported values
+	// are "raft"/"etcdraft" and, for Fabric v3 networks, "bft"/"smartbft".
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=32
 	// +kubebuilder:validation:Pattern="^[A-Za-z0-9_-]+$"

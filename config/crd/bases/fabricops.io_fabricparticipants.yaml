@@ -978,6 +978,9 @@ spec:
                           pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                           type: string
                         type:
+                          description: |-
+                            Type declares the orderer consensus implementation. Supported values
+                            are "raft"/"etcdraft" and, for Fabric v3 networks, "bft"/"smartbft".
                           maxLength: 32
                           minLength: 1
                           pattern: ^[A-Za-z0-9_-]+$
