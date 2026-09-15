@@ -424,16 +424,23 @@ spec:
       fabricTools: ghcr.io/example/fabric-tools:3.1.0
 ```
 
+FabricOps releases also publish a helper image built from the Hyperledger Fabric
+binary release tarballs:
+
+```text
+ghcr.io/lf-decentralized-trust-labs/fabricops-fabric-tools:<fabricops-version>
+```
+
 ### Release Automation
 
 Use the `Release` GitHub Actions workflow from the GitHub UI when publishing a
 new release. Trigger it from `main` with a release tag such as `v<version>`.
 
 The workflow validates the tag, updates release-version files, runs the Go test
-and lint gates, builds and pushes the manager plus sample chaincode images,
-generates `install.yaml` and the Helm chart package, verifies GHCR public
-visibility, commits the release-prep changes, tags the commit, and creates the
-GitHub release with the generated assets.
+and lint gates, builds and pushes the manager, Fabric tools helper, and sample
+chaincode images, generates `install.yaml` and the Helm chart package, verifies
+GHCR public visibility, commits the release-prep changes, tags the commit, and
+creates the GitHub release with the generated assets.
 
 The workflow also builds `fabricopsctl` with the release version embedded and
 verifies the binary through the normal build gate.
@@ -456,7 +463,8 @@ make helm-deploy-release VERSION=0.2.1
 
 The release helpers derive `RELEASE_IMG` from `IMAGE_REGISTRY`, `IMAGE_REPOSITORY`, and `VERSION`. Override those variables if the image moves to another registry or repository.
 
-Before publishing release instructions, verify that the manager image and sample chaincode images are publicly pullable from GHCR:
+Before publishing release instructions, verify that the manager image, Fabric
+tools helper image, and sample chaincode images are publicly pullable from GHCR:
 
 ```bash
 make release-check-ghcr VERSION=0.2.1

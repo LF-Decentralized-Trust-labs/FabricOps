@@ -8,8 +8,11 @@ VERSION ?= 0.2.1
 RELEASE_IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):$(VERSION)
 FABRICOPSCTL_VERSION ?= development
 FABRICOPSCTL_LDFLAGS ?= -X main.version=$(FABRICOPSCTL_VERSION)
+FABRIC_TOOLS_FABRIC_VERSION ?= 3.1.0
+FABRIC_TOOLS_IMAGE ?= $(IMAGE_REGISTRY)/fabricops-fabric-tools:$(VERSION)
+FABRIC_TOOLS_PLATFORM ?= linux/amd64
 SAMPLE_CHAINCODE_IMAGES ?= $(IMAGE_REGISTRY)/fabricops-node-settlement:$(VERSION) $(IMAGE_REGISTRY)/fabricops-go-settlement:$(VERSION) $(IMAGE_REGISTRY)/fabricops-java-settlement:$(VERSION)
-RELEASE_CHECK_IMAGES ?= $(RELEASE_IMG) $(SAMPLE_CHAINCODE_IMAGES)
+RELEASE_CHECK_IMAGES ?= $(RELEASE_IMG) $(SAMPLE_CHAINCODE_IMAGES) $(FABRIC_TOOLS_IMAGE)
 # YEAR defines the year value used for substituting the YEAR placeholder in the boilerplate header.
 YEAR ?= $(shell date +%Y)
 
@@ -208,8 +211,16 @@ docker-build-release: ## Build the manager image with the canonical release tag.
 docker-push-release: ## Push the manager image with the canonical release tag.
 	$(MAKE) docker-push IMG=$(RELEASE_IMG)
 
+.PHONY: docker-build-fabric-tools
+docker-build-fabric-tools: ## Build the FabricOps Fabric tools helper image.
+	IMAGE="$(FABRIC_TOOLS_IMAGE)" FABRIC_VERSION="$(FABRIC_TOOLS_FABRIC_VERSION)" PLATFORM="$(FABRIC_TOOLS_PLATFORM)" config/images/fabric-tools/build_and_push.sh
+
+.PHONY: docker-push-fabric-tools
+docker-push-fabric-tools: ## Build and push the FabricOps Fabric tools helper image.
+	IMAGE="$(FABRIC_TOOLS_IMAGE)" FABRIC_VERSION="$(FABRIC_TOOLS_FABRIC_VERSION)" PLATFORM="$(FABRIC_TOOLS_PLATFORM)" PUSH=true config/images/fabric-tools/build_and_push.sh
+
 .PHONY: release-check-ghcr
-release-check-ghcr: ## Verify release manager and sample chaincode images are publicly pullable from GHCR.
+release-check-ghcr: ## Verify release manager, helper, and sample chaincode images are publicly pullable from GHCR.
 	VERSION="$(VERSION)" IMAGE_REGISTRY="$(IMAGE_REGISTRY)" IMAGE_REPOSITORY="$(IMAGE_REPOSITORY)" hack/check-ghcr-public.sh $(RELEASE_CHECK_IMAGES)
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
