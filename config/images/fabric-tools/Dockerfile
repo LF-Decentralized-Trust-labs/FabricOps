@@ -15,7 +15,7 @@ RUN set -eux; \
       amd64|arm64) fabric_arch="${TARGETARCH}" ;; \
       *) echo "unsupported TARGETARCH ${TARGETARCH}; Fabric binary releases support linux-amd64 and linux-arm64" >&2; exit 1 ;; \
     esac; \
-    curl -fsSL -o /tmp/fabric.tgz \
+    curl -fsSL --show-error --retry 5 --retry-all-errors --connect-timeout 20 --max-time 600 -o /tmp/fabric.tgz \
       "https://github.com/hyperledger/fabric/releases/download/v${FABRIC_VERSION}/hyperledger-fabric-linux-${fabric_arch}-${FABRIC_VERSION}.tar.gz"; \
     tar -xzf /tmp/fabric.tgz -C /tmp; \
     mv /tmp/bin/* /usr/local/bin/; \
