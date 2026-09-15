@@ -403,6 +403,27 @@ Local development uses `controller:latest` so OrbStack and kind can run the mana
 ghcr.io/lf-decentralized-trust-labs/fabricops:<version>
 ```
 
+### Fabric Tools Images
+
+FabricOps runs short-lived Fabric tools Jobs for channel, config-update, and
+chaincode lifecycle operations. By default, those Jobs use
+`hyperledger/fabric-tools:<spec.global.fabricVersion>`, with Fabric 3.x
+networks falling back to `hyperledger/fabric-tools:2.5.14` for the current
+Fabric 2-compatible helper paths.
+
+Set `spec.global.images.fabricTools` when a network needs a custom tools image,
+for example a Fabric v3-capable image that includes `configtxgen`,
+`configtxlator`, `peer`, `osnadmin`, `jq`, and shell tooling:
+
+```yaml
+spec:
+  global:
+    fabricVersion: 3.1.0
+    tls: true
+    images:
+      fabricTools: ghcr.io/example/fabric-tools:3.1.0
+```
+
 ### Release Automation
 
 Use the `Release` GitHub Actions workflow from the GitHub UI when publishing a

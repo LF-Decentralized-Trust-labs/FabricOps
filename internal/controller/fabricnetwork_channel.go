@@ -1328,7 +1328,7 @@ func buildChannelBlockJob(
 					InitContainers: []corev1.Container{
 						{
 							Name:         generateChannelBlockContainer,
-							Image:        fabricToolsImage(net.Spec.Global.FabricVersion),
+							Image:        fabricToolsImage(net.Spec.Global),
 							Command:      []string{"sh", "-ec", generateChannelBlockScript(channel.Name)},
 							Resources:    componentResourceRequirements(componentOrderer),
 							VolumeMounts: generateMounts,
@@ -1420,7 +1420,7 @@ func buildOrdererJoinJob(
 					InitContainers: []corev1.Container{
 						{
 							Name:      joinOrdererContainer,
-							Image:     fabricToolsImage(net.Spec.Global.FabricVersion),
+							Image:     fabricToolsImage(net.Spec.Global),
 							Command:   []string{"sh", "-ec", joinOrdererScript(channel.Name, ordererAdminAddress(orderer), channelOrdererAdminTLSPath(orderer.org))},
 							Resources: componentResourceRequirements(componentOrderer),
 							VolumeMounts: []corev1.VolumeMount{
@@ -1527,7 +1527,7 @@ func buildPeerJoinJob(
 					InitContainers: []corev1.Container{
 						{
 							Name:      joinPeerContainer,
-							Image:     fabricToolsImage(net.Spec.Global.FabricVersion),
+							Image:     fabricToolsImage(net.Spec.Global),
 							Command:   []string{"sh", "-ec", joinPeerScript(channel.Name, org.Organization.MSPName, peerAddress(peer), channelOrgMSPPath(org), channelOrdererAdminTLSPath(org))},
 							Resources: componentResourceRequirements(componentFabricCLI),
 							VolumeMounts: []corev1.VolumeMount{
@@ -1638,7 +1638,7 @@ func buildAnchorPeerUpdateJob(
 					InitContainers: []corev1.Container{
 						{
 							Name:  updateAnchorPeerContainer,
-							Image: fabricToolsImage(net.Spec.Global.FabricVersion),
+							Image: fabricToolsImage(net.Spec.Global),
 							Command: []string{"sh", "-ec", updateAnchorPeerScript(
 								channel.Name,
 								org.Organization.MSPName,
@@ -2192,7 +2192,12 @@ func adminTLSSecretItems() []corev1.KeyToPath {
 	}
 }
 
-func fabricToolsImage(version string) string {
+func fabricToolsImage(global fabricopsv1alpha1.GlobalConfig) string {
+	if global.Images != nil && strings.TrimSpace(global.Images.FabricTools) != "" {
+		return strings.TrimSpace(global.Images.FabricTools)
+	}
+
+	version := global.FabricVersion
 	if version == "" {
 		version = "2.5.12"
 	}

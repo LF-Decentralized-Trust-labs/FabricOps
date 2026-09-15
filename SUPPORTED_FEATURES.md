@@ -78,7 +78,7 @@ that proof is already present.
 | CA DB - Postgres | yes | yes | Planned | | | `spec.orgs[].ca.db` exists but external DB wiring is not implemented |
 | CA DB - MySQL | yes | yes | Planned | | | External DB wiring is not implemented |
 | Custom Fabric version | yes | yes | Partial | README | | `spec.global.fabricVersion` selects official Hyperledger image tags |
-| Custom Fabric images | yes | yes | Partial | | | Arbitrary image repository overrides are not modelled yet |
+| Custom Fabric images | yes | yes | Partial | README, API | | Fabric tools helper Jobs can use `spec.global.images.fabricTools`; arbitrary CA/orderer/peer image repository overrides are not modelled yet |
 | JSON/YAML config input | yes | yes | Supported | README | | Kubernetes CRs can be applied as YAML or JSON |
 
 ## Channels

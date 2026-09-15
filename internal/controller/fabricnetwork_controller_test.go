@@ -2511,6 +2511,31 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(err).To(MatchError(ContainSubstring("requires Fabric v3")))
 		})
 
+		It("should allow Fabric tools helper image override", func() {
+			var network fabricopsv1alpha1.FabricNetwork
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &network)).To(Succeed())
+			network.Spec.Global.FabricVersion = "3.1.0"
+			Expect(fabricToolsImage(network.Spec.Global)).To(Equal("hyperledger/fabric-tools:2.5.14"))
+
+			network.Spec.Global.Images = &fabricopsv1alpha1.FabricImageConfig{
+				FabricTools: " ghcr.io/example/fabric-tools:3.1.0 ",
+			}
+			Expect(fabricToolsImage(network.Spec.Global)).To(Equal("ghcr.io/example/fabric-tools:3.1.0"))
+
+			channel := fabricopsv1alpha1.Channel{
+				Name: "settlement",
+				Orgs: []fabricopsv1alpha1.ChannelOrg{
+					{
+						Name:  "BankA",
+						Peers: []string{"peer0"},
+					},
+				},
+			}
+			ordererOrg := network.Spec.Orgs[0]
+			job := buildChannelBlockJob(&network, channel, ordererOrg, orgNamespaceName(&network, ordererOrg))
+			Expect(job.Spec.Template.Spec.InitContainers[0].Image).To(Equal("ghcr.io/example/fabric-tools:3.1.0"))
+		})
+
 		It("should mirror orderer MSP material for BFT channel block generation", func() {
 			var network fabricopsv1alpha1.FabricNetwork
 			Expect(k8sClient.Get(ctx, typeNamespacedName, &network)).To(Succeed())

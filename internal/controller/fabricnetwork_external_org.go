@@ -657,7 +657,7 @@ func buildExternalOrgUpdateJob(
 					InitContainers: []corev1.Container{
 						{
 							Name:  addExternalOrgContainer,
-							Image: fabricToolsImage(net.Spec.Global.FabricVersion),
+							Image: fabricToolsImage(net.Spec.Global),
 							Command: []string{"sh", "-ec", addExternalOrgScript(
 								channel.Name,
 								adminOrg.Organization.MSPName,

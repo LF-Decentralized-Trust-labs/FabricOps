@@ -41,6 +41,8 @@ type GlobalConfig struct {
 	FabricVersion string `json:"fabricVersion"`
 	TLS           bool   `json:"tls"`
 	// +optional
+	Images *FabricImageConfig `json:"images,omitempty"`
+	// +optional
 	Jobs *JobCleanupConfig `json:"jobs,omitempty"`
 	// +optional
 	Storage *StorageConfig `json:"storage,omitempty"`
@@ -48,6 +50,17 @@ type GlobalConfig struct {
 	Observability *ObservabilityConfig `json:"observability,omitempty"`
 	// +optional
 	NetworkPolicy *NetworkPolicyConfig `json:"networkPolicy,omitempty"`
+}
+
+type FabricImageConfig struct {
+	// FabricTools overrides the image used by Fabric CLI helper Jobs that run
+	// configtxgen, configtxlator, peer, osnadmin, and related tooling. This is
+	// useful when a Fabric version needs tooling that is not available from the
+	// default hyperledger/fabric-tools tag.
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	FabricTools string `json:"fabricTools,omitempty"`
 }
 
 type JobCleanupConfig struct {
