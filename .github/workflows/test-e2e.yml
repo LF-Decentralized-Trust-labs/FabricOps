@@ -54,6 +54,45 @@ jobs:
         if: always()
         run: kind delete cluster --name "${KIND_CLUSTER}" || true
 
+  test-e2e-bft:
+    permissions:
+      contents: read
+    name: BFT ordering smoke on kind
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      KIND_CLUSTER: fabricops-ci-e2e-bft
+      KIND_VERSION: v0.31.0
+      IMG: controller:latest
+      E2E_BFT_FABRIC_TOOLS_IMAGE: fabricops-fabric-tools:e2e
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-$(go env GOARCH)
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Verify kind installation
+        run: kind version
+
+      - name: Run BFT kind e2e smoke
+        run: |
+          make test-e2e-bft
+
+      - name: Cleanup kind cluster
+        if: always()
+        run: kind delete cluster --name "${KIND_CLUSTER}" || true
+
   test-e2e-federated:
     permissions:
       contents: read

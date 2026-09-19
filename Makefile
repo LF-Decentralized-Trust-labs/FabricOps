@@ -87,6 +87,8 @@ E2E_SKIP_CLEANUP ?= false
 E2E_GO_TEST_TIMEOUT ?= 75m
 E2E_CHAINCODE_RUNTIME ?= node
 E2E_SAMPLE_MANIFEST ?= config/samples/e2e/$(E2E_CHAINCODE_RUNTIME)/fabricnetwork.yaml
+E2E_BFT_GO_TEST_TIMEOUT ?= 75m
+E2E_BFT_FABRIC_TOOLS_IMAGE ?= fabricops-fabric-tools:e2e
 KIND_FEDERATED_FOUNDER_CLUSTER ?= fabricops-fed-founder
 KIND_FEDERATED_PARTICIPANT_CLUSTER ?= fabricops-fed-participant
 E2E_FEDERATED_GO_TEST_TIMEOUT ?= 90m
@@ -113,6 +115,17 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
 	@status=0; \
 	KIND=$(KIND) KUBECTL=$(KUBECTL) KIND_CLUSTER=$(KIND_CLUSTER) IMG=$(IMG) E2E_CHAINCODE_RUNTIME=$(E2E_CHAINCODE_RUNTIME) E2E_SAMPLE_MANIFEST=$(E2E_SAMPLE_MANIFEST) go test -tags=e2e ./test/e2e/ -v -ginkgo.v -timeout $(E2E_GO_TEST_TIMEOUT) || status=$$?; \
+	if [ "$(E2E_SKIP_CLEANUP)" = "true" ]; then \
+		echo "Keeping Kind cluster '$(KIND_CLUSTER)' because E2E_SKIP_CLEANUP=true"; \
+	else \
+		$(KIND) delete cluster --name $(KIND_CLUSTER); \
+	fi; \
+	exit $$status
+
+.PHONY: test-e2e-bft
+test-e2e-bft: setup-test-e2e manifests generate fmt vet ## Run the Fabric v3 BFT kind e2e test.
+	@status=0; \
+	KIND=$(KIND) KUBECTL=$(KUBECTL) KIND_CLUSTER=$(KIND_CLUSTER) IMG=$(IMG) FABRIC_TOOLS_IMAGE=$(E2E_BFT_FABRIC_TOOLS_IMAGE) go test -tags=e2e ./test/e2e/bft/ -v -ginkgo.v -timeout $(E2E_BFT_GO_TEST_TIMEOUT) || status=$$?; \
 	if [ "$(E2E_SKIP_CLEANUP)" = "true" ]; then \
 		echo "Keeping Kind cluster '$(KIND_CLUSTER)' because E2E_SKIP_CLEANUP=true"; \
 	else \

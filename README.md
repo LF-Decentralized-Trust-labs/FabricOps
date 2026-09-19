@@ -495,7 +495,17 @@ The e2e target builds the local manager plus one selected settlement chaincode
 runtime, loads those images into kind, installs the generated bundle, applies
 the matching sample manifest, waits for `Ready=True`, and invokes/queries the
 chaincode. CI runs the Node, Go, and Java lanes concurrently; the Node lane also
-covers private data, peer scale changes, cleanup, and chaincode upgrade. See
+covers private data, peer scale changes, cleanup, and chaincode upgrade.
+
+Run the focused Fabric v3 BFT ordering proof with:
+
+```bash
+make test-e2e-bft KIND_CLUSTER=fabricops-e2e-bft
+```
+
+The BFT target builds a local Fabric tools helper image, loads it into kind,
+applies `config/samples/e2e/bft/fabricnetwork.yaml`, waits for `Ready=True`,
+and verifies the BFT channel reports all four orderers joined. See
 [docs/e2e-validation.md](docs/e2e-validation.md) for kind, OrbStack, and
 cleanup notes.
 
