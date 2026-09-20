@@ -27,6 +27,17 @@ Supported runtime manifests are:
 - `config/samples/e2e/go/fabricnetwork.yaml`
 - `config/samples/e2e/java/fabricnetwork.yaml`
 
+Run the focused Fabric v3 BFT ordering proof with:
+
+```bash
+make test-e2e-bft KIND_CLUSTER=fabricops-e2e-bft
+```
+
+The BFT proof uses `config/samples/e2e/bft/fabricnetwork.yaml`. It builds and
+loads the local manager image plus a Fabric v3 tools helper image, applies a
+minimal network with four BFT orderers and one peer org, waits for `Ready=True`,
+and verifies the channel status reports all orderers and the peer joined.
+
 The default cluster name is `fabricops-test-e2e`. Override it with:
 
 ```bash
@@ -49,6 +60,7 @@ When the test completes, it has validated:
 - committed settlement chaincode invokes, key reads, and CouchDB rich queries through BankA and BankB endorsement sets
 - Node lane private data collection lifecycle wiring, transient private write, authorized private read, non-member private read rejection, and non-member private hash query
 - Node lane peer scale changes, helper Job cleanup, and declarative sequence upgrade
+- BFT lane Fabric v3 tools image build/load and BFT channel bootstrap
 
 Clean up a retained e2e cluster with:
 
@@ -91,9 +103,10 @@ make cleanup-sample
 
 ## GitHub Actions
 
-The repository has two kind-backed CI smokes:
+The repository has three kind-backed CI smokes:
 
 - `.github/workflows/test-e2e.yml` runs `make test-e2e` as concurrent Node, Go, and Java matrix lanes against the generated install bundle.
+- `.github/workflows/test-e2e.yml` runs `make test-e2e-bft` as a focused Fabric v3 BFT ordering lane.
 - `.github/workflows/test-chart.yml` installs the Helm chart, applies the Node sample manifest, waits for `Ready=True` with `fabricopsctl`, and invokes/queries the Node settlement chaincode with `fabricopsctl`.
 
 The unit/envtest workflow also runs `go mod tidy` and generated-file drift checks before the repository is ready to release.

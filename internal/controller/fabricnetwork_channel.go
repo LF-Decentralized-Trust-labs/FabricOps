@@ -81,6 +81,9 @@ const (
 	envAnchorPeerResultOrg        = "FABRICOPS_ANCHOR_PEER_RESULT_ORG"
 
 	channelServiceAccount = "channel-bootstrapper"
+
+	ordererConsensusEtcdRaft = "etcdraft"
+	ordererConsensusBFT      = "BFT"
 )
 
 func (r *FabricNetworkReconciler) reconcileChannels(
@@ -316,6 +319,18 @@ func (r *FabricNetworkReconciler) ensureChannelCryptoSecrets(
 		}
 		if err := r.ensureCopiedSecret(ctx, source, namespace, channelOrdererTLSSecretName(channel.Name, orderer.name), labels, annotations); err != nil {
 			return err
+		}
+	}
+
+	if networkUsesBFTOrderers(net) {
+		for _, orderer := range desiredOrdererInstances(net) {
+			source := client.ObjectKey{
+				Namespace: orderer.namespace,
+				Name:      identitySecretName(orderer.name, secretKindMSP),
+			}
+			if err := r.ensureCopiedSecret(ctx, source, namespace, channelOrdererMSPSecretName(channel.Name, orderer.name), labels, annotations); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -1252,6 +1267,27 @@ func buildChannelBlockJob(
 		})
 	}
 
+	if networkUsesBFTOrderers(net) {
+		for _, orderer := range desiredOrdererInstances(net) {
+			volumeName := channelOrdererMSPVolumeName(orderer.name)
+			volumes = append(volumes, corev1.Volume{
+				Name: volumeName,
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName:  channelOrdererMSPSecretName(channel.Name, orderer.name),
+						Items:       mspSecretItems(net.Spec.Global.TLS),
+						DefaultMode: secretVolumeDefaultMode(),
+					},
+				},
+			})
+			generateMounts = append(generateMounts, corev1.VolumeMount{
+				Name:      volumeName,
+				MountPath: channelOrdererMSPPath(orderer.name),
+				ReadOnly:  true,
+			})
+		}
+	}
+
 	for _, orderer := range desiredOrdererInstances(net) {
 		volumeName := channelOrdererTLSVolumeName(orderer.name)
 		volumes = append(volumes, corev1.Volume{
@@ -1292,7 +1328,7 @@ func buildChannelBlockJob(
 					InitContainers: []corev1.Container{
 						{
 							Name:         generateChannelBlockContainer,
-							Image:        fabricToolsImage(net.Spec.Global.FabricVersion),
+							Image:        fabricToolsImage(net.Spec.Global),
 							Command:      []string{"sh", "-ec", generateChannelBlockScript(channel.Name)},
 							Resources:    componentResourceRequirements(componentOrderer),
 							VolumeMounts: generateMounts,
@@ -1384,7 +1420,7 @@ func buildOrdererJoinJob(
 					InitContainers: []corev1.Container{
 						{
 							Name:      joinOrdererContainer,
-							Image:     fabricToolsImage(net.Spec.Global.FabricVersion),
+							Image:     fabricToolsImage(net.Spec.Global),
 							Command:   []string{"sh", "-ec", joinOrdererScript(channel.Name, ordererAdminAddress(orderer), channelOrdererAdminTLSPath(orderer.org))},
 							Resources: componentResourceRequirements(componentOrderer),
 							VolumeMounts: []corev1.VolumeMount{
@@ -1491,7 +1527,7 @@ func buildPeerJoinJob(
 					InitContainers: []corev1.Container{
 						{
 							Name:      joinPeerContainer,
-							Image:     fabricToolsImage(net.Spec.Global.FabricVersion),
+							Image:     fabricToolsImage(net.Spec.Global),
 							Command:   []string{"sh", "-ec", joinPeerScript(channel.Name, org.Organization.MSPName, peerAddress(peer), channelOrgMSPPath(org), channelOrdererAdminTLSPath(org))},
 							Resources: componentResourceRequirements(componentFabricCLI),
 							VolumeMounts: []corev1.VolumeMount{
@@ -1602,7 +1638,7 @@ func buildAnchorPeerUpdateJob(
 					InitContainers: []corev1.Container{
 						{
 							Name:  updateAnchorPeerContainer,
-							Image: fabricToolsImage(net.Spec.Global.FabricVersion),
+							Image: fabricToolsImage(net.Spec.Global),
 							Command: []string{"sh", "-ec", updateAnchorPeerScript(
 								channel.Name,
 								org.Organization.MSPName,
@@ -1687,7 +1723,16 @@ func buildConfigtxYAML(net *fabricopsv1alpha1.FabricNetwork, channel fabricopsv1
 	configOrgs := channelConfigOrganizations(net, channel)
 	ordererEndpoints := channelOrdererEndpoints(orderers)
 	anchorPeers := channelAnchorPeersByOrg(net, channel)
-	consensus := ordererConsensusType(orderers[0].group.Type)
+	consensus, err := ordererConsensusForConfigtx(orderers)
+	if err != nil {
+		return "", err
+	}
+	if consensus == ordererConsensusBFT {
+		if !capabilities.isV3 {
+			return "", fmt.Errorf("channel %q uses BFT orderer consensus, which requires Fabric v3", channel.Name)
+		}
+		capabilities.channel = "V3_0"
+	}
 
 	var b strings.Builder
 	b.WriteString("Capabilities:\n")
@@ -1745,14 +1790,12 @@ func buildConfigtxYAML(net *fabricopsv1alpha1.FabricNetwork, channel fabricopsv1
 			fmt.Fprintf(&b, "    - %s\n", endpoint)
 		}
 	}
-	if consensus == "etcdraft" {
-		b.WriteString("  EtcdRaft:\n    Consenters:\n")
-		for _, orderer := range orderers {
-			fmt.Fprintf(&b, "      - Host: %s\n", channelOrdererHost(orderer))
-			fmt.Fprintf(&b, "        Port: %d\n", channelOrdererPort(orderer))
-			fmt.Fprintf(&b, "        ClientTLSCert: %s/server.crt\n", channelOrdererTLSPath(orderer.name))
-			fmt.Fprintf(&b, "        ServerTLSCert: %s/server.crt\n", channelOrdererTLSPath(orderer.name))
-		}
+	switch consensus {
+	case ordererConsensusEtcdRaft:
+		writeEtcdRaftConsenters(&b, orderers)
+	case ordererConsensusBFT:
+		writeBFTConsenterMapping(&b, orderers)
+		writeSmartBFTDefaults(&b)
 	}
 	b.WriteString("  BatchTimeout: 2s\n")
 	b.WriteString("  BatchSize:\n    MaxMessageCount: 10\n    AbsoluteMaxBytes: 99 MB\n    PreferredMaxBytes: 512 KB\n")
@@ -1782,6 +1825,44 @@ func buildConfigtxYAML(net *fabricopsv1alpha1.FabricNetwork, channel fabricopsv1
 	}
 
 	return b.String(), nil
+}
+
+func writeEtcdRaftConsenters(b *strings.Builder, orderers []ordererInstance) {
+	b.WriteString("  EtcdRaft:\n    Consenters:\n")
+	for _, orderer := range orderers {
+		fmt.Fprintf(b, "      - Host: %s\n", channelOrdererHost(orderer))
+		fmt.Fprintf(b, "        Port: %d\n", channelOrdererPort(orderer))
+		fmt.Fprintf(b, "        ClientTLSCert: %s/server.crt\n", channelOrdererTLSPath(orderer.name))
+		fmt.Fprintf(b, "        ServerTLSCert: %s/server.crt\n", channelOrdererTLSPath(orderer.name))
+	}
+}
+
+func writeBFTConsenterMapping(b *strings.Builder, orderers []ordererInstance) {
+	b.WriteString("  ConsenterMapping:\n")
+	for i, orderer := range orderers {
+		fmt.Fprintf(b, "    - ID: %d\n", i+1)
+		fmt.Fprintf(b, "      Host: %s\n", channelOrdererHost(orderer))
+		fmt.Fprintf(b, "      Port: %d\n", channelOrdererPort(orderer))
+		fmt.Fprintf(b, "      MSPID: %s\n", orderer.org.Organization.MSPName)
+		fmt.Fprintf(b, "      Identity: %s\n", channelOrdererIdentityPath(orderer.name))
+		fmt.Fprintf(b, "      ClientTLSCert: %s/server.crt\n", channelOrdererTLSPath(orderer.name))
+		fmt.Fprintf(b, "      ServerTLSCert: %s/server.crt\n", channelOrdererTLSPath(orderer.name))
+	}
+}
+
+func writeSmartBFTDefaults(b *strings.Builder) {
+	b.WriteString("  SmartBFT:\n")
+	b.WriteString("    RequestBatchMaxInterval: 200ms\n")
+	b.WriteString("    RequestForwardTimeout: 5s\n")
+	b.WriteString("    RequestComplainTimeout: 20s\n")
+	b.WriteString("    RequestAutoRemoveTimeout: 3m0s\n")
+	b.WriteString("    ViewChangeResendInterval: 5s\n")
+	b.WriteString("    ViewChangeTimeout: 20s\n")
+	b.WriteString("    LeaderHeartbeatTimeout: 1m0s\n")
+	b.WriteString("    CollectTimeout: 1s\n")
+	b.WriteString("    IncomingMessageBufferSize: 200\n")
+	b.WriteString("    RequestPoolSize: 100000\n")
+	b.WriteString("    LeaderHeartbeatCount: 10\n")
 }
 
 type fabricCapabilitySet struct {
@@ -1905,10 +1986,38 @@ func channelPeerPort(peer peerInstance) int32 {
 func ordererConsensusType(groupType string) string {
 	switch strings.ToLower(strings.TrimSpace(groupType)) {
 	case "raft", "etcdraft", "":
-		return "etcdraft"
+		return ordererConsensusEtcdRaft
+	case "bft", "smartbft", "smart-bft":
+		return ordererConsensusBFT
 	default:
 		return groupType
 	}
+}
+
+func ordererConsensusForConfigtx(orderers []ordererInstance) (string, error) {
+	if len(orderers) == 0 {
+		return "", fmt.Errorf("at least one orderer is required")
+	}
+
+	consensus := ordererConsensusType(orderers[0].group.Type)
+	for _, orderer := range orderers[1:] {
+		next := ordererConsensusType(orderer.group.Type)
+		if next != consensus {
+			return "", fmt.Errorf("orderer consensus types must match across all orderer groups: %q and %q", consensus, next)
+		}
+	}
+
+	return consensus, nil
+}
+
+func networkUsesBFTOrderers(net *fabricopsv1alpha1.FabricNetwork) bool {
+	for _, orderer := range desiredOrdererInstances(net) {
+		if ordererConsensusType(orderer.group.Type) == ordererConsensusBFT {
+			return true
+		}
+	}
+
+	return false
 }
 
 func channelLabels(
@@ -2019,6 +2128,10 @@ func channelOrdererTLSVolumeName(ordererName string) string {
 	return sanitizeName("tls-" + ordererName)
 }
 
+func channelOrdererMSPVolumeName(ordererName string) string {
+	return sanitizeName("orderer-msp-" + ordererName)
+}
+
 func channelOrdererAdminTLSVolumeName(org fabricopsv1alpha1.Org) string {
 	return sanitizeName("admin-tls-" + org.Organization.Name)
 }
@@ -2035,8 +2148,20 @@ func channelOrdererTLSSecretName(channelName string, ordererName string) string 
 	return sanitizeName(channelName + "-" + ordererName + "-tls")
 }
 
+func channelOrdererMSPSecretName(channelName string, ordererName string) string {
+	return sanitizeName(channelName + "-" + ordererName + "-msp")
+}
+
 func channelOrgMSPPath(org fabricopsv1alpha1.Org) string {
 	return channelCryptoDir + "/orgs/" + sanitizeName(org.Organization.Name) + "/msp"
+}
+
+func channelOrdererMSPPath(ordererName string) string {
+	return channelCryptoDir + "/orderers/" + sanitizeName(ordererName) + "/msp"
+}
+
+func channelOrdererIdentityPath(ordererName string) string {
+	return channelOrdererMSPPath(ordererName) + "/signcerts/cert.pem"
 }
 
 func channelOrdererTLSPath(ordererName string) string {
@@ -2067,7 +2192,12 @@ func adminTLSSecretItems() []corev1.KeyToPath {
 	}
 }
 
-func fabricToolsImage(version string) string {
+func fabricToolsImage(global fabricopsv1alpha1.GlobalConfig) string {
+	if global.Images != nil && strings.TrimSpace(global.Images.FabricTools) != "" {
+		return strings.TrimSpace(global.Images.FabricTools)
+	}
+
+	version := global.FabricVersion
 	if version == "" {
 		version = "2.5.12"
 	}

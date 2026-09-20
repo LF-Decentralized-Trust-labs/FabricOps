@@ -403,16 +403,44 @@ Local development uses `controller:latest` so OrbStack and kind can run the mana
 ghcr.io/lf-decentralized-trust-labs/fabricops:<version>
 ```
 
+### Fabric Tools Images
+
+FabricOps runs short-lived Fabric tools Jobs for channel, config-update, and
+chaincode lifecycle operations. By default, those Jobs use
+`hyperledger/fabric-tools:<spec.global.fabricVersion>`, with Fabric 3.x
+networks falling back to `hyperledger/fabric-tools:2.5.14` for the current
+Fabric 2-compatible helper paths.
+
+Set `spec.global.images.fabricTools` when a network needs a custom tools image,
+for example a Fabric v3-capable image that includes `configtxgen`,
+`configtxlator`, `peer`, `osnadmin`, `jq`, and shell tooling:
+
+```yaml
+spec:
+  global:
+    fabricVersion: 3.1.0
+    tls: true
+    images:
+      fabricTools: ghcr.io/example/fabric-tools:3.1.0
+```
+
+FabricOps releases also publish a helper image built from the Hyperledger Fabric
+binary release tarballs:
+
+```text
+ghcr.io/lf-decentralized-trust-labs/fabricops-fabric-tools:<fabricops-version>
+```
+
 ### Release Automation
 
 Use the `Release` GitHub Actions workflow from the GitHub UI when publishing a
 new release. Trigger it from `main` with a release tag such as `v<version>`.
 
 The workflow validates the tag, updates release-version files, runs the Go test
-and lint gates, builds and pushes the manager plus sample chaincode images,
-generates `install.yaml` and the Helm chart package, verifies GHCR public
-visibility, commits the release-prep changes, tags the commit, and creates the
-GitHub release with the generated assets.
+and lint gates, builds and pushes the manager, Fabric tools helper, and sample
+chaincode images, generates `install.yaml` and the Helm chart package, verifies
+GHCR public visibility, commits the release-prep changes, tags the commit, and
+creates the GitHub release with the generated assets.
 
 The workflow also builds `fabricopsctl` with the release version embedded and
 verifies the binary through the normal build gate.
@@ -435,7 +463,8 @@ make helm-deploy-release VERSION=0.2.1
 
 The release helpers derive `RELEASE_IMG` from `IMAGE_REGISTRY`, `IMAGE_REPOSITORY`, and `VERSION`. Override those variables if the image moves to another registry or repository.
 
-Before publishing release instructions, verify that the manager image and sample chaincode images are publicly pullable from GHCR:
+Before publishing release instructions, verify that the manager image, Fabric
+tools helper image, and sample chaincode images are publicly pullable from GHCR:
 
 ```bash
 make release-check-ghcr VERSION=0.2.1
@@ -466,7 +495,17 @@ The e2e target builds the local manager plus one selected settlement chaincode
 runtime, loads those images into kind, installs the generated bundle, applies
 the matching sample manifest, waits for `Ready=True`, and invokes/queries the
 chaincode. CI runs the Node, Go, and Java lanes concurrently; the Node lane also
-covers private data, peer scale changes, cleanup, and chaincode upgrade. See
+covers private data, peer scale changes, cleanup, and chaincode upgrade.
+
+Run the focused Fabric v3 BFT ordering proof with:
+
+```bash
+make test-e2e-bft KIND_CLUSTER=fabricops-e2e-bft
+```
+
+The BFT target builds a local Fabric tools helper image, loads it into kind,
+applies `config/samples/e2e/bft/fabricnetwork.yaml`, waits for `Ready=True`,
+and verifies the BFT channel reports all four orderers joined. See
 [docs/e2e-validation.md](docs/e2e-validation.md) for kind, OrbStack, and
 cleanup notes.
 

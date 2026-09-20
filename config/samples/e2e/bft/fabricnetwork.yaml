@@ -1,0 +1,54 @@
+apiVersion: fabricops.io/v1alpha1
+kind: FabricNetwork
+metadata:
+  labels:
+    app.kubernetes.io/name: fabricops
+    app.kubernetes.io/managed-by: kustomize
+  name: fabricnetwork-bft
+spec:
+  global:
+    fabricVersion: "3.1.0"
+    tls: true
+    images:
+      fabricTools: fabricops-fabric-tools:e2e
+    jobs:
+      succeededHistoryTTLSeconds: 600
+    storage:
+      ca:
+        size: 1Gi
+      orderer:
+        size: 5Gi
+      peer:
+        size: 5Gi
+
+  orgs:
+    - organization:
+        name: Orderer
+        domain: orderer.example.com
+        mspName: OrdererMSP
+      ca:
+        db: sqlite
+      orderers:
+        - groupName: bft
+          type: bft
+          instances: 4
+          prefix: orderer
+
+    - organization:
+        name: BankA
+        domain: banka.example.com
+        mspName: BankAMSP
+      ca:
+        db: sqlite
+      peer:
+        instances: 1
+        db: LevelDb
+        prefix: peer
+
+  channels:
+    - name: settlement
+      orgs:
+        - name: BankA
+          peers: ["peer0"]
+
+  chaincodes: []

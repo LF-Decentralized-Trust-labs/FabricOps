@@ -495,7 +495,7 @@ func buildParticipantChaincodeApproveJob(
 					InitContainers: []corev1.Container{
 						{
 							Name:  approveChaincodeContainer,
-							Image: fabricToolsImage(net.Spec.Global.FabricVersion),
+							Image: fabricToolsImage(net.Spec.Global),
 							Command: []string{"sh", "-ec", approveChaincodeDefinitionScriptForOrderer(
 								net,
 								channel,

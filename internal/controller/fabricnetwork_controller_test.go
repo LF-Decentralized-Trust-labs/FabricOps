@@ -2448,6 +2448,148 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(configtx).NotTo(ContainSubstring("Consortiums:"))
 		})
 
+		It("should generate Fabric 3 BFT channel config with consenter identities", func() {
+			var network fabricopsv1alpha1.FabricNetwork
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &network)).To(Succeed())
+			network.Spec.Global.FabricVersion = "3.1.0"
+			network.Spec.Orgs[0].Orderers[0].Type = "bft"
+			network.Spec.Orgs[0].Orderers[0].Instances = 4
+			channel := fabricopsv1alpha1.Channel{
+				Name: "settlement",
+				Orgs: []fabricopsv1alpha1.ChannelOrg{
+					{
+						Name:  "BankA",
+						Peers: []string{"peer0"},
+					},
+				},
+			}
+
+			configtx, err := buildConfigtxYAML(&network, channel)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(configtx).To(ContainSubstring("V3_0: true"))
+			Expect(configtx).To(ContainSubstring("OrdererType: BFT"))
+			Expect(configtx).To(ContainSubstring("ConsenterMapping:"))
+			Expect(configtx).To(ContainSubstring("ID: 1"))
+			Expect(configtx).To(ContainSubstring("ID: 4"))
+			Expect(configtx).To(ContainSubstring("Host: orderer3.fo-test-orderer.svc.cluster.local"))
+			Expect(configtx).To(ContainSubstring("MSPID: OrdererMSP"))
+			Expect(configtx).To(ContainSubstring("Identity: /fabricops/channel/crypto/orderers/orderer0/msp/signcerts/cert.pem"))
+			Expect(configtx).To(ContainSubstring("ClientTLSCert: /fabricops/channel/crypto/orderers/orderer0/tls/server.crt"))
+			Expect(configtx).To(ContainSubstring("SmartBFT:"))
+			Expect(configtx).To(ContainSubstring("RequestBatchMaxInterval: 200ms"))
+			Expect(configtx).NotTo(ContainSubstring("EtcdRaft:"))
+			Expect(configtx).NotTo(ContainSubstring("  Addresses:"))
+
+			ordererOrg := network.Spec.Orgs[0]
+			job := buildChannelBlockJob(&network, channel, ordererOrg, orgNamespaceName(&network, ordererOrg))
+			Expect(secretVolumeNames(job.Spec.Template.Spec)).To(HaveKeyWithValue("orderer-msp-orderer0", "settlement-orderer0-msp"))
+			Expect(secretVolumeNames(job.Spec.Template.Spec)).To(HaveKeyWithValue("orderer-msp-orderer3", "settlement-orderer3-msp"))
+
+			generateContainer := job.Spec.Template.Spec.InitContainers[0]
+			Expect(volumeMountPaths(generateContainer)).To(HaveKeyWithValue("orderer-msp-orderer0", "/fabricops/channel/crypto/orderers/orderer0/msp"))
+			Expect(volumeMountPaths(generateContainer)).To(HaveKeyWithValue("orderer-msp-orderer3", "/fabricops/channel/crypto/orderers/orderer3/msp"))
+		})
+
+		It("should reject BFT channel config for pre-Fabric 3 networks", func() {
+			var network fabricopsv1alpha1.FabricNetwork
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &network)).To(Succeed())
+			network.Spec.Global.FabricVersion = "2.5.14"
+			network.Spec.Orgs[0].Orderers[0].Type = "smartbft"
+
+			problems := validateFabricNetworkTopology(&network)
+			Expect(problems).To(ContainElement(`org "Orderer" orderers[0].type "smartbft" requires spec.global.fabricVersion 3.x`))
+
+			_, err := buildConfigtxYAML(&network, fabricopsv1alpha1.Channel{
+				Name: "settlement",
+				Orgs: []fabricopsv1alpha1.ChannelOrg{
+					{
+						Name:  "BankA",
+						Peers: []string{"peer0"},
+					},
+				},
+			})
+			Expect(err).To(MatchError(ContainSubstring("requires Fabric v3")))
+		})
+
+		It("should allow Fabric tools helper image override", func() {
+			var network fabricopsv1alpha1.FabricNetwork
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &network)).To(Succeed())
+			network.Spec.Global.FabricVersion = "3.1.0"
+			Expect(fabricToolsImage(network.Spec.Global)).To(Equal("hyperledger/fabric-tools:2.5.14"))
+
+			network.Spec.Global.Images = &fabricopsv1alpha1.FabricImageConfig{
+				FabricTools: " ghcr.io/example/fabric-tools:3.1.0 ",
+			}
+			Expect(fabricToolsImage(network.Spec.Global)).To(Equal("ghcr.io/example/fabric-tools:3.1.0"))
+
+			channel := fabricopsv1alpha1.Channel{
+				Name: "settlement",
+				Orgs: []fabricopsv1alpha1.ChannelOrg{
+					{
+						Name:  "BankA",
+						Peers: []string{"peer0"},
+					},
+				},
+			}
+			ordererOrg := network.Spec.Orgs[0]
+			job := buildChannelBlockJob(&network, channel, ordererOrg, orgNamespaceName(&network, ordererOrg))
+			Expect(job.Spec.Template.Spec.InitContainers[0].Image).To(Equal("ghcr.io/example/fabric-tools:3.1.0"))
+		})
+
+		It("should mirror orderer MSP material for BFT channel block generation", func() {
+			var network fabricopsv1alpha1.FabricNetwork
+			Expect(k8sClient.Get(ctx, typeNamespacedName, &network)).To(Succeed())
+			network.Spec.Global.FabricVersion = "3.1.0"
+			network.Spec.Orgs[0].Orderers[0].Type = "bft"
+			network.Spec.Orgs[0].Orderers[0].Instances = 4
+			channel := fabricopsv1alpha1.Channel{
+				Name: "settlement",
+				Orgs: []fabricopsv1alpha1.ChannelOrg{
+					{
+						Name:  "BankA",
+						Peers: []string{"peer0"},
+					},
+				},
+			}
+
+			controllerReconciler := &FabricNetworkReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+			ordererOrg := network.Spec.Orgs[0]
+			bankOrg := network.Spec.Orgs[1]
+			ordererNamespace := orgNamespaceName(&network, ordererOrg)
+			bankNamespace := orgNamespaceName(&network, bankOrg)
+			Expect(controllerReconciler.ensureNamespace(ctx, buildOrgNamespace(&network, ordererOrg))).To(Succeed())
+			Expect(controllerReconciler.ensureNamespace(ctx, buildOrgNamespace(&network, bankOrg))).To(Succeed())
+			writeEnrolledOrgIdentitySecrets(ctx, &network, ordererOrg, ordererNamespace)
+			writeEnrolledOrgIdentitySecrets(ctx, &network, bankOrg, bankNamespace)
+
+			Expect(controllerReconciler.ensureChannelCryptoSecrets(ctx, &network, channel, ordererOrg, ordererNamespace)).To(Succeed())
+
+			var sourceOrdererMSP corev1.Secret
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: ordererNamespace,
+				Name:      "orderer0-msp",
+			}, &sourceOrdererMSP)).To(Succeed())
+
+			var channelOrdererMSP corev1.Secret
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: ordererNamespace,
+				Name:      "settlement-orderer0-msp",
+			}, &channelOrdererMSP)).To(Succeed())
+			Expect(channelOrdererMSP.Labels[labelAppComponent]).To(Equal(componentChannel))
+			Expect(channelOrdererMSP.Labels[labelChannel]).To(Equal("settlement"))
+			Expect(channelOrdererMSP.Data[mspSignCertKey]).To(Equal(sourceOrdererMSP.Data[mspSignCertKey]))
+
+			var fourthOrdererMSP corev1.Secret
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: ordererNamespace,
+				Name:      "settlement-orderer3-msp",
+			}, &fourthOrdererMSP)).To(Succeed())
+			Expect(fourthOrdererMSP.Data).To(HaveKey(mspSignCertKey))
+		})
+
 		It("should parse inactive orderer join evidence as not ready", func() {
 			found, status := ordererJoinResultChannelStatus(
 				`Status: 200

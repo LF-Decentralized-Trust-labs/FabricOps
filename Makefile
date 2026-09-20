@@ -8,8 +8,11 @@ VERSION ?= 0.2.1
 RELEASE_IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):$(VERSION)
 FABRICOPSCTL_VERSION ?= development
 FABRICOPSCTL_LDFLAGS ?= -X main.version=$(FABRICOPSCTL_VERSION)
+FABRIC_TOOLS_FABRIC_VERSION ?= 3.1.0
+FABRIC_TOOLS_IMAGE ?= $(IMAGE_REGISTRY)/fabricops-fabric-tools:$(VERSION)
+FABRIC_TOOLS_PLATFORM ?= linux/amd64
 SAMPLE_CHAINCODE_IMAGES ?= $(IMAGE_REGISTRY)/fabricops-node-settlement:$(VERSION) $(IMAGE_REGISTRY)/fabricops-go-settlement:$(VERSION) $(IMAGE_REGISTRY)/fabricops-java-settlement:$(VERSION)
-RELEASE_CHECK_IMAGES ?= $(RELEASE_IMG) $(SAMPLE_CHAINCODE_IMAGES)
+RELEASE_CHECK_IMAGES ?= $(RELEASE_IMG) $(SAMPLE_CHAINCODE_IMAGES) $(FABRIC_TOOLS_IMAGE)
 # YEAR defines the year value used for substituting the YEAR placeholder in the boilerplate header.
 YEAR ?= $(shell date +%Y)
 
@@ -84,6 +87,8 @@ E2E_SKIP_CLEANUP ?= false
 E2E_GO_TEST_TIMEOUT ?= 75m
 E2E_CHAINCODE_RUNTIME ?= node
 E2E_SAMPLE_MANIFEST ?= config/samples/e2e/$(E2E_CHAINCODE_RUNTIME)/fabricnetwork.yaml
+E2E_BFT_GO_TEST_TIMEOUT ?= 75m
+E2E_BFT_FABRIC_TOOLS_IMAGE ?= fabricops-fabric-tools:e2e
 KIND_FEDERATED_FOUNDER_CLUSTER ?= fabricops-fed-founder
 KIND_FEDERATED_PARTICIPANT_CLUSTER ?= fabricops-fed-participant
 E2E_FEDERATED_GO_TEST_TIMEOUT ?= 90m
@@ -110,6 +115,17 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
 	@status=0; \
 	KIND=$(KIND) KUBECTL=$(KUBECTL) KIND_CLUSTER=$(KIND_CLUSTER) IMG=$(IMG) E2E_CHAINCODE_RUNTIME=$(E2E_CHAINCODE_RUNTIME) E2E_SAMPLE_MANIFEST=$(E2E_SAMPLE_MANIFEST) go test -tags=e2e ./test/e2e/ -v -ginkgo.v -timeout $(E2E_GO_TEST_TIMEOUT) || status=$$?; \
+	if [ "$(E2E_SKIP_CLEANUP)" = "true" ]; then \
+		echo "Keeping Kind cluster '$(KIND_CLUSTER)' because E2E_SKIP_CLEANUP=true"; \
+	else \
+		$(KIND) delete cluster --name $(KIND_CLUSTER); \
+	fi; \
+	exit $$status
+
+.PHONY: test-e2e-bft
+test-e2e-bft: setup-test-e2e manifests generate fmt vet ## Run the Fabric v3 BFT kind e2e test.
+	@status=0; \
+	KIND=$(KIND) KUBECTL=$(KUBECTL) KIND_CLUSTER=$(KIND_CLUSTER) IMG=$(IMG) FABRIC_TOOLS_IMAGE=$(E2E_BFT_FABRIC_TOOLS_IMAGE) go test -tags=e2e ./test/e2e/bft/ -v -ginkgo.v -timeout $(E2E_BFT_GO_TEST_TIMEOUT) || status=$$?; \
 	if [ "$(E2E_SKIP_CLEANUP)" = "true" ]; then \
 		echo "Keeping Kind cluster '$(KIND_CLUSTER)' because E2E_SKIP_CLEANUP=true"; \
 	else \
@@ -208,8 +224,16 @@ docker-build-release: ## Build the manager image with the canonical release tag.
 docker-push-release: ## Push the manager image with the canonical release tag.
 	$(MAKE) docker-push IMG=$(RELEASE_IMG)
 
+.PHONY: docker-build-fabric-tools
+docker-build-fabric-tools: ## Build the FabricOps Fabric tools helper image.
+	IMAGE="$(FABRIC_TOOLS_IMAGE)" FABRIC_VERSION="$(FABRIC_TOOLS_FABRIC_VERSION)" PLATFORM="$(FABRIC_TOOLS_PLATFORM)" config/images/fabric-tools/build_and_push.sh
+
+.PHONY: docker-push-fabric-tools
+docker-push-fabric-tools: ## Build and push the FabricOps Fabric tools helper image.
+	IMAGE="$(FABRIC_TOOLS_IMAGE)" FABRIC_VERSION="$(FABRIC_TOOLS_FABRIC_VERSION)" PLATFORM="$(FABRIC_TOOLS_PLATFORM)" PUSH=true config/images/fabric-tools/build_and_push.sh
+
 .PHONY: release-check-ghcr
-release-check-ghcr: ## Verify release manager and sample chaincode images are publicly pullable from GHCR.
+release-check-ghcr: ## Verify release manager, helper, and sample chaincode images are publicly pullable from GHCR.
 	VERSION="$(VERSION)" IMAGE_REGISTRY="$(IMAGE_REGISTRY)" IMAGE_REPOSITORY="$(IMAGE_REPOSITORY)" hack/check-ghcr-public.sh $(RELEASE_CHECK_IMAGES)
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple

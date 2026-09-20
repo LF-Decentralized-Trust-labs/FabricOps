@@ -64,7 +64,7 @@ that proof is already present.
 
 | Feature | Fablo v2 | Fablo v3 | FabricOps status | Documented | CI tests | Notes |
 |---------|----------|----------|------------------|------------|----------|-------|
-| BFT consensus | n/a | yes | Planned | | | Target for Fabric v3 |
+| BFT consensus | n/a | yes | Partial | docs/e2e-validation.md | `test-e2e-bft` | Fabric v3 `type: bft`/`smartbft` emits BFT channel config with `ConsenterMapping`, orderer identity cert paths, SmartBFT defaults, and BFT-specific channel workspace Secret mounts; a focused kind e2e lane builds a Fabric v3 tools helper image and proves channel bootstrap |
 | RAFT consensus | yes | yes | Supported | README | | Current sample joins two orderers to a channel using etcdraft config |
 | SOLO consensus | yes | n/a | Planned | | | Legacy Fabric v2 target only |
 | TLS | yes | yes | Supported | README | | Workload TLS and orderer admin TLS are enabled when `spec.global.tls=true` |
@@ -78,7 +78,7 @@ that proof is already present.
 | CA DB - Postgres | yes | yes | Planned | | | `spec.orgs[].ca.db` exists but external DB wiring is not implemented |
 | CA DB - MySQL | yes | yes | Planned | | | External DB wiring is not implemented |
 | Custom Fabric version | yes | yes | Partial | README | | `spec.global.fabricVersion` selects official Hyperledger image tags |
-| Custom Fabric images | yes | yes | Partial | | | Arbitrary image repository overrides are not modelled yet |
+| Custom Fabric images | yes | yes | Partial | README, API | | Fabric tools helper Jobs can use `spec.global.images.fabricTools`; releases publish a FabricOps helper image built from Fabric binary tarballs; arbitrary CA/orderer/peer image repository overrides are not modelled yet |
 | JSON/YAML config input | yes | yes | Supported | README | | Kubernetes CRs can be applied as YAML or JSON |
 
 ## Channels

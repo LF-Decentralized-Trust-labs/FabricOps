@@ -132,6 +132,9 @@ jobs:
       - name: Build and push manager image
         run: make docker-buildx-release VERSION="${VERSION}"
 
+      - name: Build and push Fabric tools helper image
+        run: make docker-push-fabric-tools VERSION="${VERSION}"
+
       - name: Build and push sample chaincode images
         env:
           PUSH: "true"

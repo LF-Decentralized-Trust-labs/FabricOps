@@ -1048,7 +1048,7 @@ func buildChaincodeInstallJob(
 					InitContainers: []corev1.Container{
 						{
 							Name:         installChaincodeContainer,
-							Image:        fabricToolsImage(net.Spec.Global.FabricVersion),
+							Image:        fabricToolsImage(net.Spec.Global),
 							Command:      []string{"sh", "-ec", installChaincodePackageScript(org, peerName, namespace, net.Spec.Global.TLS)},
 							Resources:    componentResourceRequirements(componentFabricCLI),
 							VolumeMounts: volumeMounts,
@@ -1216,7 +1216,7 @@ func buildChaincodeApproveJob(
 					InitContainers: []corev1.Container{
 						{
 							Name:  approveChaincodeContainer,
-							Image: fabricToolsImage(net.Spec.Global.FabricVersion),
+							Image: fabricToolsImage(net.Spec.Global),
 							Command: []string{"sh", "-ec", approveChaincodeDefinitionScript(
 								net,
 								channel,
@@ -1627,7 +1627,7 @@ func buildChaincodeCommitJob(
 					InitContainers: []corev1.Container{
 						{
 							Name:  commitChaincodeContainer,
-							Image: fabricToolsImage(net.Spec.Global.FabricVersion),
+							Image: fabricToolsImage(net.Spec.Global),
 							Command: []string{"sh", "-ec", commitChaincodeDefinitionScript(
 								net,
 								channel,
