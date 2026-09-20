@@ -44,6 +44,7 @@ const (
 	bftFabricToolsImage   = "fabricops-fabric-tools:e2e"
 	expectedBFTOrderers   = int32(4)
 	expectedBFTChannelOrg = "BankA"
+	expectedBFTNamespace  = "fo-bft-banka"
 )
 
 var (
@@ -162,7 +163,7 @@ func expectBFTChannelReady() {
 	Expect(channel.Peers.Ready).To(Equal(int32(1)))
 	Expect(channel.Orgs).To(ContainElement(SatisfyAll(
 		HaveField("Name", expectedBFTChannelOrg),
-		HaveField("Namespace", "fo-fabricnetwork-bft-banka"),
+		HaveField("Namespace", expectedBFTNamespace),
 		HaveField("Ready", true),
 	)))
 }
@@ -289,6 +290,7 @@ func dumpDiagnostics() {
 	runDiagnostic(30*time.Second, kubectlBin, "get", "pods", "-A", "-o", "wide")
 	runDiagnostic(30*time.Second, kubectlBin, "get", "jobs", "-A")
 	runDiagnostic(30*time.Second, kubectlBin, "describe", "fabricnetwork", sampleName, "-n", sampleNamespace)
+	runDiagnostic(30*time.Second, kubectlBin, "logs", "-n", expectedBFTNamespace, "-l", "batch.kubernetes.io/job-name=settlement-banka-peer0-peer-join", "--all-containers=true", "--prefix=true", "--tail=200")
 	runDiagnostic(30*time.Second, kubectlBin, "logs", "-n", managerNamespace, "deployment/"+managerName, "-c", "manager", "--tail=200")
 	runDiagnostic(30*time.Second, kubectlBin, "get", "events", "-A", "--sort-by=.lastTimestamp")
 }
