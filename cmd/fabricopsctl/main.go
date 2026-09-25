@@ -122,7 +122,7 @@ func runStatus(args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("status", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	bindKubeFlags(flags, &kube)
-	flags.StringVar(&output, "o", "table", "Output format: table, json, or yaml")
+	flags.StringVar(&output, "o", "table", "Output format: table, json, yaml, or name")
 	flags.BoolVar(&participant, "participant", false, "Treat the resource argument as a FabricParticipant")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -133,7 +133,7 @@ func runStatus(args []string, stdout, stderr io.Writer) error {
 	}
 
 	switch output {
-	case "json", "yaml":
+	case "json", "yaml", "name":
 	case "table":
 	default:
 		return fmt.Errorf("unsupported output format %q", output)
@@ -150,6 +150,9 @@ func runStatus(args []string, stdout, stderr io.Writer) error {
 			return writeJSON(stdout, participant.Status)
 		case "yaml":
 			return writeYAML(stdout, participant.Status)
+		case "name":
+			printResourceName(stdout, "fabricparticipant", participant.Name)
+			return nil
 		}
 		printParticipantStatus(stdout, participant)
 		return nil
@@ -164,6 +167,9 @@ func runStatus(args []string, stdout, stderr io.Writer) error {
 		return writeJSON(stdout, network.Status)
 	case "yaml":
 		return writeYAML(stdout, network.Status)
+	case "name":
+		printResourceName(stdout, "fabricnetwork", network.Name)
+		return nil
 	}
 	printStatus(stdout, network)
 	return nil
@@ -953,6 +959,10 @@ func printLine(out io.Writer, args ...any) {
 	_, _ = fmt.Fprintln(out, args...)
 }
 
+func printResourceName(out io.Writer, resource, name string) {
+	printf(out, "%s.fabricops.io/%s\n", resource, name)
+}
+
 func printUsage(out io.Writer) {
 	printLine(out, `Usage:
   fabricopsctl version
@@ -982,6 +992,8 @@ Examples:
   fabricopsctl status fabricnetwork-sample
   fabricopsctl status --participant bankb-participant
   fabricopsctl status -n default -o json fabricnetwork-sample
+  fabricopsctl status -n default -o name fabricnetwork-sample
+  fabricopsctl status --participant -n default -o name bankb-participant
   fabricopsctl wait -n default --timeout 20m fabricnetwork-sample
   fabricopsctl wait --participant -n default --timeout 20m bankb-participant
   fabricopsctl connection-profile --org BankA --format yaml fabricnetwork-sample

@@ -452,3 +452,51 @@ func TestRunStatusOutputsYAMLForParticipant(t *testing.T) {
 		t.Fatalf("expected command to accept yaml, got format error: %v", err)
 	}
 }
+
+func TestPrintResourceName(t *testing.T) {
+	tests := []struct {
+		name     string
+		resource string
+		object   string
+		want     string
+	}{
+		{
+			name:     "FabricNetwork",
+			resource: "fabricnetwork",
+			object:   "sample",
+			want:     "fabricnetwork.fabricops.io/sample\n",
+		},
+		{
+			name:     "FabricParticipant",
+			resource: "fabricparticipant",
+			object:   "bankb-participant",
+			want:     "fabricparticipant.fabricops.io/bankb-participant\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			printResourceName(&stdout, tt.resource, tt.object)
+			if got := stdout.String(); got != tt.want {
+				t.Fatalf("output = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRunStatusAcceptsNameOutput(t *testing.T) {
+	for _, args := range [][]string{
+		{"status", "-o", "name", "sample"},
+		{"status", "--participant", "-o", "name", "bankb-participant"},
+	} {
+		var stdout, stderr bytes.Buffer
+		err := run(args, &stdout, &stderr)
+		if err == nil {
+			t.Fatalf("run(%v) error = nil, want error without a live cluster", args)
+		}
+		if strings.Contains(err.Error(), "unsupported output format") {
+			t.Fatalf("run(%v) rejected name output: %v", args, err)
+		}
+	}
+}

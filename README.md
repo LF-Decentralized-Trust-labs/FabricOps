@@ -119,8 +119,10 @@ go install github.com/LF-Decentralized-Trust-labs/FabricOps/cmd/fabricopsctl@lat
 export PATH="$(go env GOPATH)/bin:$PATH"
 fabricopsctl version
 fabricopsctl status -n default fabricnetwork-sample
+fabricopsctl status -n default -o name fabricnetwork-sample
 fabricopsctl wait -n default --timeout 20m fabricnetwork-sample
 fabricopsctl status --participant -n default bankb-participant
+fabricopsctl status --participant -n default -o name bankb-participant
 fabricopsctl wait --participant -n default --for condition=LocalInfrastructureReady --timeout 20m bankb-participant
 fabricopsctl connection-profile -n default --org BankA --format yaml fabricnetwork-sample
 fabricopsctl join-bundle -n default --org BankA --out banka-join-bundle.json fabricnetwork-sample
@@ -148,8 +150,10 @@ When building from source:
 make build-fabricopsctl
 bin/fabricopsctl version
 bin/fabricopsctl status -n default fabricnetwork-sample
+bin/fabricopsctl status -n default -o name fabricnetwork-sample
 bin/fabricopsctl wait -n default --timeout 20m fabricnetwork-sample
 bin/fabricopsctl status --participant -n default bankb-participant
+bin/fabricopsctl status --participant -n default -o name bankb-participant
 bin/fabricopsctl wait --participant -n default --for condition=Ready --timeout 20m bankb-participant
 bin/fabricopsctl connection-profile -n default --org BankA --format yaml fabricnetwork-sample
 bin/fabricopsctl join-bundle -n default --org BankA --out banka-join-bundle.json fabricnetwork-sample
