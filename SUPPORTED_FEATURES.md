@@ -135,7 +135,7 @@ that proof is already present.
 | `down`, `reset` | yes | yes | Partial | README | | Deleting a `FabricNetwork` cleans owned namespaces; reset semantics are not modelled |
 | `prune`, `recreate` | yes | yes | Planned | | | Not implemented |
 | `validate`, `extend-config` | yes | yes | Partial | API | | CRD schema and topology validation catch many invalid specs; Fablo-style config extension is not implemented |
-| `version` | yes | yes | Planned | | | No FabricOps CLI version command yet |
+| `version` | yes | yes | Supported | README | unit | `fabricopsctl version` prints the embedded version string; `make build-fabricopsctl-release` injects the release version with Go linker flags |
 | `init` (node, rest, dev) | yes | yes | Partial | samples | | Sample Node, Go, and Java chaincodes exist; no project generator command |
 | `export-network-topology` to Mermaid | yes | yes | Planned | | | Not implemented |
 | Other `init` options | n/a | n/a | Planned | | | Not implemented |
