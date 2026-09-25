@@ -1688,6 +1688,10 @@ var _ = Describe("FabricNetwork Controller", func() {
 								ChannelConfigPolicy: "Admins",
 							},
 						},
+						{
+							Name:     "bad-collection",
+							OrgNames: []string{"BankA"},
+						},
 					},
 					CouchDBIndexes: []fabricopsv1alpha1.CouchDBIndex{
 						{
@@ -1712,6 +1716,15 @@ var _ = Describe("FabricNetwork Controller", func() {
 					Image:        "ghcr.io/lf-decentralized-trust-labs/fabricops-node-risk:0.1.0",
 					PackageLabel: "shared-package",
 				},
+			}
+			var existingJobs batchv1.JobList
+			Expect(k8sClient.List(ctx, &existingJobs, client.MatchingLabels{
+				labelFabricNetwork:          resourceName,
+				labelFabricNetworkNamespace: resourceNamespace,
+			})).To(Succeed())
+			existingJobNames := make(map[types.NamespacedName]struct{}, len(existingJobs.Items))
+			for _, job := range existingJobs.Items {
+				existingJobNames[types.NamespacedName{Name: job.Name, Namespace: job.Namespace}] = struct{}{}
 			}
 			Expect(k8sClient.Update(ctx, &network)).To(Succeed())
 
@@ -1742,6 +1755,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(network.Status.Message).To(ContainSubstring(`chaincode "audit" endorsementPolicy references unknown MSP "MissingMSP"`))
 			Expect(network.Status.Message).To(ContainSubstring(`chaincode "audit" endorsementPolicy principal "BrokenPrincipal" must use MSP.role format`))
 			Expect(network.Status.Message).To(ContainSubstring(`chaincode "audit" private data collection "bad-collection" references unknown org "MissingOrg"`))
+			Expect(network.Status.Message).To(ContainSubstring(`chaincode "audit" private data collection "bad-collection" is declared more than once`))
 			Expect(network.Status.Message).To(ContainSubstring(`chaincode "audit" private data collection "bad-collection" maxPeerCount 1 exceeds available authorized peers 0`))
 			Expect(network.Status.Message).To(ContainSubstring(`chaincode "audit" private data collection "bad-collection" requiredPeerCount 2 exceeds maxPeerCount 1`))
 			Expect(network.Status.Message).To(ContainSubstring(`chaincode "audit" private data collection "bad-collection" must use only one endorsementPolicy field`))
@@ -1751,6 +1765,15 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(network.Status.OrgStatus).To(BeEmpty())
 			Expect(network.Status.ChannelStatus).To(BeEmpty())
 			Expect(network.Status.ChaincodeStatus).To(BeEmpty())
+
+			var jobs batchv1.JobList
+			Expect(k8sClient.List(ctx, &jobs, client.MatchingLabels{
+				labelFabricNetwork:          resourceName,
+				labelFabricNetworkNamespace: resourceNamespace,
+			})).To(Succeed())
+			for _, job := range jobs.Items {
+				Expect(existingJobNames).To(HaveKey(types.NamespacedName{Name: job.Name, Namespace: job.Namespace}))
+			}
 
 			ready := apiMeta.FindStatusCondition(network.Status.Conditions, conditionReady)
 			Expect(ready).NotTo(BeNil())
