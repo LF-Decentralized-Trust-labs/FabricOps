@@ -1,14 +1,13 @@
 (function () {
   const header = document.querySelector("[data-elevate]");
-  const navToggle = document.querySelector(".nav-toggle");
+  const navToggle = document.querySelector("[data-nav-toggle]");
   const navLinks = document.querySelectorAll(".nav-links a[href^='#']");
   const copyButtons = document.querySelectorAll("[data-copy-target]");
   const tabButtons = document.querySelectorAll("[data-tab]");
-  const drawerPanels = document.querySelectorAll("[data-panel]");
+  const panels = document.querySelectorAll("[data-panel]");
 
   function setHeaderState() {
-    if (!header) return;
-    header.classList.toggle("is-elevated", window.scrollY > 12);
+    if (header) header.classList.toggle("is-elevated", window.scrollY > 10);
   }
 
   setHeaderState();
@@ -24,9 +23,7 @@
   navLinks.forEach((link) => {
     link.addEventListener("click", () => {
       document.body.classList.remove("nav-open");
-      if (navToggle) {
-        navToggle.setAttribute("aria-expanded", "false");
-      }
+      navToggle?.setAttribute("aria-expanded", "false");
     });
   });
 
@@ -34,14 +31,14 @@
     button.addEventListener("click", () => {
       const target = button.dataset.tab;
       tabButtons.forEach((tab) => {
-        const active = tab === button;
-        tab.classList.toggle("is-active", active);
-        tab.setAttribute("aria-selected", String(active));
+        const isActive = tab === button;
+        tab.classList.toggle("is-active", isActive);
+        tab.setAttribute("aria-selected", String(isActive));
       });
-      drawerPanels.forEach((panel) => {
-        const active = panel.dataset.panel === target;
-        panel.classList.toggle("is-active", active);
-        panel.hidden = !active;
+      panels.forEach((panel) => {
+        const isActive = panel.dataset.panel === target;
+        panel.classList.toggle("is-active", isActive);
+        panel.hidden = !isActive;
       });
     });
   });
@@ -50,15 +47,15 @@
     button.addEventListener("click", async () => {
       const target = document.getElementById(button.dataset.copyTarget || "");
       if (!target) return;
-      const text = target.textContent || "";
+      const text = (target.textContent || "").replace(/^\$ /gm, "").trim();
       try {
-        await navigator.clipboard.writeText(text.trim());
+        await navigator.clipboard.writeText(text);
         button.classList.add("is-copied");
         button.textContent = "Copied";
         window.setTimeout(() => {
           button.classList.remove("is-copied");
           button.textContent = "Copy";
-        }, 1800);
+        }, 1600);
       } catch (_error) {
         button.textContent = "Select";
       }
@@ -66,7 +63,7 @@
   });
 
   const sections = [...document.querySelectorAll("main section[id]")];
-  const observer = new IntersectionObserver(
+  const sectionObserver = new IntersectionObserver(
     (entries) => {
       entries.forEach((entry) => {
         if (!entry.isIntersecting) return;
@@ -75,8 +72,20 @@
         });
       });
     },
-    { rootMargin: "-38% 0px -48% 0px" },
+    { rootMargin: "-36% 0px -52% 0px" },
   );
+  sections.forEach((section) => sectionObserver.observe(section));
 
-  sections.forEach((section) => observer.observe(section));
+  const reveals = document.querySelectorAll(".reveal");
+  const revealObserver = new IntersectionObserver(
+    (entries, observer) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add("is-visible");
+        observer.unobserve(entry.target);
+      });
+    },
+    { threshold: 0.12 },
+  );
+  reveals.forEach((element) => revealObserver.observe(element));
 })();
