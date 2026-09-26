@@ -3,44 +3,23 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>FabricOps - Hyperledger Fabric on Kubernetes</title>
-    <meta
-      name="description"
-      content="FabricOps is an LF Decentralized Trust Lab for provisioning and operating multi-organization Hyperledger Fabric networks on Kubernetes with declarative configuration, Fabric CA, CCaaS, observability, and federated joining."
-    />
+    <title>FabricOps | Hyperledger Fabric operations on Kubernetes</title>
+    <meta name="description" content="FabricOps is an LF Decentralized Trust Lab for declaratively provisioning and operating multi-organization Hyperledger Fabric networks on Kubernetes." />
     <meta name="robots" content="index,follow" />
-    <meta name="theme-color" content="#f5f7f2" />
+    <meta name="theme-color" content="#080a0a" />
     <link rel="canonical" href="https://fabricops.io/" />
     <link rel="icon" href="assets/fabricops512.png" />
     <link rel="apple-touch-icon" href="assets/fabricops512.png" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="FabricOps" />
-    <meta
-      property="og:title"
-      content="FabricOps - Hyperledger Fabric on Kubernetes"
-    />
-    <meta
-      property="og:description"
-      content="Declarative Kubernetes automation for Fabric CAs, orderers, peers, channels, CCaaS chaincode, observability, and federated joins."
-    />
+    <meta property="og:title" content="FabricOps | Hyperledger Fabric operations on Kubernetes" />
+    <meta property="og:description" content="Declare the network. FabricOps continuously reconciles identities, channels, CCaaS, and operational readiness on Kubernetes." />
     <meta property="og:url" content="https://fabricops.io/" />
-    <meta
-      property="og:image"
-      content="https://fabricops.io/assets/fabricops512.png"
-    />
+    <meta property="og:image" content="https://fabricops.io/assets/fabricops512.png" />
     <meta name="twitter:card" content="summary" />
-    <meta
-      name="twitter:title"
-      content="FabricOps - Hyperledger Fabric on Kubernetes"
-    />
-    <meta
-      name="twitter:description"
-      content="Provision multi-organization Hyperledger Fabric networks on Kubernetes from declarative configuration."
-    />
-    <meta
-      name="twitter:image"
-      content="https://fabricops.io/assets/fabricops512.png"
-    />
+    <meta name="twitter:title" content="FabricOps | Hyperledger Fabric operations on Kubernetes" />
+    <meta name="twitter:description" content="Continuous convergence for Hyperledger Fabric networks on Kubernetes." />
+    <meta name="twitter:image" content="https://fabricops.io/assets/fabricops512.png" />
     <link rel="stylesheet" href="assets/site.css" />
     <script type="application/ld+json">
       {
@@ -61,589 +40,230 @@
     <header class="site-header" data-elevate>
       <nav class="nav-shell" aria-label="Primary navigation">
         <a class="brand-mark" href="#top" aria-label="FabricOps home">
-          <picture>
-            <source
-              media="(prefers-color-scheme: dark)"
-              srcset="assets/fabricops-lockup-light.png"
-            />
-            <img
-              src="assets/fabricops-lockup-ink.png"
-              width="356"
-              height="90"
-              alt="FabricOps"
-            />
-          </picture>
+          <img src="assets/fabricops-lockup-light.png" width="356" height="90" alt="FabricOps" />
         </a>
-        <button
-          class="nav-toggle"
-          type="button"
-          aria-expanded="false"
-          aria-controls="site-nav"
-          data-nav-toggle
-        >
-          <span class="nav-toggle-bars" aria-hidden="true"
-            ><span></span><span></span><span></span
-          ></span>
+        <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" data-nav-toggle>
+          <span class="nav-toggle-lines" aria-hidden="true"><i></i><i></i></span>
           <span>Menu</span>
         </button>
         <div class="nav-links" id="site-nav">
           <a href="#install">Install</a>
-          <a href="#blueprint">Blueprint</a>
-          <a href="#orgs">Orgs</a>
-          <a href="#ccaas">CCaaS</a>
+          <a href="#control-plane">How it works</a>
           <a href="#federation">Federation</a>
           <a href="#docs">Docs</a>
-          <a href="https://github.com/LF-Decentralized-Trust-labs/FabricOps"
-            >GitHub</a
-          >
+          <a class="nav-github" href="https://github.com/LF-Decentralized-Trust-labs/FabricOps">View on GitHub</a>
         </div>
       </nav>
     </header>
 
     <main id="content">
-      <section class="charter-hero" id="top" aria-labelledby="hero-title">
-        <div class="hero-sheet">
-          <div class="hero-copy">
-            <p class="eyebrow">
-              LF Decentralized Trust Lab / Fabric on Kubernetes
-            </p>
-            <h1 id="hero-title">
-              Fabric networks should be operated from intent.
-            </h1>
-            <p>
-              FabricOps turns a declarative Kubernetes resource into a working
-              Hyperledger Fabric network: organizations, CAs, identities,
-              orderers, peers, channels, chaincode, and the status proof that
-              they converged.
-            </p>
-            <div class="hero-actions" aria-label="Primary actions">
-              <a class="button primary" href="#install">Install FabricOps</a>
-              <a class="button secondary" href="#blueprint"
-                >See the blueprint</a
-              >
+      <section class="hero" id="top" aria-labelledby="hero-title">
+        <div class="hero-shell">
+          <div class="hero-copy reveal">
+            <p class="hero-kicker"><span></span> LF Decentralized Trust Lab</p>
+            <h1 id="hero-title">FabricOps</h1>
+            <p class="hero-statement">Continuous convergence for Hyperledger Fabric.</p>
+            <p class="hero-summary">Declare a multi-organization network. FabricOps reconciles identities, channels, CCaaS, and proof of readiness on Kubernetes.</p>
+            <div class="hero-actions">
+              <a class="button button-primary" href="#install">Install v0.2.1</a>
+              <a class="button button-quiet" href="https://github.com/LF-Decentralized-Trust-labs/FabricOps">Explore source</a>
             </div>
           </div>
 
-          <aside
-            class="charter-board"
-            aria-label="FabricOps network charter preview"
-          >
-            <div class="charter-board-head">
-              <span>apiVersion: fabricops.io/v1alpha1</span>
-              <strong>FabricNetwork</strong>
+          <div class="reconcile-window reveal" aria-label="FabricOps reconciliation status">
+            <div class="window-bar">
+              <div class="window-title"><span class="pulse" aria-hidden="true"></span><strong>fabricnetwork/sample</strong></div>
+              <span class="window-context">kind-fabricops</span>
             </div>
-            <div class="charter-stamp" aria-hidden="true">
-              <span>Ready</span>
-              <b>3 orgs</b>
+            <div class="window-summary">
+              <div><span class="summary-label">Generation</span><strong>14 / 14</strong></div>
+              <div><span class="summary-label">Phase</span><strong class="signal">Ready</strong></div>
+              <div><span class="summary-label">Requeue</span><strong>none</strong></div>
             </div>
-            <div class="network-ledger" aria-label="Sample network map">
-              <div class="ledger-org orderer-org">
-                <span>OrdererMSP</span>
-                <strong>Orderer</strong>
-                <small>RAFT / 2 nodes</small>
+            <div class="network-plane" aria-label="Network topology">
+              <div class="plane-row orderer-row">
+                <span class="row-label">CONSENSUS</span>
+                <div class="node is-ready"><i></i><b>ord0</b><small>7050</small></div>
+                <div class="node is-ready"><i></i><b>ord1</b><small>7050</small></div>
+                <div class="node is-ready"><i></i><b>ord2</b><small>7050</small></div>
               </div>
-              <div class="ledger-channel">
-                <span>settlement</span>
-                <b>channel</b>
-              </div>
-              <div class="ledger-org founder-org">
-                <span>BankAMSP</span>
-                <strong>BankA</strong>
-                <small>2 peers / CouchDB</small>
-              </div>
-              <div class="ledger-org participant-org">
-                <span>BankBMSP</span>
-                <strong>BankB</strong>
-                <small>peer + CCaaS</small>
+              <div class="channel-rail"><span>settlement</span><span class="rail-line"></span><b>block 04</b></div>
+              <div class="plane-row org-row">
+                <span class="row-label">ENDORSERS</span>
+                <div class="org-group">
+                  <span>BankAMSP</span>
+                  <div class="node is-ready"><i></i><b>peer0</b><small>CCaaS</small></div>
+                  <div class="node is-ready"><i></i><b>peer1</b><small>CCaaS</small></div>
+                </div>
+                <div class="org-group">
+                  <span>BankBMSP</span>
+                  <div class="node is-ready"><i></i><b>peer0</b><small>CCaaS</small></div>
+                </div>
               </div>
             </div>
-            <div class="charter-proof">
-              <span>IdentityMaterialReady</span>
-              <span>CertificateLifecycleReady</span>
-              <span>ChannelsReady</span>
-              <span>ObservabilityReady</span>
-            </div>
-          </aside>
+            <ol class="condition-log" aria-label="Ready conditions">
+              <li><time>09:41:02</time><span>IdentityMaterialReady</span><b>True</b></li>
+              <li><time>09:41:18</time><span>ChannelsReady</span><b>True</b></li>
+              <li><time>09:41:39</time><span>ChaincodesReady</span><b>True</b></li>
+              <li><time>09:41:40</time><span>Ready</span><b>True</b></li>
+            </ol>
+          </div>
         </div>
-
-        <div class="evidence-ribbon" aria-label="FabricOps operating proof">
-          <span><b>01</b> Fabric CA bootstrap</span>
-          <span><b>02</b> MSP and TLS Secrets</span>
-          <span><b>03</b> Channel blocks and joins</span>
-          <span><b>04</b> CCaaS lifecycle</span>
-          <span><b>05</b> Connection profiles</span>
+        <div class="capability-strip" aria-label="Core capabilities">
+          <span>Fabric CA</span><span>Raft + BFT</span><span>Per-org namespaces</span><span>CCaaS lifecycle</span><span>Federated joining</span><span>Prometheus metrics</span>
         </div>
       </section>
 
-      <section
-        class="section install-section"
-        id="install"
-        aria-labelledby="install-title"
-      >
-        <div class="section-heading">
-          <p class="eyebrow">Launch checklist</p>
-          <h2 id="install-title">
-            Install the operator, then apply the network charter.
-          </h2>
-          <p>
-            The first-run path stays simple: install FabricOps into a cluster,
-            apply a <code>FabricNetwork</code>, then wait for the operator to
-            publish a ready network and client material.
-          </p>
-        </div>
-
-        <div class="launch-desk">
-          <div class="command-drawer">
-            <div class="drawer-tabs" role="tablist" aria-label="Install method">
-              <button
-                class="drawer-tab is-active"
-                type="button"
-                role="tab"
-                aria-selected="true"
-                data-tab="bundle"
-              >
-                Bundle
-              </button>
-              <button
-                class="drawer-tab"
-                type="button"
-                role="tab"
-                aria-selected="false"
-                data-tab="helm"
-              >
-                Helm
-              </button>
-              <button
-                class="drawer-tab"
-                type="button"
-                role="tab"
-                aria-selected="false"
-                data-tab="sample"
-              >
-                Sample
-              </button>
+      <section class="install section-dark" id="install" aria-labelledby="install-title">
+        <div class="section-shell install-layout">
+          <header class="section-intro reveal">
+            <span class="section-index">01 / Install</span>
+            <h2 id="install-title">From empty cluster to control plane.</h2>
+            <p>Install one release artifact, apply a network resource, and watch the status conditions converge.</p>
+            <a class="text-link" href="https://github.com/LF-Decentralized-Trust-labs/FabricOps#installation">Read installation guide <span aria-hidden="true">&#8594;</span></a>
+          </header>
+          <div class="command-workspace reveal">
+            <div class="command-tabs" role="tablist" aria-label="Install method">
+              <button class="command-tab is-active" type="button" role="tab" aria-selected="true" data-tab="bundle">Release bundle</button>
+              <button class="command-tab" type="button" role="tab" aria-selected="false" data-tab="helm">Helm</button>
+              <button class="command-tab" type="button" role="tab" aria-selected="false" data-tab="sample">Apply sample</button>
             </div>
+            <div class="command-panel is-active" data-panel="bundle" role="tabpanel">
+              <div class="command-meta"><span>01</span><b>Install operator and CRDs</b><button class="copy-button" type="button" data-copy-target="bundle-install">Copy</button></div>
+              <pre id="bundle-install"><code><span class="prompt">$</span> kubectl apply -f https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.1/install.yaml
 
-            <div
-              class="drawer-panel is-active"
-              data-panel="bundle"
-              role="tabpanel"
-            >
-              <div class="command-label">
-                <span>install.yaml</span>
-                <button
-                  class="copy-button"
-                  type="button"
-                  data-copy-target="bundle-install"
-                >
-                  Copy
-                </button>
-              </div>
-              <pre
-                id="bundle-install"
-              ><code>kubectl apply -f https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.1/install.yaml
-kubectl rollout status deployment/fabricops-controller-manager -n fabricops-system --timeout=120s</code></pre>
+<span class="prompt">$</span> kubectl rollout status deployment/fabricops-controller-manager \
+    -n fabricops-system --timeout=120s</code></pre>
             </div>
-
-            <div class="drawer-panel" data-panel="helm" role="tabpanel" hidden>
-              <div class="command-label">
-                <span>fabricops-0.2.0.tgz</span>
-                <button
-                  class="copy-button"
-                  type="button"
-                  data-copy-target="helm-install"
-                >
-                  Copy
-                </button>
-              </div>
-              <pre id="helm-install"><code>helm upgrade --install fabricops \
-  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.1/fabricops-0.2.0.tgz \
-  --namespace fabricops-system \
-  --create-namespace \
-  --wait</code></pre>
+            <div class="command-panel" data-panel="helm" role="tabpanel" hidden>
+              <div class="command-meta"><span>01</span><b>Install with Helm</b><button class="copy-button" type="button" data-copy-target="helm-install">Copy</button></div>
+              <pre id="helm-install"><code><span class="prompt">$</span> helm upgrade --install fabricops \
+    https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.1/fabricops-0.2.1.tgz \
+    --namespace fabricops-system \
+    --create-namespace --wait</code></pre>
             </div>
+            <div class="command-panel" data-panel="sample" role="tabpanel" hidden>
+              <div class="command-meta"><span>02</span><b>Apply and wait</b><button class="copy-button" type="button" data-copy-target="sample-install">Copy</button></div>
+              <pre id="sample-install"><code><span class="prompt">$</span> kubectl apply -f https://raw.githubusercontent.com/LF-Decentralized-Trust-labs/FabricOps/v0.2.1/config/samples/fabricops_v1alpha1_fabricnetwork.yaml
 
-            <div
-              class="drawer-panel"
-              data-panel="sample"
-              role="tabpanel"
-              hidden
-            >
-              <div class="command-label">
-                <span>fabricnetwork-sample</span>
-                <button
-                  class="copy-button"
-                  type="button"
-                  data-copy-target="sample-install"
-                >
-                  Copy
-                </button>
-              </div>
-              <pre
-                id="sample-install"
-              ><code>kubectl apply -f https://raw.githubusercontent.com/LF-Decentralized-Trust-labs/FabricOps/v0.2.1/config/samples/fabricops_v1alpha1_fabricnetwork.yaml
-fabricopsctl wait -n default --timeout 20m fabricnetwork-sample
-fabricopsctl connection-profile -n default --org BankA --format yaml fabricnetwork-sample</code></pre>
+<span class="prompt">$</span> fabricopsctl wait -n default --timeout 20m fabricnetwork-sample</code></pre>
             </div>
-          </div>
-
-          <aside class="receipt-card" aria-label="Readiness receipt">
-            <span class="receipt-number">receipt / 0001</span>
-            <h3>What ready means</h3>
-            <ul>
-              <li>Fabric CA registrar bootstrapped</li>
-              <li>Admin, peer, and orderer identities enrolled</li>
-              <li>
-                Managed MSP/TLS certificates and registrar credentials valid or
-                rotating
-              </li>
-              <li>Orderers and peers joined declared channels</li>
-              <li>CCaaS packages installed, approved, committed, and served</li>
-              <li>Operations endpoints and connection profiles exposed</li>
-            </ul>
-          </aside>
-        </div>
-      </section>
-
-      <section
-        class="section blueprint-section"
-        id="blueprint"
-        aria-labelledby="blueprint-title"
-      >
-        <div class="section-heading split">
-          <div>
-            <p class="eyebrow">Operator blueprint</p>
-            <h2 id="blueprint-title">
-              The CR is a contract. The cluster becomes the evidence.
-            </h2>
-          </div>
-          <p>
-            FabricOps makes the Kubernetes objects and Fabric actions traceable
-            back to the manifest that requested them. That is the operational
-            difference between a demo network and an infrastructure control
-            plane.
-          </p>
-        </div>
-
-        <div class="blueprint-spread">
-          <article class="spec-fragment">
-            <div class="fragment-title">
-              <span>intent</span>
-              <strong>fabricnetwork.yaml</strong>
-            </div>
-            <pre><code>spec:
-  global:
-    fabricVersion: "3.1.0"
-    tls: true
-  orgs:
-    - organization:
-        name: BankA
-        mspName: BankAMSP
-      peer:
-        instances: 2
-        db: CouchDB
-  channels:
-    - name: settlement</code></pre>
-          </article>
-
-          <div class="evidence-grid">
-            <article>
-              <span>Namespace</span>
-              <strong>fo-sample-banka</strong>
-              <p>
-                Owned runtime boundary for peer workloads, CouchDB, Secrets,
-                Services, and lifecycle Jobs.
-              </p>
-            </article>
-            <article>
-              <span>Identity</span>
-              <strong>MSP/TLS Secrets</strong>
-              <p>
-                Fabric CA enrollment material published into Kubernetes for
-                admins, peers, and orderers.
-              </p>
-            </article>
-            <article>
-              <span>Channel</span>
-              <strong>settlement.block</strong>
-              <p>
-                Config generation, channel block Jobs, orderer joins, peer
-                joins, and anchor updates.
-              </p>
-            </article>
-            <article>
-              <span>Client</span>
-              <strong>connection.yaml</strong>
-              <p>
-                Per-org Gateway profiles and status endpoints for application
-                clients and smoke checks.
-              </p>
-            </article>
+            <div class="command-result" aria-label="Expected output"><span class="result-mark">&#10003;</span><code>FabricNetwork default/fabricnetwork-sample reached condition Ready=True</code></div>
           </div>
         </div>
       </section>
 
-      <section
-        class="section org-section"
-        id="orgs"
-        aria-labelledby="org-title"
-      >
-        <div class="section-heading">
-          <p class="eyebrow">Organization charters</p>
-          <h2 id="org-title">
-            Each organization gets a runtime boundary with a public identity.
-          </h2>
-          <p>
-            Per-org namespaces keep ownership legible. The operator can still
-            reason about one network while each organization carries its own CA,
-            identity material, storage, and workload surface.
-          </p>
-        </div>
-
-        <div class="charter-stack">
-          <article class="org-charter orderer-charter">
-            <div class="org-mark">O</div>
-            <div>
-              <span>fo-sample-orderer</span>
-              <h3>OrdererMSP</h3>
-              <p>
-                Two RAFT orderers, admin TLS, channel joins, and operations
-                Services.
-              </p>
+      <section class="control-plane section-light" id="control-plane" aria-labelledby="control-title">
+        <div class="section-shell">
+          <header class="control-heading reveal">
+            <span class="section-index">02 / Reconciliation</span>
+            <h2 id="control-title">One resource. The whole operating sequence.</h2>
+          </header>
+          <div class="control-grid">
+            <div class="manifest-view reveal" aria-label="FabricNetwork manifest example">
+              <div class="file-bar"><span>fabricnetwork.yaml</span><b>desired state</b></div>
+              <pre><code><span class="yaml-key">apiVersion:</span> fabricops.io/v1alpha1
+<span class="yaml-key">kind:</span> FabricNetwork
+<span class="yaml-key">metadata:</span>
+  <span class="yaml-key">name:</span> settlement
+<span class="yaml-key">spec:</span>
+  <span class="yaml-key">global:</span>
+    <span class="yaml-key">fabricVersion:</span> <span class="yaml-value">"3.1.0"</span>
+    <span class="yaml-key">tls:</span> <span class="yaml-value">true</span>
+  <span class="yaml-key">orgs:</span>
+    - <span class="yaml-key">organization:</span>
+        <span class="yaml-key">name:</span> BankA
+        <span class="yaml-key">mspName:</span> BankAMSP
+      <span class="yaml-key">peer:</span>
+        <span class="yaml-key">instances:</span> <span class="yaml-value">2</span>
+        <span class="yaml-key">db:</span> CouchDB
+  <span class="yaml-key">channels:</span>
+    - <span class="yaml-key">name:</span> settlement</code></pre>
             </div>
-          </article>
-          <article class="org-charter banka-charter">
-            <div class="org-mark">A</div>
-            <div>
-              <span>fo-sample-banka</span>
-              <h3>BankAMSP</h3>
-              <p>
-                Two peers, CouchDB state databases, anchor peers, private data,
-                and Gateway material.
-              </p>
-            </div>
-          </article>
-          <article class="org-charter bankb-charter">
-            <div class="org-mark">B</div>
-            <div>
-              <span>fo-sample-bankb</span>
-              <h3>BankBMSP</h3>
-              <p>
-                Participant peers, peer-specific CCaaS services, scale-up joins,
-                and endorsement traffic.
-              </p>
-            </div>
-          </article>
+            <ol class="reconcile-sequence reveal">
+              <li><span>01</span><div><h3>Establish trust</h3><p>Bootstrap Fabric CAs, enroll identities, and publish MSP/TLS material.</p></div><b>IdentityMaterialReady</b></li>
+              <li><span>02</span><div><h3>Form the network</h3><p>Run orderers and peers with Kubernetes-safe addressing and storage.</p></div><b>WorkloadsReady</b></li>
+              <li><span>03</span><div><h3>Create channels</h3><p>Generate blocks, join members, and configure anchor peers.</p></div><b>ChannelsReady</b></li>
+              <li><span>04</span><div><h3>Activate chaincode</h3><p>Package, install, approve, commit, and serve CCaaS workloads.</p></div><b>ChaincodesReady</b></li>
+            </ol>
+          </div>
         </div>
       </section>
 
-      <section
-        class="section ccaas-section"
-        id="ccaas"
-        aria-labelledby="ccaas-title"
-      >
-        <div class="section-heading split">
-          <div>
-            <p class="eyebrow">CCaaS assembly lane</p>
-            <h2 id="ccaas-title">
-              Chaincode is not just deployed. It is installed into the network.
-            </h2>
+      <section class="boundaries section-dark" id="organizations" aria-labelledby="boundaries-title">
+        <div class="section-shell">
+          <header class="boundaries-heading reveal">
+            <span class="section-index">03 / Ownership</span>
+            <h2 id="boundaries-title">The network is shared. Infrastructure ownership is not.</h2>
+            <p>Per-organization namespaces keep credentials, workloads, storage, and operational responsibility legible.</p>
+          </header>
+          <div class="namespace-map reveal" aria-label="Per-organization namespace layout">
+            <div class="namespace-ruler"><span>cluster / settlement-production</span><b>3 namespaces</b></div>
+            <article class="namespace-row"><div class="namespace-id"><span>01</span><strong>fo-settlement-orderer</strong></div><div class="namespace-role">Consensus</div><ul><li>Fabric CA</li><li>3 orderers</li><li>channel participation</li><li>operations</li></ul><b class="namespace-state">Ready</b></article>
+            <article class="namespace-row"><div class="namespace-id"><span>02</span><strong>fo-settlement-banka</strong></div><div class="namespace-role">Founder</div><ul><li>Fabric CA</li><li>2 peers</li><li>CouchDB</li><li>CCaaS</li></ul><b class="namespace-state">Ready</b></article>
+            <article class="namespace-row"><div class="namespace-id"><span>03</span><strong>fo-settlement-bankb</strong></div><div class="namespace-role">Member</div><ul><li>Fabric CA</li><li>1 peer</li><li>Gateway profile</li><li>CCaaS</li></ul><b class="namespace-state">Ready</b></article>
           </div>
-          <p>
-            FabricOps treats Chaincode-as-a-Service as lifecycle infrastructure:
-            package metadata, package IDs, peer installs, org approvals, channel
-            commit, runtime deployment, and upgrades.
-          </p>
-        </div>
-
-        <div class="assembly-lane" aria-label="CCaaS lifecycle">
-          <article>
-            <b>01</b>
-            <h3>Package</h3>
-            <p>Generate peer-specific connection metadata.</p>
-          </article>
-          <article>
-            <b>02</b>
-            <h3>Install</h3>
-            <p>Run Fabric tools Jobs for selected peers.</p>
-          </article>
-          <article>
-            <b>03</b>
-            <h3>Approve</h3>
-            <p>Submit org approvals once package IDs are known.</p>
-          </article>
-          <article>
-            <b>04</b>
-            <h3>Commit</h3>
-            <p>Commit channel definitions with policy satisfied.</p>
-          </article>
-          <article>
-            <b>05</b>
-            <h3>Serve</h3>
-            <p>Deploy CCaaS workloads at the address peers expect.</p>
-          </article>
-        </div>
-
-        <div class="runtime-pills" aria-label="Validated runtime coverage">
-          <span>Node</span>
-          <span>Go</span>
-          <span>Java</span>
-          <span>Private data</span>
-          <span>CouchDB indexes</span>
-          <span>Declarative upgrades</span>
         </div>
       </section>
 
-      <section
-        class="section federation-section"
-        id="federation"
-        aria-labelledby="federation-title"
-      >
-        <div class="section-heading">
-          <p class="eyebrow">Federated joining</p>
-          <h2 id="federation-title">
-            A network can grow across clusters without losing its audit trail.
-          </h2>
-          <p>
-            Banks and regulated organizations often need to own their own
-            infrastructure. FabricOps models that reality with founder-side
-            admission and participant-owned
-            <code>FabricParticipant</code> resources.
-          </p>
-        </div>
-
-        <div class="handoff-ledger" aria-label="Federated join handoff">
-          <article class="cluster-card">
-            <span>Founder</span>
-            <h3>FabricNetwork</h3>
-            <p>
-              Exports public MSP roots, orderer endpoints, channel hints, and
-              signer requirements.
-            </p>
-          </article>
-          <div class="bundle-card">
-            <span>join bundle</span>
-            <strong>MSP roots</strong>
-            <strong>endpoints</strong>
-            <strong>policies</strong>
+      <section class="ccaas section-dark" id="ccaas" aria-labelledby="ccaas-title">
+        <div class="section-shell ccaas-layout">
+          <header class="ccaas-copy reveal">
+            <span class="section-index">04 / Chaincode-as-a-Service</span>
+            <h2 id="ccaas-title">Lifecycle is infrastructure.</h2>
+            <p>FabricOps carries chaincode from package metadata to a committed definition and the exact service address each peer expects.</p>
+            <div class="runtime-list" aria-label="Validated chaincode runtimes"><span>Node</span><span>Go</span><span>Java</span></div>
+          </header>
+          <div class="lifecycle-track reveal" aria-label="Chaincode lifecycle sequence">
+            <div class="track-line" aria-hidden="true"></div>
+            <article><span>01</span><h3>Package</h3><p>Connection metadata</p></article>
+            <article><span>02</span><h3>Install</h3><p>Target peers</p></article>
+            <article><span>03</span><h3>Approve</h3><p>Every channel org</p></article>
+            <article><span>04</span><h3>Commit</h3><p>Policy satisfied</p></article>
+            <article class="track-live"><span>05</span><h3>Serve</h3><p>Peer-specific endpoint</p><b>chaincode1:7052</b></article>
           </div>
-          <article class="cluster-card participant">
-            <span>Participant</span>
-            <h3>FabricParticipant</h3>
-            <p>
-              Imports channel artifacts, reconciles local peers, installs
-              chaincode, and participates in endorsement.
-            </p>
-          </article>
         </div>
       </section>
 
-      <section
-        class="section docs-section"
-        id="docs"
-        aria-labelledby="docs-title"
-      >
-        <div class="section-heading split">
-          <div>
-            <p class="eyebrow">Runbook index</p>
-            <h2 id="docs-title">
-              Read the docs by the operation you are trying to perform.
-            </h2>
+      <section class="federation" id="federation" aria-labelledby="federation-title">
+        <div class="section-shell federation-shell">
+          <header class="federation-heading reveal">
+            <span class="section-index">05 / Federated joining</span>
+            <h2 id="federation-title">Join the network. Keep your cluster.</h2>
+            <p>A participant can own its Kubernetes infrastructure while the founder retains explicit control over channel admission.</p>
+          </header>
+          <div class="federation-diagram reveal" aria-label="Cross-cluster joining flow">
+            <article class="cluster-zone"><div class="zone-head"><span>Cluster A</span><b>Founder</b></div><strong>FabricNetwork</strong><p>Exports public trust and channel admission requirements.</p><code>settlement / Ready</code></article>
+            <div class="join-transfer"><span class="transfer-line" aria-hidden="true"></span><div><small>portable contract</small><strong>Join bundle</strong><span>MSP roots</span><span>endpoints</span><span>policies</span></div></div>
+            <article class="cluster-zone participant-zone"><div class="zone-head"><span>Cluster B</span><b>Participant</b></div><strong>FabricParticipant</strong><p>Reconciles local identity, peers, and channel membership.</p><code>BankBMSP / Joined</code></article>
           </div>
-          <p>
-            The documentation routes are deliberately operational: install,
-            validate, model private data, join across clusters, and track
-            support against practical Fabric network needs.
-          </p>
+          <a class="federation-link" href="https://github.com/LF-Decentralized-Trust-labs/FabricOps/blob/main/docs/federated-join.md">Open the federated join runbook <span aria-hidden="true">&#8594;</span></a>
         </div>
+      </section>
 
-        <div class="runbook-index">
-          <a
-            href="https://github.com/LF-Decentralized-Trust-labs/FabricOps#installation"
-          >
-            <span>install</span>
-            <strong>Operator installation</strong>
-            <p>Bundle, Helm, sample network, and fabricopsctl setup.</p>
-          </a>
-          <a
-            href="https://github.com/LF-Decentralized-Trust-labs/FabricOps/blob/main/docs/e2e-validation.md"
-          >
-            <span>validate</span>
-            <strong>E2E validation</strong>
-            <p>
-              Kind smokes for Node, Go, Java, private data, cleanup, and
-              upgrades.
-            </p>
-          </a>
-          <a
-            href="https://github.com/LF-Decentralized-Trust-labs/FabricOps/blob/main/docs/private-data-collections.md"
-          >
-            <span>protect</span>
-            <strong>Private data collections</strong>
-            <p>Package collection config and prove authorized read behavior.</p>
-          </a>
-          <a
-            href="https://github.com/LF-Decentralized-Trust-labs/FabricOps/blob/main/docs/federated-join.md"
-          >
-            <span>federate</span>
-            <strong>Federated join operations</strong>
-            <p>
-              Founder and participant runbooks for cross-cluster channel
-              membership.
-            </p>
-          </a>
-          <a
-            href="https://github.com/LF-Decentralized-Trust-labs/FabricOps/blob/main/SUPPORTED_FEATURES.md"
-          >
-            <span>track</span>
-            <strong>Supported features</strong>
-            <p>
-              Compare implemented FabricOps coverage against the broader Fabric
-              surface.
-            </p>
-          </a>
+      <section class="docs section-light" id="docs" aria-labelledby="docs-title">
+        <div class="section-shell docs-layout">
+          <header class="docs-heading reveal"><span class="section-index">06 / Runbooks</span><h2 id="docs-title">Documentation for the operation at hand.</h2><p>Start with the workflow, then descend into the implementation.</p></header>
+          <nav class="runbook-list reveal" aria-label="FabricOps documentation">
+            <a href="https://github.com/LF-Decentralized-Trust-labs/FabricOps#installation"><span>01</span><strong>Install FabricOps</strong><p>Bundle, Helm, sample network, and fabricopsctl.</p><b aria-hidden="true">&#8599;</b></a>
+            <a href="https://github.com/LF-Decentralized-Trust-labs/FabricOps/blob/main/docs/e2e-validation.md"><span>02</span><strong>Validate a network</strong><p>Full Kind smokes across every sample runtime.</p><b aria-hidden="true">&#8599;</b></a>
+            <a href="https://github.com/LF-Decentralized-Trust-labs/FabricOps/blob/main/docs/private-data-collections.md"><span>03</span><strong>Model private data</strong><p>Collection policy, package config, and read behavior.</p><b aria-hidden="true">&#8599;</b></a>
+            <a href="https://github.com/LF-Decentralized-Trust-labs/FabricOps/blob/main/docs/certificate-lifecycle.md"><span>04</span><strong>Operate certificates</strong><p>Renewal, rotation, status, and recovery boundaries.</p><b aria-hidden="true">&#8599;</b></a>
+            <a href="https://github.com/LF-Decentralized-Trust-labs/FabricOps/blob/main/SUPPORTED_FEATURES.md"><span>05</span><strong>Review feature coverage</strong><p>Implemented behavior and the remaining Fabric surface.</p><b aria-hidden="true">&#8599;</b></a>
+          </nav>
         </div>
+      </section>
+
+      <section class="final-cta" aria-labelledby="cta-title">
+        <div class="section-shell final-cta-shell reveal"><div><span>Apache-2.0 / community maintained</span><h2 id="cta-title">Operate Fabric from intent.</h2></div><a class="button button-primary" href="https://github.com/LF-Decentralized-Trust-labs/FabricOps">Explore FabricOps</a></div>
       </section>
     </main>
 
     <footer class="site-footer">
-      <div>
-        <picture>
-          <source
-            media="(prefers-color-scheme: dark)"
-            srcset="assets/fabricops-lockup-light.png"
-          />
-          <img
-            src="assets/fabricops-lockup-ink.png"
-            width="240"
-            height="61"
-            alt="FabricOps"
-          />
-        </picture>
-        <p>
-          FabricOps is an LF Decentralized Trust Lab, licensed Apache-2.0. It is
-          community lab work and not a graduated Hyperledger Fabric project.
-        </p>
-      </div>
-      <nav aria-label="Footer navigation">
-        <a href="https://github.com/LF-Decentralized-Trust-labs/FabricOps"
-          >GitHub</a
-        >
-        <a
-          href="https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases"
-          >Releases</a
-        >
-        <a
-          href="https://github.com/LF-Decentralized-Trust-labs/FabricOps/issues"
-          >Issues</a
-        >
-        <a
-          href="https://github.com/LF-Decentralized-Trust-labs/FabricOps/blob/main/LICENSE"
-          >License</a
-        >
-      </nav>
+      <div class="footer-brand"><img src="assets/fabricops-lockup-light.png" width="240" height="61" alt="FabricOps" /><p>An LF Decentralized Trust Lab for declarative Hyperledger Fabric operations on Kubernetes.</p></div>
+      <nav aria-label="Footer navigation"><a href="https://github.com/LF-Decentralized-Trust-labs/FabricOps">GitHub</a><a href="https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases">Releases</a><a href="https://github.com/LF-Decentralized-Trust-labs/FabricOps/issues">Issues</a><a href="https://github.com/LF-Decentralized-Trust-labs/FabricOps/blob/main/LICENSE">License</a></nav>
+      <p class="footer-note">FabricOps is a community lab and not a graduated Hyperledger Fabric project.</p>
     </footer>
-
     <script src="assets/site.js" defer></script>
   </body>
 </html>
