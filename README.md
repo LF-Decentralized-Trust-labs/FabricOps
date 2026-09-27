@@ -5,17 +5,53 @@
 
 [Documentation](https://fabricops.io) | [Releases](https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases) | [Supported features](SUPPORTED_FEATURES.md)
 
-FabricOps is an LF Decentralized Trust Lab and Kubernetes operator for
-provisioning multi-organization Hyperledger Fabric networks from declarative
-configuration.
+> Declarative Hyperledger Fabric networks on Kubernetes.
 
-FabricOps is community lab work, not a graduated Hyperledger Fabric project.
-The project is intended to mature in the open while collaborating with adjacent
-Fabric deployment and operations efforts.
+FabricOps is an LF Decentralized Trust Lab that turns a high-level network
+definition into running Hyperledger Fabric infrastructure. Define
+organizations, CAs, peers, orderers, channels, and Chaincode-as-a-Service
+workloads in a `FabricNetwork` resource; FabricOps continuously reconciles that
+intent on Kubernetes.
 
-The long-term goal is automated Fabric infrastructure on Kubernetes: Terraform for cluster/cloud infrastructure, a custom operator for Fabric CAs, orderers, peers, channels, and Chaincode-as-a-Service, plus TLS certificate lifecycle management and Prometheus-based health visibility.
+```text
+FabricNetwork YAML
+        |
+        v
+    FabricOps
+        |
+        v
++---------------- Kubernetes ----------------+
+| Fabric CAs       Orderers                   |
+| Peers            Channels                   |
+| TLS and MSP      CCaaS                      |
+| Metrics          NetworkPolicies            |
++---------------------------------------------+
+```
 
-## Installation
+## Why FabricOps?
+
+Running Hyperledger Fabric on Kubernetes is more than deploying containers.
+Identity enrollment, MSP material, TLS, channel governance, chaincode
+lifecycle, organization boundaries, and operational state must remain
+consistent across the network.
+
+Component-oriented tools expose the pieces. FabricOps adds a complementary
+full-network intent layer:
+
+```text
+CA + Peer + Peer + Orderer + Channel + ...
+                    becomes
+              FabricNetwork
+                    |
+                    v
+        continuously reconciled state
+```
+
+One manifest describes the network operators intend to run. Kubernetes status
+conditions show whether identities, components, channels, chaincode, and
+observability have converged.
+
+## Quick Start
 
 FabricOps installs into an existing Kubernetes cluster. End users only need `kubectl`; Helm is optional.
 
@@ -63,7 +99,7 @@ helm upgrade --install fabricops \
   --namespace fabricops-system \
   --create-namespace \
   --set manager.image.repository=ghcr.io/lf-decentralized-trust-labs/fabricops \
-  --set manager.image.tag=0.2.0 \
+  --set manager.image.tag=0.2.1 \
   --wait
 ```
 
@@ -283,6 +319,12 @@ FabricOps supports:
 
 See [SUPPORTED_FEATURES.md](SUPPORTED_FEATURES.md) for the detailed
 compatibility matrix.
+
+## Project Status
+
+The longer-term direction includes broader Hyperledger Fabric feature coverage,
+Terraform-backed cluster and cloud infrastructure, deeper certificate lifecycle
+automation, and a practical adoption path for Fabric-X networks.
 
 ## Namespace Layout
 
