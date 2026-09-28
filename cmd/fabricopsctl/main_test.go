@@ -300,6 +300,35 @@ func TestRunWaitRejectsUnsupportedWaitTarget(t *testing.T) {
 	}
 }
 
+func TestPrintStatusUsesUnknownPhaseBeforeReconciliation(t *testing.T) {
+	var output bytes.Buffer
+	printStatus(&output, &fabricopsv1alpha1.FabricNetwork{
+		ObjectMeta: metav1.ObjectMeta{Name: "sample", Namespace: "default"},
+	})
+
+	want := "FabricNetwork: default/sample\nPhase: Unknown\n"
+	if got := output.String(); got != want {
+		t.Fatalf("status output = %q, want %q", got, want)
+	}
+}
+
+func TestPrintParticipantStatusUsesUnknownPhaseBeforeReconciliation(t *testing.T) {
+	var output bytes.Buffer
+	printParticipantStatus(&output, &fabricopsv1alpha1.FabricParticipant{
+		ObjectMeta: metav1.ObjectMeta{Name: "bankb", Namespace: "default"},
+	})
+
+	want := "FabricParticipant: default/bankb\n" +
+		"Phase: Unknown\n" +
+		"LocalInfrastructureReady: false\n" +
+		"RemoteArtifactsReady: false\n" +
+		"ChannelsReady: false\n" +
+		"ChaincodeLifecycleReady: false\n"
+	if got := output.String(); got != want {
+		t.Fatalf("participant status output = %q, want %q", got, want)
+	}
+}
+
 func TestCARegistrarRotationStatusSummary(t *testing.T) {
 	summary := caRegistrarRotationStatusSummary(fabricopsv1alpha1.CARegistrarRotationStatus{
 		ObservedRequestID: "rotate-001",
