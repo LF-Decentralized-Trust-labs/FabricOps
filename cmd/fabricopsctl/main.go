@@ -358,7 +358,7 @@ func newRESTConfig(kube kubeOptions) (*rest.Config, error) {
 
 func printStatus(out io.Writer, network *fabricopsv1alpha1.FabricNetwork) {
 	printf(out, "FabricNetwork: %s/%s\n", network.Namespace, network.Name)
-	printf(out, "Phase: %s\n", network.Status.Phase)
+	printf(out, "Phase: %s\n", statusPhaseSummary(network.Status.Phase))
 	if ready := readyConditionSummary(network.Status.Conditions); ready != "" {
 		printf(out, "Ready: %s\n", ready)
 	}
@@ -373,7 +373,7 @@ func printStatus(out io.Writer, network *fabricopsv1alpha1.FabricNetwork) {
 
 func printParticipantStatus(out io.Writer, participant *fabricopsv1alpha1.FabricParticipant) {
 	printf(out, "FabricParticipant: %s/%s\n", participant.Namespace, participant.Name)
-	printf(out, "Phase: %s\n", participant.Status.Phase)
+	printf(out, "Phase: %s\n", statusPhaseSummary(participant.Status.Phase))
 	if ready := readyConditionSummary(participant.Status.Conditions); ready != "" {
 		printf(out, "Ready: %s\n", ready)
 	}
@@ -390,6 +390,14 @@ func printParticipantStatus(out io.Writer, participant *fabricopsv1alpha1.Fabric
 	}
 	printParticipantChannelStatuses(out, participant.Status.ChannelStatus)
 	printParticipantChaincodeStatuses(out, participant.Status.ChaincodeStatus)
+}
+
+func statusPhaseSummary(phase fabricopsv1alpha1.Phase) string {
+	if phase == "" {
+		return "Unknown"
+	}
+
+	return string(phase)
 }
 
 type fabricNetworkGetter func(
