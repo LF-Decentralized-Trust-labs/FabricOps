@@ -35,11 +35,13 @@ perl_replace '
   s{raw.githubusercontent.com/LF-Decentralized-Trust-labs/FabricOps/v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?/}{raw.githubusercontent.com/LF-Decentralized-Trust-labs/FabricOps/$ENV{RELEASE_TAG}/}g;
   s{ghcr.io/lf-decentralized-trust-labs/fabricops:([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?)}{ghcr.io/lf-decentralized-trust-labs/fabricops:$ENV{RELEASE_VERSION}}g;
   s{ghcr.io/lf-decentralized-trust-labs/fabricops-(node|go|java)-settlement:[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?}{ghcr.io/lf-decentralized-trust-labs/fabricops-$1-settlement:$ENV{RELEASE_VERSION}}g;
+  s{--set manager\.image\.tag=[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?}{--set manager.image.tag=$ENV{RELEASE_VERSION}}g;
   s{fabricops-[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?\.tgz}{fabricops-$ENV{RELEASE_VERSION}.tgz}g;
   s{Release `v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?`}{Release `$ENV{RELEASE_TAG}`}g;
   s{VERSION=[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?}{VERSION=$ENV{RELEASE_VERSION}}g;
   s{\@v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?}{\@$ENV{RELEASE_TAG}}g;
-' README.md
+  s{Install v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?}{Install $ENV{RELEASE_TAG}}g;
+' README.md docs/index.html
 
 perl_replace '
   s{v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?}{$ENV{RELEASE_TAG}}g;
@@ -63,6 +65,10 @@ perl_replace \
   cmd/fabricopsctl/join_bundle_test.go \
   internal/controller/fabricnetwork_controller_test.go \
   internal/controller/fabricparticipant_controller_test.go
+
+perl_replace \
+  's{ghcr.io/lf-decentralized-trust-labs/fabricops-fabric-tools:[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?}{ghcr.io/lf-decentralized-trust-labs/fabricops-fabric-tools:$ENV{RELEASE_VERSION}}g' \
+  config/images/fabric-tools/build_and_push.sh
 
 perl_replace 's/"version": "[^"]+"/"version": "$ENV{RELEASE_VERSION}"/' \
   config/samples/chaincodes/node_settlement/package.json

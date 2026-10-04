@@ -672,6 +672,18 @@ spec:
                     minLength: 1
                     pattern: ^[A-Za-z0-9][A-Za-z0-9._-]*$
                     type: string
+                  images:
+                    properties:
+                      fabricTools:
+                        description: |-
+                          FabricTools overrides the image used by Fabric CLI helper Jobs that run
+                          configtxgen, configtxlator, peer, osnadmin, and related tooling. This is
+                          useful when a Fabric version needs tooling that is not available from the
+                          default hyperledger/fabric-tools tag.
+                        maxLength: 253
+                        minLength: 1
+                        type: string
+                    type: object
                   jobs:
                     properties:
                       succeededHistoryTTLSeconds:
@@ -799,6 +811,25 @@ spec:
                           minLength: 1
                           pattern: ^[A-Za-z0-9_-]+$
                           type: string
+                        registrar:
+                          description: Registrar controls Fabric CA bootstrap registrar
+                            lifecycle behavior.
+                          properties:
+                            rotation:
+                              description: |-
+                                Rotation requests safe rotation of the Fabric CA bootstrap registrar
+                                credentials used by FabricOps helper Jobs. Changing requestID starts a
+                                new one-time rotation.
+                              properties:
+                                requestID:
+                                  description: |-
+                                    RequestID is an operator-visible nonce for a requested registrar rotation.
+                                    Set a new value to request a new rotation.
+                                  maxLength: 128
+                                  pattern: ^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$
+                                  type: string
+                              type: object
+                          type: object
                       required:
                       - db
                       type: object
@@ -862,6 +893,9 @@ spec:
                             pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                             type: string
                           type:
+                            description: |-
+                              Type declares the orderer consensus implementation. Supported values
+                              are "raft"/"etcdraft" and, for Fabric v3 networks, "bft"/"smartbft".
                             maxLength: 32
                             minLength: 1
                             pattern: ^[A-Za-z0-9_-]+$
@@ -1323,6 +1357,91 @@ spec:
                       type: string
                     caReady:
                       type: boolean
+                    caRegistrarRotation:
+                      description: |-
+                        CARegistrarRotation reports bootstrap registrar credential rotation state
+                        for the org Fabric CA.
+                      properties:
+                        activeSecretName:
+                          type: string
+                        activeUsername:
+                          type: string
+                        lastRotationTime:
+                          format: date-time
+                          type: string
+                        message:
+                          type: string
+                        observedRequestID:
+                          type: string
+                        phase:
+                          type: string
+                        previousSecretName:
+                          type: string
+                        rotationJobName:
+                          type: string
+                        stagedSecretName:
+                          type: string
+                      type: object
+                    certificateRenewalError:
+                      description: |-
+                        CertificateRenewalError summarizes renewal failures without replacing the
+                        last-known-good identity material.
+                      type: string
+                    certificateRenewalRequired:
+                      description: |-
+                        CertificateRenewalRequired is true when at least one managed certificate
+                        is expired, near expiry, currently renewing, or otherwise needs operator
+                        attention.
+                      type: boolean
+                    certificates:
+                      description: |-
+                        Certificates inventories MSP and TLS certificates found in managed
+                        identity Secrets for this org.
+                      items:
+                        properties:
+                          component:
+                            type: string
+                          issuer:
+                            type: string
+                          key:
+                            type: string
+                          message:
+                            type: string
+                          name:
+                            type: string
+                          namespace:
+                            type: string
+                          notAfter:
+                            format: date-time
+                            type: string
+                          notBefore:
+                            format: date-time
+                            type: string
+                          renewable:
+                            type: boolean
+                          renewalJobName:
+                            type: string
+                          renewalTime:
+                            format: date-time
+                            type: string
+                          secretKind:
+                            type: string
+                          secretName:
+                            type: string
+                          state:
+                            type: string
+                          subject:
+                            type: string
+                          workloadName:
+                            type: string
+                        required:
+                        - key
+                        - name
+                        - secretKind
+                        - secretName
+                        - state
+                        type: object
+                      type: array
                     connectionProfileConfigMapName:
                       description: |-
                         ConnectionProfileConfigMapName points application clients at the
@@ -1986,6 +2105,18 @@ spec:
                     minLength: 1
                     pattern: ^[A-Za-z0-9][A-Za-z0-9._-]*$
                     type: string
+                  images:
+                    properties:
+                      fabricTools:
+                        description: |-
+                          FabricTools overrides the image used by Fabric CLI helper Jobs that run
+                          configtxgen, configtxlator, peer, osnadmin, and related tooling. This is
+                          useful when a Fabric version needs tooling that is not available from the
+                          default hyperledger/fabric-tools tag.
+                        maxLength: 253
+                        minLength: 1
+                        type: string
+                    type: object
                   jobs:
                     properties:
                       succeededHistoryTTLSeconds:
@@ -2329,6 +2460,25 @@ spec:
                         minLength: 1
                         pattern: ^[A-Za-z0-9_-]+$
                         type: string
+                      registrar:
+                        description: Registrar controls Fabric CA bootstrap registrar
+                          lifecycle behavior.
+                        properties:
+                          rotation:
+                            description: |-
+                              Rotation requests safe rotation of the Fabric CA bootstrap registrar
+                              credentials used by FabricOps helper Jobs. Changing requestID starts a
+                              new one-time rotation.
+                            properties:
+                              requestID:
+                                description: |-
+                                  RequestID is an operator-visible nonce for a requested registrar rotation.
+                                  Set a new value to request a new rotation.
+                                maxLength: 128
+                                pattern: ^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$
+                                type: string
+                            type: object
+                        type: object
                     required:
                     - db
                     type: object
@@ -2392,6 +2542,9 @@ spec:
                           pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                           type: string
                         type:
+                          description: |-
+                            Type declares the orderer consensus implementation. Supported values
+                            are "raft"/"etcdraft" and, for Fabric v3 networks, "bft"/"smartbft".
                           maxLength: 32
                           minLength: 1
                           pattern: ^[A-Za-z0-9_-]+$
@@ -2633,6 +2786,91 @@ spec:
                     type: string
                   caReady:
                     type: boolean
+                  caRegistrarRotation:
+                    description: |-
+                      CARegistrarRotation reports bootstrap registrar credential rotation state
+                      for the org Fabric CA.
+                    properties:
+                      activeSecretName:
+                        type: string
+                      activeUsername:
+                        type: string
+                      lastRotationTime:
+                        format: date-time
+                        type: string
+                      message:
+                        type: string
+                      observedRequestID:
+                        type: string
+                      phase:
+                        type: string
+                      previousSecretName:
+                        type: string
+                      rotationJobName:
+                        type: string
+                      stagedSecretName:
+                        type: string
+                    type: object
+                  certificateRenewalError:
+                    description: |-
+                      CertificateRenewalError summarizes renewal failures without replacing the
+                      last-known-good identity material.
+                    type: string
+                  certificateRenewalRequired:
+                    description: |-
+                      CertificateRenewalRequired is true when at least one managed certificate
+                      is expired, near expiry, currently renewing, or otherwise needs operator
+                      attention.
+                    type: boolean
+                  certificates:
+                    description: |-
+                      Certificates inventories MSP and TLS certificates found in managed
+                      identity Secrets for this org.
+                    items:
+                      properties:
+                        component:
+                          type: string
+                        issuer:
+                          type: string
+                        key:
+                          type: string
+                        message:
+                          type: string
+                        name:
+                          type: string
+                        namespace:
+                          type: string
+                        notAfter:
+                          format: date-time
+                          type: string
+                        notBefore:
+                          format: date-time
+                          type: string
+                        renewable:
+                          type: boolean
+                        renewalJobName:
+                          type: string
+                        renewalTime:
+                          format: date-time
+                          type: string
+                        secretKind:
+                          type: string
+                        secretName:
+                          type: string
+                        state:
+                          type: string
+                        subject:
+                          type: string
+                        workloadName:
+                          type: string
+                      required:
+                      - key
+                      - name
+                      - secretKind
+                      - secretName
+                      - state
+                      type: object
+                    type: array
                   connectionProfileConfigMapName:
                     description: |-
                       ConnectionProfileConfigMapName points application clients at the
@@ -3188,7 +3426,7 @@ spec:
         - --health-probe-bind-address=:8081
         command:
         - /manager
-        image: controller:latest
+        image: ghcr.io/lf-decentralized-trust-labs/fabricops:0.3.0
         imagePullPolicy: IfNotPresent
         livenessProbe:
           httpGet:
