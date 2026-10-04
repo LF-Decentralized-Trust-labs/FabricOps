@@ -2,7 +2,7 @@
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-IMAGE=${IMAGE:-ghcr.io/lf-decentralized-trust-labs/fabricops-fabric-tools:0.2.1}
+IMAGE=${IMAGE:-ghcr.io/lf-decentralized-trust-labs/fabricops-fabric-tools:0.3.0}
 FABRIC_VERSION=${FABRIC_VERSION:-3.1.0}
 PLATFORM=${PLATFORM:-linux/amd64}
 PUSH=${PUSH:-false}

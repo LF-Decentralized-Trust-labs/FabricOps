@@ -65,7 +65,7 @@
             <p class="hero-statement">Continuous convergence for Hyperledger Fabric.</p>
             <p class="hero-summary">Declare a multi-organization network. FabricOps reconciles identities, channels, CCaaS, and proof of readiness on Kubernetes.</p>
             <div class="hero-actions">
-              <a class="button button-primary" href="#install">Install v0.2.1</a>
+              <a class="button button-primary" href="#install">Install v0.3.0</a>
               <a class="button button-quiet" href="https://github.com/LF-Decentralized-Trust-labs/FabricOps">Explore source</a>
             </div>
           </div>
@@ -130,7 +130,7 @@
             </div>
             <div class="command-panel is-active" data-panel="bundle" role="tabpanel">
               <div class="command-meta"><span>01</span><b>Install operator and CRDs</b><button class="copy-button" type="button" data-copy-target="bundle-install">Copy</button></div>
-              <pre id="bundle-install"><code><span class="prompt">$</span> kubectl apply -f https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.1/install.yaml
+              <pre id="bundle-install"><code><span class="prompt">$</span> kubectl apply -f https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.3.0/install.yaml
 
 <span class="prompt">$</span> kubectl rollout status deployment/fabricops-controller-manager \
     -n fabricops-system --timeout=120s</code></pre>
@@ -138,13 +138,13 @@
             <div class="command-panel" data-panel="helm" role="tabpanel" hidden>
               <div class="command-meta"><span>01</span><b>Install with Helm</b><button class="copy-button" type="button" data-copy-target="helm-install">Copy</button></div>
               <pre id="helm-install"><code><span class="prompt">$</span> helm upgrade --install fabricops \
-    https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.2.1/fabricops-0.2.1.tgz \
+    https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.3.0/fabricops-0.3.0.tgz \
     --namespace fabricops-system \
     --create-namespace --wait</code></pre>
             </div>
             <div class="command-panel" data-panel="sample" role="tabpanel" hidden>
               <div class="command-meta"><span>02</span><b>Apply and wait</b><button class="copy-button" type="button" data-copy-target="sample-install">Copy</button></div>
-              <pre id="sample-install"><code><span class="prompt">$</span> kubectl apply -f https://raw.githubusercontent.com/LF-Decentralized-Trust-labs/FabricOps/v0.2.1/config/samples/fabricops_v1alpha1_fabricnetwork.yaml
+              <pre id="sample-install"><code><span class="prompt">$</span> kubectl apply -f https://raw.githubusercontent.com/LF-Decentralized-Trust-labs/FabricOps/v0.3.0/config/samples/fabricops_v1alpha1_fabricnetwork.yaml
 
 <span class="prompt">$</span> fabricopsctl wait -n default --timeout 20m fabricnetwork-sample</code></pre>
             </div>
