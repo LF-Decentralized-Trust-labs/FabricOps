@@ -6,7 +6,8 @@
   "scripts": {
     "start": "fabric-chaincode-node start",
     "start:ccaas": "fabric-chaincode-node server --chaincode-address \"${CHAINCODE_SERVER_ADDRESS:-0.0.0.0:7052}\" --chaincode-id \"${CHAINCODE_ID:-$CORE_CHAINCODE_ID_NAME}\"",
-    "build": "node --check index.js"
+    "build": "node --check index.js",
+    "test": "node --test"
   },
   "dependencies": {
     "fabric-contract-api": "2.4.2",
