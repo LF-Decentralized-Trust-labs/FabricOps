@@ -259,11 +259,13 @@ channels:
 FabricOps runs a founder-admin channel config update Job when the selected
 founder admin MSP can satisfy the declared signer requirement by itself. If
 `requiredSignerMSPIDs` names additional founder MSPs, FabricOps stages the
-admission inputs and reports a manual signature handoff under
-`.status.channelStatus[*].externalOrgs`.
+unsigned update envelope in a durable ConfigMap and reports a manual signature
+handoff under `.status.channelStatus[*].externalOrgs`. Set `state: Absent` on
+the same entry to request removal of an admitted external application org.
 See [Federated Join Operations](docs/federated-join.md) for the founder and
 participant runbooks, DNS/TLS requirements, and two-cluster e2e acceptance
-criteria.
+criteria. See [Channel Config Operations](docs/channel-config-operations.md)
+for add/remove semantics, phases, durable artifacts, and recovery.
 
 ### Uninstall
 
@@ -298,7 +300,7 @@ FabricOps supports:
 
 - A namespaced `FabricNetwork` CRD at `fabricops.io/v1alpha1`
 - Per-org Kubernetes namespaces with compact network-scoped names
-- Founder-side external org admission through channel config update Jobs
+- Founder-side external application org add/remove operations with durable channel update evidence
 - Preview `FabricParticipant` CRD for federated-join imported artifacts, participant-local org reconciliation, peer channel joins, participant-side chaincode install/approval, and participant-scoped invoke/query with imported remote peer targets
 - Fabric CA, orderer, peer, and CCaaS chaincode workloads
 - Fabric CA registrar bootstrap, admin enrollment, and workload enrollment Secrets

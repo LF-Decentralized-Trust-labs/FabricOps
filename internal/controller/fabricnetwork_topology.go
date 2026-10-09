@@ -240,7 +240,11 @@ func validateChannelExternalOrgs(
 			}
 		}
 
-		problems = append(problems, validateChannelArtifactRef(path+".applicationOrgRef", &externalOrg.ApplicationOrgRef)...)
+		if channelExternalOrgDesiredState(externalOrg) == fabricopsv1alpha1.ChannelExternalOrgPresent {
+			problems = append(problems, validateChannelArtifactRef(path+".applicationOrgRef", &externalOrg.ApplicationOrgRef)...)
+		} else if len(externalOrg.AnchorPeers) > 0 {
+			problems = append(problems, path+" anchorPeers must be empty when state is Absent")
+		}
 		if adminOrg := strings.TrimSpace(externalOrg.AdminOrg); adminOrg != "" {
 			if _, ok := orgs[adminOrg]; !ok {
 				problems = append(problems, fmt.Sprintf("%s adminOrg %q is not a local org", path, adminOrg))
@@ -563,6 +567,9 @@ func validateSignaturePolicyMSPReferences(
 	problems := []string{}
 	allMSPs := orgMSPNames(orgs)
 	for _, externalOrg := range channel.ExternalOrgs {
+		if channelExternalOrgDesiredState(externalOrg) == fabricopsv1alpha1.ChannelExternalOrgAbsent {
+			continue
+		}
 		mspName := strings.TrimSpace(externalOrg.MSPID)
 		if mspName != "" {
 			allMSPs[mspName] = struct{}{}
@@ -646,6 +653,9 @@ func channelMSPNames(
 		}
 	}
 	for _, externalOrg := range channel.ExternalOrgs {
+		if channelExternalOrgDesiredState(externalOrg) == fabricopsv1alpha1.ChannelExternalOrgAbsent {
+			continue
+		}
 		mspName := strings.TrimSpace(externalOrg.MSPID)
 		if mspName != "" {
 			mspNames[mspName] = struct{}{}

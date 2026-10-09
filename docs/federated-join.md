@@ -17,8 +17,9 @@ started elsewhere.
 
 On the founder side, `FabricNetwork.spec.channels[].externalOrgs` can reference
 rendered Application org JSON from a ConfigMap or Secret. The controller runs a
-founder-admin channel config update Job, handles already-admitted MSPs
-idempotently, stores durable result ConfigMaps, and reports admission status in
+founder-admin channel config update Job, reconciles org membership as `Present`
+or `Absent`, handles already-converged MSP state idempotently, stores durable
+update envelopes and receipts, and reports operation phase in
 `.status.channelStatus[*].externalOrgs`.
 
 On the participant side, `FabricParticipant` reconciles the local participant
@@ -188,10 +189,11 @@ externalOrgs:
 
 When the list contains more than the selected `adminOrg` MSP, FabricOps validates
 the imported Application org JSON, copies the selected orderer TLS root into the
-founder admin namespace, and reports that manual signatures are required instead
-of launching a one-admin update Job. Use the unsigned script path from
-`fabricopsctl join-bundle render-update` to compute, inspect, sign, and submit
-the update until the operator has explicit multi-admin signature orchestration.
+founder admin namespace, runs a staging Job, and stores the unsigned update
+envelope in the status-reported artifact ConfigMap. It then reports
+`PendingSignatures` instead of launching a one-admin submission. See
+[Channel Config Operations](channel-config-operations.md) for artifact
+retrieval, phase meanings, and the current manual submission boundary.
 
 ## Participant Runbook
 

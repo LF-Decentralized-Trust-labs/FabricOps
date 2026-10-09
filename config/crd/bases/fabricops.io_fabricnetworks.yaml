@@ -486,7 +486,7 @@ spec:
                     externalOrgs:
                       description: |-
                         ExternalOrgs declares participant-owned organizations that the founder
-                        cluster should admit to this channel through a channel config update.
+                        cluster should add to or remove from this channel through config updates.
                         The org material should be the rendered Application org JSON produced
                         by `fabricopsctl join-bundle render-org`; private keys are never imported.
                       items:
@@ -522,7 +522,8 @@ spec:
                           applicationOrgRef:
                             description: |-
                               ApplicationOrgRef points at the rendered channel Application org JSON for
-                              this external organization.
+                              this external organization. It is required when state is Present and
+                              ignored when state is Absent.
                             properties:
                               configMapKeyRef:
                                 description: |-
@@ -591,6 +592,15 @@ spec:
                             minLength: 1
                             pattern: ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$
                             type: string
+                          operationID:
+                            description: |-
+                              OperationID distinguishes a new membership transition from durable
+                              evidence left by an earlier operation with the same desired state. Omit
+                              it for the first operation; set a new value when intentionally repeating
+                              an add or removal after the org has transitioned in the opposite direction.
+                            maxLength: 63
+                            pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                            type: string
                           orderer:
                             description: |-
                               Orderer optionally selects the local orderer endpoint used to fetch and
@@ -616,14 +626,23 @@ spec:
                               RequiredSignerMSPIDs lists founder-side MSP IDs expected to sign the
                               channel config update before submission. When omitted, FabricOps attempts
                               the update with the selected AdminOrg only. When this list names
-                              additional MSPs, FabricOps prepares the admission inputs and waits for a
-                              manual multi-admin signature handoff instead of launching an update Job.
+                              additional MSPs, FabricOps stages an unsigned update envelope and waits
+                              for a manual multi-admin signature handoff instead of submitting it.
                             items:
                               type: string
                             maxItems: 16
                             type: array
+                          state:
+                            default: Present
+                            description: |-
+                              State declares whether the external application org should be present in
+                              the channel configuration. Present preserves the existing admission
+                              behavior; Absent removes the org when channel policy permits it.
+                            enum:
+                            - Present
+                            - Absent
+                            type: string
                         required:
-                        - applicationOrgRef
                         - mspID
                         - name
                         type: object
@@ -1186,13 +1205,21 @@ spec:
                             type: array
                           applicationOrgConfigMapName:
                             type: string
+                          artifactConfigMapName:
+                            type: string
+                          desiredState:
+                            type: string
                           message:
                             type: string
                           mspID:
                             type: string
                           name:
                             type: string
+                          operationID:
+                            type: string
                           orderer:
+                            type: string
+                          phase:
                             type: string
                           ready:
                             type: boolean

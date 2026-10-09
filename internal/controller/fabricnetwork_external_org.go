@@ -34,18 +34,24 @@ import (
 )
 
 const (
-	addExternalOrgContainer       = "add-external-org"
-	publishExternalOrgContainer   = "publish-external-org-update"
-	externalOrgConfigVolumeName   = "external-org-config"
-	channelExternalOrgConfigDir   = channelWorkDir + "/external-org"
-	externalOrgApplicationKey     = "application-org.json"
-	externalOrgUpdateResultKey    = "external-org.json"
-	externalOrgUpdateResultFile   = "external-org.json"
-	envExternalOrgResultConfigMap = "FABRICOPS_EXTERNAL_ORG_RESULT_CONFIGMAP"
-	envExternalOrgResultKey       = "FABRICOPS_EXTERNAL_ORG_RESULT_KEY"
-	envExternalOrgResultFile      = "FABRICOPS_EXTERNAL_ORG_RESULT_FILE"
-	envExternalOrgResultChannel   = "FABRICOPS_EXTERNAL_ORG_RESULT_CHANNEL"
-	envExternalOrgResultOrg       = "FABRICOPS_EXTERNAL_ORG_RESULT_ORG"
+	addExternalOrgContainer                = "add-external-org"
+	publishExternalOrgContainer            = "publish-external-org-update"
+	externalOrgConfigVolumeName            = "external-org-config"
+	channelExternalOrgConfigDir            = channelWorkDir + "/external-org"
+	externalOrgApplicationKey              = "application-org.json"
+	externalOrgUpdateResultKey             = "external-org.json"
+	externalOrgUpdateResultFile            = "external-org.json"
+	externalOrgUpdateArtifactKey           = "config-update.pb"
+	externalOrgUpdateOutcomeStaged         = "staged"
+	externalOrgUpdateOutcomeSubmitted      = "submitted"
+	externalOrgUpdateOutcomeAlreadyApplied = "alreadyApplied"
+	envExternalOrgResultConfigMap          = "FABRICOPS_EXTERNAL_ORG_RESULT_CONFIGMAP"
+	envExternalOrgResultKey                = "FABRICOPS_EXTERNAL_ORG_RESULT_KEY"
+	envExternalOrgResultFile               = "FABRICOPS_EXTERNAL_ORG_RESULT_FILE"
+	envExternalOrgUpdateKey                = "FABRICOPS_EXTERNAL_ORG_UPDATE_KEY"
+	envExternalOrgUpdateFile               = "FABRICOPS_EXTERNAL_ORG_UPDATE_FILE"
+	envExternalOrgResultChannel            = "FABRICOPS_EXTERNAL_ORG_RESULT_CHANNEL"
+	envExternalOrgResultOrg                = "FABRICOPS_EXTERNAL_ORG_RESULT_ORG"
 )
 
 func (r *FabricNetworkReconciler) reconcileExternalOrgUpdates(
@@ -125,12 +131,32 @@ func (r *FabricNetworkReconciler) reconcileExternalOrgUpdate(
 	namespace := orgNamespaceName(net, adminOrg)
 	externalStatus := channelExternalOrgStatus(channel, externalOrg, &adminOrg, orderer, "")
 
-	resultReady, _, err := r.externalOrgUpdateResultReadiness(ctx, namespace, channel.Name, externalOrg)
+	evidence, evidenceMessage, err := r.externalOrgUpdateEvidence(ctx, namespace, channel.Name, externalOrg)
 	if err != nil {
 		return externalStatus, err
 	}
-	if resultReady {
-		externalStatus.Ready = true
+	if evidence != nil {
+		switch evidence.Outcome {
+		case externalOrgUpdateOutcomeAlreadyApplied:
+			externalStatus.Phase = fabricopsv1alpha1.ChannelConfigUpdateAlreadyApplied
+			externalStatus.Ready = true
+		case externalOrgUpdateOutcomeSubmitted:
+			externalStatus.Phase = fabricopsv1alpha1.ChannelConfigUpdateSubmitted
+			externalStatus.Ready = true
+		case externalOrgUpdateOutcomeStaged:
+			externalStatus.Phase = fabricopsv1alpha1.ChannelConfigUpdatePendingSignatures
+			externalStatus.Message = fmt.Sprintf(
+				"%s: Waiting for manual channel config update signatures from %s; unsigned update is stored in ConfigMap %s/%s",
+				externalOrg.Name,
+				strings.Join(externalOrgManualSignatureMSPIDs(adminOrg, externalOrg), ", "),
+				namespace,
+				externalStatus.ArtifactConfigMapName,
+			)
+		}
+		return externalStatus, nil
+	}
+	if evidenceMessage != "" {
+		externalStatus.Message = evidenceMessage
 		return externalStatus, nil
 	}
 
@@ -150,33 +176,28 @@ func (r *FabricNetworkReconciler) reconcileExternalOrgUpdate(
 		return externalStatus, err
 	}
 
-	if requiredSigners := externalOrgManualSignatureMSPIDs(adminOrg, externalOrg); len(requiredSigners) > 0 {
-		externalStatus.Message = fmt.Sprintf(
-			"%s: Waiting for manual channel config update signatures from %s",
-			externalOrg.Name,
-			strings.Join(requiredSigners, ", "),
-		)
-		return externalStatus, nil
-	}
-
-	if err := r.ensureJob(ctx, buildExternalOrgUpdateJob(net, channel, adminOrg, namespace, adminPeer, orderer, externalOrg)); err != nil {
+	requiredSigners := externalOrgManualSignatureMSPIDs(adminOrg, externalOrg)
+	submit := len(requiredSigners) == 0
+	if err := r.ensureJob(ctx, buildExternalOrgUpdateJob(net, channel, adminOrg, namespace, adminPeer, orderer, externalOrg, submit)); err != nil {
 		return externalStatus, err
 	}
 
-	updated, message, err := r.externalOrgUpdateReadiness(ctx, namespace, channel.Name, externalOrg)
+	phase, message, err := r.externalOrgUpdateReadiness(ctx, namespace, channel.Name, externalOrg, submit)
 	if err != nil {
 		return externalStatus, err
 	}
-	if updated {
-		externalStatus.Ready = true
-		return externalStatus, nil
-	}
+	externalStatus.Phase = phase
 	if message != "" {
 		externalStatus.Message = message
 		return externalStatus, nil
 	}
 
-	externalStatus.Message = externalOrg.Name + ": Waiting for external org channel update Job"
+	if submit {
+		externalStatus.Message = externalOrg.Name + ": Waiting for external org channel update Job"
+	} else {
+		externalStatus.Phase = fabricopsv1alpha1.ChannelConfigUpdateStaged
+		externalStatus.Message = externalOrg.Name + ": Waiting for external org channel update staging Job"
+	}
 	return externalStatus, nil
 }
 
@@ -187,14 +208,21 @@ func channelExternalOrgStatus(
 	orderer ordererInstance,
 	message string,
 ) fabricopsv1alpha1.ChannelExternalOrgStatus {
+	desiredState := channelExternalOrgDesiredState(externalOrg)
 	status := fabricopsv1alpha1.ChannelExternalOrgStatus{
-		Name:                        externalOrg.Name,
-		MSPID:                       externalOrg.MSPID,
-		ApplicationOrgConfigMapName: channelExternalOrgApplicationConfigMapName(channel.Name, externalOrg),
-		UpdateJobName:               channelExternalOrgUpdateJobName(channel.Name, externalOrg),
-		AnchorPeers:                 append([]fabricopsv1alpha1.ChannelExternalAnchorPeer(nil), externalOrg.AnchorPeers...),
-		RequiredSignerMSPIDs:        externalOrgRequiredSignerMSPIDs(externalOrg),
-		Message:                     message,
+		Name:                  externalOrg.Name,
+		MSPID:                 externalOrg.MSPID,
+		DesiredState:          desiredState,
+		OperationID:           strings.TrimSpace(externalOrg.OperationID),
+		Phase:                 fabricopsv1alpha1.ChannelConfigUpdatePending,
+		ArtifactConfigMapName: channelExternalOrgUpdateResultConfigMapName(channel.Name, externalOrg),
+		UpdateJobName:         channelExternalOrgUpdateJobName(channel.Name, externalOrg),
+		AnchorPeers:           append([]fabricopsv1alpha1.ChannelExternalAnchorPeer(nil), externalOrg.AnchorPeers...),
+		RequiredSignerMSPIDs:  externalOrgRequiredSignerMSPIDs(externalOrg),
+		Message:               message,
+	}
+	if desiredState == fabricopsv1alpha1.ChannelExternalOrgPresent {
+		status.ApplicationOrgConfigMapName = channelExternalOrgApplicationConfigMapName(channel.Name, externalOrg)
 	}
 	if adminOrg != nil {
 		status.AdminOrg = adminOrg.Organization.Name
@@ -203,6 +231,15 @@ func channelExternalOrgStatus(
 		status.Orderer = orderer.org.Organization.Name + "/" + orderer.name
 	}
 	return status
+}
+
+func channelExternalOrgDesiredState(
+	externalOrg fabricopsv1alpha1.ChannelExternalOrg,
+) fabricopsv1alpha1.ChannelExternalOrgState {
+	if externalOrg.State == fabricopsv1alpha1.ChannelExternalOrgAbsent {
+		return fabricopsv1alpha1.ChannelExternalOrgAbsent
+	}
+	return fabricopsv1alpha1.ChannelExternalOrgPresent
 }
 
 func externalOrgRequiredSignerMSPIDs(externalOrg fabricopsv1alpha1.ChannelExternalOrg) []string {
@@ -316,6 +353,9 @@ func (r *FabricNetworkReconciler) ensureExternalOrgUpdateInputs(
 	); err != nil {
 		return err
 	}
+	if channelExternalOrgDesiredState(externalOrg) == fabricopsv1alpha1.ChannelExternalOrgAbsent {
+		return nil
+	}
 
 	return r.ensureConfigMap(ctx, &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
@@ -335,6 +375,9 @@ func (r *FabricNetworkReconciler) externalOrgApplicationOrgJSON(
 	namespace string,
 	externalOrg fabricopsv1alpha1.ChannelExternalOrg,
 ) (string, string, error) {
+	if channelExternalOrgDesiredState(externalOrg) == fabricopsv1alpha1.ChannelExternalOrgAbsent {
+		return "", "", nil
+	}
 	raw, ready, message, err := r.channelArtifactBytes(ctx, namespace, &externalOrg.ApplicationOrgRef)
 	if err != nil || !ready {
 		return "", message, err
@@ -483,86 +526,96 @@ func (r *FabricNetworkReconciler) externalOrgUpdateReadiness(
 	namespace string,
 	channelName string,
 	externalOrg fabricopsv1alpha1.ChannelExternalOrg,
-) (bool, string, error) {
-	resultReady, resultMessage, err := r.externalOrgUpdateResultReadiness(ctx, namespace, channelName, externalOrg)
-	if err != nil || resultReady {
-		return resultReady, resultMessage, err
-	}
-
+	submit bool,
+) (fabricopsv1alpha1.ChannelConfigUpdatePhase, string, error) {
 	var job batchv1.Job
-	err = r.Get(ctx, client.ObjectKey{
+	err := r.Get(ctx, client.ObjectKey{
 		Namespace: namespace,
 		Name:      channelExternalOrgUpdateJobName(channelName, externalOrg),
 	}, &job)
 	if apierrors.IsNotFound(err) {
-		return false, "", nil
+		return fabricopsv1alpha1.ChannelConfigUpdatePending, "", nil
 	}
 	if err != nil {
-		return false, "", err
+		return fabricopsv1alpha1.ChannelConfigUpdatePending, "", err
 	}
 	if jobFailed(job) {
-		return false, fmt.Sprintf("%s: external org channel update Job failed", externalOrg.Name), nil
+		return fabricopsv1alpha1.ChannelConfigUpdateFailed,
+			fmt.Sprintf("%s: external org channel update Job failed", externalOrg.Name), nil
 	}
 	if jobSucceeded(job) {
-		if resultMessage != "" {
-			return false, resultMessage, nil
-		}
 		if succeededJobCleanupEligible(&job) {
-			return false, "Waiting for external org channel update result ConfigMap", nil
+			return fabricopsv1alpha1.ChannelConfigUpdatePending,
+				"Waiting for external org channel update artifact ConfigMap", nil
 		}
-		return true, "", nil
+		phase := fabricopsv1alpha1.ChannelConfigUpdateSubmitted
+		if !submit {
+			phase = fabricopsv1alpha1.ChannelConfigUpdateStaged
+		}
+		return phase, "", nil
 	}
 
-	return false, "", nil
+	return fabricopsv1alpha1.ChannelConfigUpdatePending, "", nil
 }
 
-func (r *FabricNetworkReconciler) externalOrgUpdateResultReadiness(
+type externalOrgUpdateEvidence struct {
+	Channel     string                                        `json:"channel"`
+	MSPID       string                                        `json:"mspID"`
+	State       fabricopsv1alpha1.ChannelExternalOrgState     `json:"state,omitempty"`
+	OperationID string                                        `json:"operationID,omitempty"`
+	Outcome     string                                        `json:"outcome,omitempty"`
+	AnchorPeers []fabricopsv1alpha1.ChannelExternalAnchorPeer `json:"anchorPeers,omitempty"`
+}
+
+func (r *FabricNetworkReconciler) externalOrgUpdateEvidence(
 	ctx context.Context,
 	namespace string,
 	channelName string,
 	externalOrg fabricopsv1alpha1.ChannelExternalOrg,
-) (bool, string, error) {
+) (*externalOrgUpdateEvidence, string, error) {
 	var result corev1.ConfigMap
 	err := r.Get(ctx, client.ObjectKey{
 		Namespace: namespace,
 		Name:      channelExternalOrgUpdateResultConfigMapName(channelName, externalOrg),
 	}, &result)
 	if apierrors.IsNotFound(err) {
-		return false, "", nil
+		return nil, "", nil
 	}
 	if err != nil {
-		return false, "", err
+		return nil, "", err
 	}
 
 	raw := strings.TrimSpace(result.Data[externalOrgUpdateResultKey])
 	if raw == "" {
-		return false, fmt.Sprintf("Waiting for %s external org update result ConfigMap data", externalOrg.Name), nil
-	}
-	if !externalOrgUpdateResultMatches(raw, channelName, externalOrg.MSPID, externalOrg.AnchorPeers) {
-		return false, fmt.Sprintf("Waiting for %s external org update result for channel %s", externalOrg.Name, channelName), nil
+		return nil, fmt.Sprintf("Waiting for %s external org update result ConfigMap data", externalOrg.Name), nil
 	}
 
-	return true, "", nil
-}
-
-func externalOrgUpdateResultMatches(
-	raw string,
-	channelName string,
-	mspID string,
-	anchorPeers []fabricopsv1alpha1.ChannelExternalAnchorPeer,
-) bool {
-	var result struct {
-		Channel     string                                        `json:"channel"`
-		MSPID       string                                        `json:"mspID"`
-		AnchorPeers []fabricopsv1alpha1.ChannelExternalAnchorPeer `json:"anchorPeers,omitempty"`
+	evidence := &externalOrgUpdateEvidence{}
+	if err := json.Unmarshal([]byte(jsonPayload(raw)), evidence); err != nil {
+		return nil, fmt.Sprintf("Waiting for %s external org update result for channel %s", externalOrg.Name, channelName), nil
 	}
-	if err := json.Unmarshal([]byte(jsonPayload(raw)), &result); err != nil {
-		return false
+	if evidence.Channel != channelName || evidence.MSPID != externalOrg.MSPID {
+		return nil, fmt.Sprintf("Waiting for %s external org update result for channel %s", externalOrg.Name, channelName), nil
 	}
-	if result.Channel != channelName || result.MSPID != mspID {
-		return false
+	desiredState := channelExternalOrgDesiredState(externalOrg)
+	if evidence.State == "" {
+		evidence.State = fabricopsv1alpha1.ChannelExternalOrgPresent
 	}
-	return len(anchorPeers) == 0 || externalAnchorPeersEqual(anchorPeers, result.AnchorPeers)
+	if evidence.State != desiredState {
+		return nil, fmt.Sprintf("Waiting for %s external org update result state %s", externalOrg.Name, desiredState), nil
+	}
+	if evidence.OperationID != strings.TrimSpace(externalOrg.OperationID) {
+		return nil, fmt.Sprintf("Waiting for %s external org update operation %s", externalOrg.Name, externalOrg.OperationID), nil
+	}
+	if desiredState == fabricopsv1alpha1.ChannelExternalOrgPresent &&
+		len(externalOrg.AnchorPeers) > 0 &&
+		!externalAnchorPeersEqual(externalOrg.AnchorPeers, evidence.AnchorPeers) {
+		return nil, fmt.Sprintf("Waiting for %s external org update result for channel %s", externalOrg.Name, channelName), nil
+	}
+	if evidence.Outcome == "" {
+		evidence.Outcome = externalOrgUpdateOutcomeSubmitted
+	}
+	return evidence, "", nil
 }
 
 func buildExternalOrgUpdateJob(
@@ -573,6 +626,7 @@ func buildExternalOrgUpdateJob(
 	adminPeer peerInstance,
 	orderer ordererInstance,
 	externalOrg fabricopsv1alpha1.ChannelExternalOrg,
+	submit bool,
 ) *batchv1.Job {
 	labels := channelLabels(net, adminOrg, channel.Name)
 	labels[labelInstance] = sanitizeName(externalOrg.Name)
@@ -582,6 +636,68 @@ func buildExternalOrgUpdateJob(
 	adminMSPVolumeName := channelOrgMSPVolumeName(adminOrg)
 	adminTLSVolumeName := channelOrdererAdminTLSVolumeName(adminOrg)
 	ordererTLSVolumeName := channelOrdererTLSVolumeName(orderer.name)
+	volumes := []corev1.Volume{
+		{
+			Name: channelOutputVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{},
+			},
+		},
+		{
+			Name: adminMSPVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName:  identitySecretName(adminIdentityName(adminOrg), secretKindMSP),
+					Items:       mspSecretItems(net.Spec.Global.TLS),
+					DefaultMode: secretVolumeDefaultMode(),
+				},
+			},
+		},
+		{
+			Name: adminTLSVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName:  identitySecretName(adminIdentityName(adminOrg), secretKindTLS),
+					Items:       adminTLSSecretItems(),
+					DefaultMode: secretVolumeDefaultMode(),
+				},
+			},
+		},
+		{
+			Name: ordererTLSVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName:  channelOrdererTLSSecretName(channel.Name, orderer.name),
+					Items:       tlsSecretItems(),
+					DefaultMode: secretVolumeDefaultMode(),
+				},
+			},
+		},
+	}
+	volumeMounts := []corev1.VolumeMount{
+		{Name: channelOutputVolumeName, MountPath: channelOutputDir},
+		{Name: adminMSPVolumeName, MountPath: channelOrgMSPPath(adminOrg), ReadOnly: true},
+		{Name: adminTLSVolumeName, MountPath: channelOrdererAdminTLSPath(adminOrg), ReadOnly: true},
+		{Name: ordererTLSVolumeName, MountPath: channelOrdererTLSPath(orderer.name), ReadOnly: true},
+	}
+	applicationOrgPath := ""
+	if channelExternalOrgDesiredState(externalOrg) == fabricopsv1alpha1.ChannelExternalOrgPresent {
+		applicationOrgPath = channelExternalOrgApplicationFilePath()
+		volumes = append(volumes, corev1.Volume{
+			Name: externalOrgConfigVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: channelExternalOrgApplicationConfigMapName(channel.Name, externalOrg),
+					},
+					Items: []corev1.KeyToPath{{Key: externalOrgApplicationKey, Path: externalOrgApplicationKey}},
+				},
+			},
+		})
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name: externalOrgConfigVolumeName, MountPath: channelExternalOrgConfigDir, ReadOnly: true,
+		})
+	}
 
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -600,60 +716,7 @@ func buildExternalOrgUpdateJob(
 				Spec: corev1.PodSpec{
 					ServiceAccountName: channelServiceAccountName(channel.Name),
 					RestartPolicy:      corev1.RestartPolicyNever,
-					Volumes: []corev1.Volume{
-						{
-							Name: channelOutputVolumeName,
-							VolumeSource: corev1.VolumeSource{
-								EmptyDir: &corev1.EmptyDirVolumeSource{},
-							},
-						},
-						{
-							Name: externalOrgConfigVolumeName,
-							VolumeSource: corev1.VolumeSource{
-								ConfigMap: &corev1.ConfigMapVolumeSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: channelExternalOrgApplicationConfigMapName(channel.Name, externalOrg),
-									},
-									Items: []corev1.KeyToPath{
-										{
-											Key:  externalOrgApplicationKey,
-											Path: externalOrgApplicationKey,
-										},
-									},
-								},
-							},
-						},
-						{
-							Name: adminMSPVolumeName,
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName:  identitySecretName(adminIdentityName(adminOrg), secretKindMSP),
-									Items:       mspSecretItems(net.Spec.Global.TLS),
-									DefaultMode: secretVolumeDefaultMode(),
-								},
-							},
-						},
-						{
-							Name: adminTLSVolumeName,
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName:  identitySecretName(adminIdentityName(adminOrg), secretKindTLS),
-									Items:       adminTLSSecretItems(),
-									DefaultMode: secretVolumeDefaultMode(),
-								},
-							},
-						},
-						{
-							Name: ordererTLSVolumeName,
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName:  channelOrdererTLSSecretName(channel.Name, orderer.name),
-									Items:       tlsSecretItems(),
-									DefaultMode: secretVolumeDefaultMode(),
-								},
-							},
-						},
-					},
+					Volumes:            volumes,
 					InitContainers: []corev1.Container{
 						{
 							Name:  addExternalOrgContainer,
@@ -667,17 +730,14 @@ func buildExternalOrgUpdateJob(
 								channelOrgMSPPath(adminOrg),
 								channelOrdererAdminTLSPath(adminOrg),
 								channelOrdererTLSPath(orderer.name),
-								channelExternalOrgApplicationFilePath(),
+								applicationOrgPath,
 								externalOrgUpdateFilePath(channel.Name, externalOrg),
+								channelExternalOrgDesiredState(externalOrg),
+								strings.TrimSpace(externalOrg.OperationID),
+								submit,
 							)},
-							Resources: componentResourceRequirements(componentFabricCLI),
-							VolumeMounts: []corev1.VolumeMount{
-								{Name: channelOutputVolumeName, MountPath: channelOutputDir},
-								{Name: externalOrgConfigVolumeName, MountPath: channelExternalOrgConfigDir, ReadOnly: true},
-								{Name: adminMSPVolumeName, MountPath: channelOrgMSPPath(adminOrg), ReadOnly: true},
-								{Name: adminTLSVolumeName, MountPath: channelOrdererAdminTLSPath(adminOrg), ReadOnly: true},
-								{Name: ordererTLSVolumeName, MountPath: channelOrdererTLSPath(orderer.name), ReadOnly: true},
-							},
+							Resources:    componentResourceRequirements(componentFabricCLI),
+							VolumeMounts: volumeMounts,
 						},
 					},
 					Containers: []corev1.Container{
@@ -709,12 +769,18 @@ func addExternalOrgScript(
 	ordererTLSPath string,
 	applicationOrgPath string,
 	updateFile string,
+	desiredState fabricopsv1alpha1.ChannelExternalOrgState,
+	operationID string,
+	submit bool,
 ) string {
 	return fmt.Sprintf(`set -eu
 
 CHANNEL_ID=%q
 ADMIN_MSP_ID=%q
 JOIN_MSP_ID=%q
+DESIRED_STATE=%q
+OPERATION_ID=%q
+SUBMIT_UPDATE=%t
 ORDERER_ADDRESS=%q
 ADMIN_TLS_DIR=%q
 ORDERER_TLS_DIR=%q
@@ -744,11 +810,19 @@ CONFIG_UPDATE_ENVELOPE_JSON="$OUTPUT_DIR/external_org_config_update_envelope.jso
 mkdir -p "$OUTPUT_DIR"
 
 write_external_org_result() {
+  outcome="$1"
+  anchor_peers='[]'
+  if [ -n "$APPLICATION_ORG_JSON" ]; then
+    anchor_peers="$(jq -c '.values.AnchorPeers.value.anchor_peers // []' "$APPLICATION_ORG_JSON")"
+  fi
   jq -n \
-    --slurpfile org "$APPLICATION_ORG_JSON" \
     --arg channel "$CHANNEL_ID" \
     --arg msp "$JOIN_MSP_ID" \
-    '{"channel":$channel,"mspID":$msp,"anchorPeers":($org[0].values.AnchorPeers.value.anchor_peers // [])}' \
+    --arg state "$DESIRED_STATE" \
+    --arg operationID "$OPERATION_ID" \
+    --arg outcome "$outcome" \
+    --argjson anchorPeers "$anchor_peers" \
+    '{"channel":$channel,"mspID":$msp,"state":$state,"operationID":$operationID,"outcome":$outcome,"anchorPeers":$anchorPeers}' \
     > "$RESULT_FILE"
 }
 
@@ -768,9 +842,11 @@ retry() {
   done
 }
 
-jq -e --arg msp "$JOIN_MSP_ID" \
-  '.values.MSP.value.config.name == $msp' \
-  "$APPLICATION_ORG_JSON" >/dev/null
+if [ "$DESIRED_STATE" = "Present" ]; then
+  jq -e --arg msp "$JOIN_MSP_ID" \
+    '.values.MSP.value.config.name == $msp' \
+    "$APPLICATION_ORG_JSON" >/dev/null
+fi
 
 retry 30 5 peer channel fetch config "$CONFIG_BLOCK_PB" \
   -c "$CHANNEL_ID" \
@@ -785,17 +861,32 @@ configtxlator proto_decode \
 
 jq '.data.data[0].payload.data.config' "$CONFIG_BLOCK_JSON" > "$CONFIG_JSON"
 
+org_exists=false
 if jq -e --arg msp "$JOIN_MSP_ID" \
   '.channel_group.groups.Application.groups[$msp] != null' \
   "$CONFIG_JSON" >/dev/null; then
-  echo "Application org $JOIN_MSP_ID already exists on channel $CHANNEL_ID"
-  write_external_org_result
-  exit 0
+  org_exists=true
 fi
 
-jq --slurpfile org "$APPLICATION_ORG_JSON" --arg msp "$JOIN_MSP_ID" \
-  '.channel_group.groups.Application.groups[$msp] = $org[0]' \
-  "$CONFIG_JSON" > "$MODIFIED_CONFIG_JSON"
+if [ "$DESIRED_STATE" = "Present" ]; then
+  if [ "$org_exists" = "true" ]; then
+    echo "Application org $JOIN_MSP_ID already exists on channel $CHANNEL_ID"
+    write_external_org_result %q
+    exit 0
+  fi
+  jq --slurpfile org "$APPLICATION_ORG_JSON" --arg msp "$JOIN_MSP_ID" \
+    '.channel_group.groups.Application.groups[$msp] = $org[0]' \
+    "$CONFIG_JSON" > "$MODIFIED_CONFIG_JSON"
+else
+  if [ "$org_exists" = "false" ]; then
+    echo "Application org $JOIN_MSP_ID is already absent from channel $CHANNEL_ID"
+    write_external_org_result %q
+    exit 0
+  fi
+  jq --arg msp "$JOIN_MSP_ID" \
+    'del(.channel_group.groups.Application.groups[$msp])' \
+    "$CONFIG_JSON" > "$MODIFIED_CONFIG_JSON"
+fi
 
 configtxlator proto_encode \
   --input "$CONFIG_JSON" \
@@ -827,15 +918,21 @@ configtxlator proto_encode \
   --type common.Envelope \
   --output "$CONFIG_UPDATE_ENVELOPE_PB"
 
-retry 30 5 peer channel update \
-  -c "$CHANNEL_ID" \
-  -o "$ORDERER_ADDRESS" \
-  -f "$CONFIG_UPDATE_ENVELOPE_PB" \
-  --tls \
-  --cafile "$ORDERER_TLS_DIR/ca.crt"
-
-write_external_org_result
-`, channelName, adminMSPID, externalMSPID, ordererAddress, adminTLSPath, ordererTLSPath, applicationOrgPath, updateFile, channelOutputDir, externalOrgUpdateResultFile, peerAddress, mspPath)
+if [ "$SUBMIT_UPDATE" = "true" ]; then
+  retry 30 5 peer channel update \
+    -c "$CHANNEL_ID" \
+    -o "$ORDERER_ADDRESS" \
+    -f "$CONFIG_UPDATE_ENVELOPE_PB" \
+    --tls \
+    --cafile "$ORDERER_TLS_DIR/ca.crt"
+  write_external_org_result %q
+else
+  write_external_org_result %q
+fi
+`, channelName, adminMSPID, externalMSPID, desiredState, operationID, submit, ordererAddress, adminTLSPath, ordererTLSPath,
+		applicationOrgPath, updateFile, channelOutputDir, externalOrgUpdateResultFile, peerAddress, mspPath,
+		externalOrgUpdateOutcomeAlreadyApplied, externalOrgUpdateOutcomeAlreadyApplied,
+		externalOrgUpdateOutcomeSubmitted, externalOrgUpdateOutcomeStaged)
 }
 
 func publishExternalOrgUpdateResultEnv(
@@ -846,6 +943,8 @@ func publishExternalOrgUpdateResultEnv(
 		{Name: envExternalOrgResultConfigMap, Value: channelExternalOrgUpdateResultConfigMapName(channelName, externalOrg)},
 		{Name: envExternalOrgResultKey, Value: externalOrgUpdateResultKey},
 		{Name: envExternalOrgResultFile, Value: externalOrgUpdateResultFile},
+		{Name: envExternalOrgUpdateKey, Value: externalOrgUpdateArtifactKey},
+		{Name: envExternalOrgUpdateFile, Value: externalOrgUpdateFileName(channelName, externalOrg)},
 		{Name: envExternalOrgResultChannel, Value: sanitizeName(channelName)},
 		{Name: envExternalOrgResultOrg, Value: sanitizeName(externalOrg.Name)},
 		{
@@ -862,9 +961,14 @@ func publishExternalOrgUpdateResultEnv(
 func publishExternalOrgUpdateResultScript() string {
 	return `set -eu
 
-kubectl -n "$POD_NAMESPACE" create configmap "$FABRICOPS_EXTERNAL_ORG_RESULT_CONFIGMAP" \
-  --from-file="$FABRICOPS_EXTERNAL_ORG_RESULT_KEY=` + channelOutputDir + `/$FABRICOPS_EXTERNAL_ORG_RESULT_FILE" \
-  --dry-run=client -o yaml | kubectl -n "$POD_NAMESPACE" apply -f -
+set -- kubectl -n "$POD_NAMESPACE" create configmap "$FABRICOPS_EXTERNAL_ORG_RESULT_CONFIGMAP" \
+  --from-file="$FABRICOPS_EXTERNAL_ORG_RESULT_KEY=` + channelOutputDir + `/$FABRICOPS_EXTERNAL_ORG_RESULT_FILE"
+
+if [ -f "` + channelOutputDir + `/$FABRICOPS_EXTERNAL_ORG_UPDATE_FILE" ]; then
+  set -- "$@" --from-file="$FABRICOPS_EXTERNAL_ORG_UPDATE_KEY=` + channelOutputDir + `/$FABRICOPS_EXTERNAL_ORG_UPDATE_FILE"
+fi
+
+"$@" --dry-run=client -o yaml | kubectl -n "$POD_NAMESPACE" apply -f -
 
 kubectl -n "$POD_NAMESPACE" label configmap "$FABRICOPS_EXTERNAL_ORG_RESULT_CONFIGMAP" \
   fabricops.io/component=channel \
@@ -883,7 +987,14 @@ func channelExternalOrgApplicationConfigMapName(
 }
 
 func channelExternalOrgUpdateJobName(channelName string, externalOrg fabricopsv1alpha1.ChannelExternalOrg) string {
-	return sanitizeName(channelName + "-" + externalOrg.Name + "-external-org-update")
+	operationSuffix := ""
+	if operationID := strings.TrimSpace(externalOrg.OperationID); operationID != "" {
+		operationSuffix = "-" + operationID
+	}
+	if channelExternalOrgDesiredState(externalOrg) == fabricopsv1alpha1.ChannelExternalOrgAbsent {
+		return sanitizeName(channelName + "-" + externalOrg.Name + "-external-org-remove" + operationSuffix)
+	}
+	return sanitizeName(channelName + "-" + externalOrg.Name + "-external-org-update" + operationSuffix)
 }
 
 func channelExternalOrgUpdateResultConfigMapName(
@@ -894,7 +1005,14 @@ func channelExternalOrgUpdateResultConfigMapName(
 }
 
 func externalOrgUpdateFileName(channelName string, externalOrg fabricopsv1alpha1.ChannelExternalOrg) string {
-	return sanitizeName(externalOrg.MSPID+"-"+channelName+"-org-update") + ".tx"
+	operationSuffix := ""
+	if operationID := strings.TrimSpace(externalOrg.OperationID); operationID != "" {
+		operationSuffix = "-" + operationID
+	}
+	if channelExternalOrgDesiredState(externalOrg) == fabricopsv1alpha1.ChannelExternalOrgAbsent {
+		return sanitizeName(externalOrg.MSPID+"-"+channelName+"-org-remove"+operationSuffix) + ".tx"
+	}
+	return sanitizeName(externalOrg.MSPID+"-"+channelName+"-org-update"+operationSuffix) + ".tx"
 }
 
 func externalOrgUpdateFilePath(channelName string, externalOrg fabricopsv1alpha1.ChannelExternalOrg) string {

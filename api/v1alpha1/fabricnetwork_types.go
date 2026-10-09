@@ -287,7 +287,7 @@ type Channel struct {
 	Orgs []ChannelOrg `json:"orgs"`
 
 	// ExternalOrgs declares participant-owned organizations that the founder
-	// cluster should admit to this channel through a channel config update.
+	// cluster should add to or remove from this channel through config updates.
 	// The org material should be the rendered Application org JSON produced
 	// by `fabricopsctl join-bundle render-org`; private keys are never imported.
 	// +optional
@@ -316,9 +316,26 @@ type ChannelExternalOrg struct {
 	// +kubebuilder:validation:MaxLength=64
 	// +kubebuilder:validation:Pattern="^[A-Za-z][A-Za-z0-9]*$"
 	MSPID string `json:"mspID"`
+	// State declares whether the external application org should be present in
+	// the channel configuration. Present preserves the existing admission
+	// behavior; Absent removes the org when channel policy permits it.
+	// +optional
+	// +kubebuilder:default=Present
+	// +kubebuilder:validation:Enum=Present;Absent
+	State ChannelExternalOrgState `json:"state,omitempty"`
+	// OperationID distinguishes a new membership transition from durable
+	// evidence left by an earlier operation with the same desired state. Omit
+	// it for the first operation; set a new value when intentionally repeating
+	// an add or removal after the org has transitioned in the opposite direction.
+	// +optional
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+	OperationID string `json:"operationID,omitempty"`
 	// ApplicationOrgRef points at the rendered channel Application org JSON for
-	// this external organization.
-	ApplicationOrgRef ChannelArtifactKeyRef `json:"applicationOrgRef"`
+	// this external organization. It is required when state is Present and
+	// ignored when state is Absent.
+	// +optional
+	ApplicationOrgRef ChannelArtifactKeyRef `json:"applicationOrgRef,omitempty"`
 	// AdminOrg optionally selects the local founder org whose admin identity
 	// submits the channel update. When omitted, the first local org declared on
 	// the channel is used.
@@ -329,8 +346,8 @@ type ChannelExternalOrg struct {
 	// RequiredSignerMSPIDs lists founder-side MSP IDs expected to sign the
 	// channel config update before submission. When omitted, FabricOps attempts
 	// the update with the selected AdminOrg only. When this list names
-	// additional MSPs, FabricOps prepares the admission inputs and waits for a
-	// manual multi-admin signature handoff instead of launching an update Job.
+	// additional MSPs, FabricOps stages an unsigned update envelope and waits
+	// for a manual multi-admin signature handoff instead of submitting it.
 	// +optional
 	// +kubebuilder:validation:MaxItems=16
 	RequiredSignerMSPIDs []string `json:"requiredSignerMSPIDs,omitempty"`
@@ -344,6 +361,13 @@ type ChannelExternalOrg struct {
 	// +optional
 	AnchorPeers []ChannelExternalAnchorPeer `json:"anchorPeers,omitempty"`
 }
+
+type ChannelExternalOrgState string
+
+const (
+	ChannelExternalOrgPresent ChannelExternalOrgState = "Present"
+	ChannelExternalOrgAbsent  ChannelExternalOrgState = "Absent"
+)
 
 type ChannelArtifactKeyRef struct {
 	// ConfigMapKeyRef points at a key in a ConfigMap in the FabricNetwork
@@ -675,7 +699,11 @@ type ChannelStatus struct {
 type ChannelExternalOrgStatus struct {
 	Name                        string                      `json:"name"`
 	MSPID                       string                      `json:"mspID"`
+	DesiredState                ChannelExternalOrgState     `json:"desiredState,omitempty"`
+	OperationID                 string                      `json:"operationID,omitempty"`
+	Phase                       ChannelConfigUpdatePhase    `json:"phase,omitempty"`
 	ApplicationOrgConfigMapName string                      `json:"applicationOrgConfigMapName,omitempty"`
+	ArtifactConfigMapName       string                      `json:"artifactConfigMapName,omitempty"`
 	UpdateJobName               string                      `json:"updateJobName,omitempty"`
 	AdminOrg                    string                      `json:"adminOrg,omitempty"`
 	Orderer                     string                      `json:"orderer,omitempty"`
@@ -684,6 +712,17 @@ type ChannelExternalOrgStatus struct {
 	Ready                       bool                        `json:"ready"`
 	Message                     string                      `json:"message,omitempty"`
 }
+
+type ChannelConfigUpdatePhase string
+
+const (
+	ChannelConfigUpdatePending           ChannelConfigUpdatePhase = "Pending"
+	ChannelConfigUpdateStaged            ChannelConfigUpdatePhase = "Staged"
+	ChannelConfigUpdatePendingSignatures ChannelConfigUpdatePhase = "PendingSignatures"
+	ChannelConfigUpdateSubmitted         ChannelConfigUpdatePhase = "Submitted"
+	ChannelConfigUpdateAlreadyApplied    ChannelConfigUpdatePhase = "AlreadyApplied"
+	ChannelConfigUpdateFailed            ChannelConfigUpdatePhase = "Failed"
+)
 
 type ChaincodeTargetStatus struct {
 	OrgName                string         `json:"orgName"`
