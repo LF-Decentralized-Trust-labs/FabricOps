@@ -301,6 +301,10 @@ type ChannelOrg struct {
 	Name string `json:"name"`
 	// +kubebuilder:validation:MinItems=1
 	Peers []string `json:"peers"`
+	// SignedUpdateRef supplies the signed envelope for a staged day-two local
+	// org admission. The referenced ConfigMap or Secret is in the network namespace.
+	// +optional
+	SignedUpdateRef *ChannelArtifactKeyRef `json:"signedUpdateRef,omitempty"`
 }
 
 type ChannelExternalOrg struct {
@@ -351,6 +355,10 @@ type ChannelExternalOrg struct {
 	// +optional
 	// +kubebuilder:validation:MaxItems=16
 	RequiredSignerMSPIDs []string `json:"requiredSignerMSPIDs,omitempty"`
+	// SignedUpdateRef supplies signatures for the exact staged config update.
+	// Fabric validates the signatures against the live channel policy.
+	// +optional
+	SignedUpdateRef *ChannelArtifactKeyRef `json:"signedUpdateRef,omitempty"`
 	// Orderer optionally selects the local orderer endpoint used to fetch and
 	// submit the channel config update. When omitted, the first local orderer is
 	// used.

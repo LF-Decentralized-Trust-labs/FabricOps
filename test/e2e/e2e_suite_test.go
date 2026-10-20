@@ -271,6 +271,9 @@ var _ = Describe("Kind bundle install", Ordered, func() {
 		By("confirming cleanup continues after chaincode upgrades without losing channel proof Jobs")
 		expectNoCleanupEligibleSucceededJobs(4 * time.Minute)
 		expectRetainedChannelProofJobs()
+
+		By("admitting BankC to both existing channels with BankA and BankB signatures")
+		testLocalOrgAdmission(upgradeSmokeID)
 	})
 })
 

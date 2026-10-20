@@ -17,17 +17,200 @@ limitations under the License.
 package controller
 
 import (
+	"fmt"
 	"os/exec"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	fabricopsv1alpha1 "github.com/LF-Decentralized-Trust-labs/FabricOps/api/v1alpha1"
 )
 
 var _ = Describe("Channel config operations", func() {
+	It("runs local org admission before attempting the new peer join", func() {
+		net, channel, _, _, _ := channelConfigOperationFixture()
+		net.Name = "operations-additions"
+		joiningOrg := fabricopsv1alpha1.Org{
+			Organization: fabricopsv1alpha1.OrgMeta{Name: "BankB", Domain: "bankb.example.com", MSPName: "BankBMSP"},
+			CA:           fabricopsv1alpha1.CAConfig{DB: "sqlite"},
+			Peer:         &fabricopsv1alpha1.PeerConfig{Instances: 1, DB: "CouchDB", Prefix: componentPeer},
+		}
+		net.Spec.Orgs = append(net.Spec.Orgs, joiningOrg)
+		channel.Orgs = append(channel.Orgs, fabricopsv1alpha1.ChannelOrg{Name: "BankB", Peers: []string{"peer0"}})
+		ordererOrg := net.Spec.Orgs[0]
+		adminOrg := net.Spec.Orgs[1]
+		hostNamespace := orgNamespaceName(net, ordererOrg)
+		adminNamespace := orgNamespaceName(net, adminOrg)
+		for _, name := range []string{hostNamespace, adminNamespace} {
+			namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}
+			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+			DeferCleanup(func() {
+				Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, namespace))).To(Succeed())
+			})
+		}
+		bootstrapBlock := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: channelBlockConfigMapName(channel.Name), Namespace: hostNamespace},
+			BinaryData: map[string][]byte{channelBlockFileName(channel.Name): []byte("original-channel-block")},
+		}
+		Expect(k8sClient.Create(ctx, bootstrapBlock)).To(Succeed())
+		DeferCleanup(func() {
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, bootstrapBlock))).To(Succeed())
+		})
+		adminPeer := peerInstance{org: adminOrg, name: "peer0", namespace: adminNamespace}
+		peerJoinResult := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: channelAnchorPeerUpdateResultConfigMapName(channel.Name, adminOrg), Namespace: adminNamespace},
+			Data: map[string]string{channelAnchorPeerResultKey: fmt.Sprintf(
+				`{"channel":"settlement","mspID":"BankAMSP","anchorPeers":[{"host":%q,"port":7051}]}`, channelPeerHost(adminPeer),
+			)},
+		}
+		Expect(k8sClient.Create(ctx, peerJoinResult)).To(Succeed())
+		DeferCleanup(func() {
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, peerJoinResult))).To(Succeed())
+		})
+		localAddResult := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: channelLocalOrgAddResultConfigMapName(channel.Name, joiningOrg), Namespace: adminNamespace},
+			Data:       map[string]string{localOrgAddResultKey: `{"channel":"settlement","mspID":"BankBMSP","outcome":"submitted"}`},
+			BinaryData: map[string][]byte{localOrgAddBlockArtifactKey: []byte("updated-channel-block")},
+		}
+		Expect(k8sClient.Create(ctx, localAddResult)).To(Succeed())
+		DeferCleanup(func() {
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, localAddResult))).To(Succeed())
+		})
+
+		status := fabricopsv1alpha1.ChannelStatus{Orgs: []fabricopsv1alpha1.ChannelOrgStatus{
+			{Name: "BankA", PeerNames: []string{"peer0"}},
+			{Name: "BankB", PeerNames: []string{"peer0"}},
+		}}
+		reconciler := &FabricNetworkReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+		message, err := reconciler.reconcileLocalOrgAdditions(ctx, net, channel, &status)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(message).To(BeEmpty())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bootstrapBlock.Name, Namespace: hostNamespace}, bootstrapBlock)).To(Succeed())
+		Expect(bootstrapBlock.BinaryData[channelBlockFileName(channel.Name)]).To(Equal([]byte("original-channel-block")))
+	})
+
+	It("preserves the genesis block after local org admission for the new peer join", func() {
+		net, channel, adminOrg, adminPeer, orderer := channelConfigOperationFixture()
+		joiningOrg := fabricopsv1alpha1.Org{
+			Organization: fabricopsv1alpha1.OrgMeta{Name: "BankB", Domain: "bankb.example.com", MSPName: "BankBMSP"},
+			CA:           fabricopsv1alpha1.CAConfig{DB: "sqlite"},
+			Peer:         &fabricopsv1alpha1.PeerConfig{Instances: 1, DB: "CouchDB", Prefix: componentPeer},
+		}
+		net.Spec.Orgs = append(net.Spec.Orgs, joiningOrg)
+		channel.Orgs = append(channel.Orgs, fabricopsv1alpha1.ChannelOrg{Name: "BankB", Peers: []string{"peer0"}})
+		hostNamespace := orderer.namespace
+		for _, name := range []string{hostNamespace, adminPeer.namespace} {
+			namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}
+			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+			DeferCleanup(func() {
+				Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, namespace))).To(Succeed())
+			})
+		}
+		bootstrapBlock := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: channelBlockConfigMapName(channel.Name), Namespace: hostNamespace},
+			BinaryData: map[string][]byte{channelBlockFileName(channel.Name): []byte("original-channel-block")},
+		}
+		Expect(k8sClient.Create(ctx, bootstrapBlock)).To(Succeed())
+		DeferCleanup(func() {
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, bootstrapBlock))).To(Succeed())
+		})
+		result := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: channelLocalOrgAddResultConfigMapName(channel.Name, joiningOrg), Namespace: adminPeer.namespace},
+			Data:       map[string]string{localOrgAddResultKey: `{"channel":"settlement","mspID":"BankBMSP","outcome":"submitted"}`},
+			BinaryData: map[string][]byte{localOrgAddBlockArtifactKey: []byte("updated-channel-block")},
+		}
+		Expect(k8sClient.Create(ctx, result)).To(Succeed())
+		DeferCleanup(func() {
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, result))).To(Succeed())
+		})
+
+		reconciler := &FabricNetworkReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+		ready, message, err := reconciler.reconcileLocalOrgAdd(
+			ctx, net, channel, adminOrg, adminPeer, orderer, joiningOrg,
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ready).To(BeTrue())
+		Expect(message).To(BeEmpty())
+		Expect(k8sClient.Get(ctx, client.ObjectKey{Name: bootstrapBlock.Name, Namespace: hostNamespace}, bootstrapBlock)).To(Succeed())
+		Expect(bootstrapBlock.BinaryData[channelBlockFileName(channel.Name)]).To(Equal([]byte("original-channel-block")))
+	})
+
+	It("reads a completed local org addition only when it includes the refreshed channel block", func() {
+		net, channel, _, adminPeer, _ := channelConfigOperationFixture()
+		adminPeer.namespace += "-evidence"
+		joiningOrg := fabricopsv1alpha1.Org{Organization: fabricopsv1alpha1.OrgMeta{Name: "BankB", MSPName: "BankBMSP"}}
+		namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: adminPeer.namespace}}
+		Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+		DeferCleanup(func() {
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, namespace))).To(Succeed())
+		})
+		result := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      channelLocalOrgAddResultConfigMapName(channel.Name, joiningOrg),
+				Namespace: adminPeer.namespace,
+			},
+			Data: map[string]string{
+				localOrgAddResultKey: `{"channel":"settlement","mspID":"BankBMSP","outcome":"submitted"}`,
+			},
+			BinaryData: map[string][]byte{localOrgAddBlockArtifactKey: []byte("updated-channel-block")},
+		}
+		Expect(k8sClient.Create(ctx, result)).To(Succeed())
+		DeferCleanup(func() {
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, result))).To(Succeed())
+		})
+
+		reconciler := &FabricNetworkReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+		evidence, message, err := reconciler.localOrgAddEvidence(ctx, adminPeer.namespace, channel.Name, joiningOrg)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(message).To(BeEmpty())
+		Expect(evidence).NotTo(BeNil())
+		Expect(evidence.Outcome).To(Equal(localOrgAddOutcomeSubmitted))
+		Expect(evidence.ChannelBlock).To(Equal([]byte("updated-channel-block")))
+		Expect(net.Name).To(Equal("operations"))
+	})
+
+	It("builds a local org addition Job that generates the org config before submitting the update", func() {
+		net, channel, adminOrg, adminPeer, orderer := channelConfigOperationFixture()
+		joiningOrg := fabricopsv1alpha1.Org{
+			Organization: fabricopsv1alpha1.OrgMeta{
+				Name:    "BankB",
+				Domain:  "bankb.example.com",
+				MSPName: "BankBMSP",
+			},
+			CA: fabricopsv1alpha1.CAConfig{DB: "sqlite"},
+			Peer: &fabricopsv1alpha1.PeerConfig{
+				Instances: 1,
+				DB:        "CouchDB",
+				Prefix:    componentPeer,
+			},
+		}
+		net.Spec.Orgs = append(net.Spec.Orgs, joiningOrg)
+		channel.Orgs = append(channel.Orgs, fabricopsv1alpha1.ChannelOrg{Name: "BankB", Peers: []string{"peer0"}})
+
+		job := buildLocalOrgAddJob(net, channel, adminOrg, adminPeer.namespace, adminPeer, orderer, joiningOrg)
+
+		Expect(job.Name).To(Equal("settlement-bankb-local-org-add"))
+		Expect(job.Spec.Template.Spec.InitContainers).To(HaveLen(1))
+		script := job.Spec.Template.Spec.InitContainers[0].Command[2]
+		syntaxCheck := exec.Command("sh", "-n")
+		syntaxCheck.Stdin = strings.NewReader(script)
+		Expect(syntaxCheck.Run()).To(Succeed())
+		Expect(script).To(ContainSubstring(`JOIN_MSP_ID="BankBMSP"`))
+		Expect(script).To(ContainSubstring("configtxgen -configPath \"$CONFIG_DIR\" -printOrg \"$JOIN_MSP_ID\""))
+		Expect(script).To(ContainSubstring(`write_local_org_result "staged"`))
+		Expect(script).NotTo(ContainSubstring("peer channel update"))
+		Expect(script).To(ContainSubstring("peer channel fetch config"))
+
+		publisherEnv := envMap(job.Spec.Template.Spec.Containers[0])
+		Expect(publisherEnv[envLocalOrgResultConfigMap]).To(Equal("settlement-bankb-local-org-add-result"))
+		Expect(publisherEnv[envLocalOrgBlockKey]).To(Equal(localOrgAddBlockArtifactKey))
+		Expect(publishLocalOrgAddResultScript()).To(ContainSubstring(`if [ -f "/fabricops/channel/output/$FABRICOPS_LOCAL_ORG_UPDATE_FILE" ]; then`))
+	})
+
 	It("treats omitted external org state as Present", func() {
 		externalOrg := fabricopsv1alpha1.ChannelExternalOrg{Name: "BankB", MSPID: "BankBMSP"}
 

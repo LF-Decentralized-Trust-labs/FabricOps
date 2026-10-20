@@ -294,6 +294,11 @@ func (in *ChannelExternalOrg) DeepCopyInto(out *ChannelExternalOrg) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.SignedUpdateRef != nil {
+		in, out := &in.SignedUpdateRef, &out.SignedUpdateRef
+		*out = new(ChannelArtifactKeyRef)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.Orderer != nil {
 		in, out := &in.Orderer, &out.Orderer
 		*out = new(ChannelOrdererRef)
@@ -363,6 +368,11 @@ func (in *ChannelOrg) DeepCopyInto(out *ChannelOrg) {
 		in, out := &in.Peers, &out.Peers
 		*out = make([]string, len(*in))
 		copy(*out, *in)
+	}
+	if in.SignedUpdateRef != nil {
+		in, out := &in.SignedUpdateRef, &out.SignedUpdateRef
+		*out = new(ChannelArtifactKeyRef)
+		(*in).DeepCopyInto(*out)
 	}
 }
 

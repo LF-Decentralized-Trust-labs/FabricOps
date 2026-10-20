@@ -145,6 +145,39 @@ func (r *FabricNetworkReconciler) reconcileExternalOrgUpdate(
 			externalStatus.Ready = true
 		case externalOrgUpdateOutcomeStaged:
 			externalStatus.Phase = fabricopsv1alpha1.ChannelConfigUpdatePendingSignatures
+			if externalOrg.SignedUpdateRef != nil {
+				baseJob := buildExternalOrgUpdateJob(net, channel, adminOrg, namespace, adminPeer, orderer, externalOrg, false)
+				resultName, message, err := r.reconcileSignedChannelUpdate(
+					ctx, net, channel, adminOrg, adminPeer, orderer, externalOrg.SignedUpdateRef, baseJob,
+					externalStatus.ArtifactConfigMapName, externalOrgUpdateResultKey, externalOrgUpdateArtifactKey,
+					externalOrgUpdateFileName(channel.Name, externalOrg), externalOrg.MSPID,
+					channelExternalOrgDesiredState(externalOrg) == fabricopsv1alpha1.ChannelExternalOrgPresent,
+				)
+				if err != nil {
+					return externalStatus, err
+				}
+				externalStatus.Message = message
+				if resultName != "" {
+					submitted, _, err := r.externalOrgUpdateEvidenceNamed(ctx, namespace, channel.Name, externalOrg, resultName)
+					if err != nil {
+						return externalStatus, err
+					}
+					externalStatus.UpdateJobName = strings.TrimSuffix(resultName, "-result")
+					var submissionJob batchv1.Job
+					if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: externalStatus.UpdateJobName}, &submissionJob); err == nil && jobFailed(submissionJob) {
+						externalStatus.Phase = fabricopsv1alpha1.ChannelConfigUpdateFailed
+					} else if err != nil && !apierrors.IsNotFound(err) {
+						return externalStatus, err
+					}
+					if submitted != nil && (submitted.Outcome == externalOrgUpdateOutcomeSubmitted || submitted.Outcome == externalOrgUpdateOutcomeAlreadyApplied) {
+						externalStatus.Phase = fabricopsv1alpha1.ChannelConfigUpdateSubmitted
+						externalStatus.ArtifactConfigMapName = resultName
+						externalStatus.Ready = true
+						externalStatus.Message = ""
+					}
+				}
+				return externalStatus, nil
+			}
 			externalStatus.Message = fmt.Sprintf(
 				"%s: Waiting for manual channel config update signatures from %s; unsigned update is stored in ConfigMap %s/%s",
 				externalOrg.Name,
@@ -573,10 +606,20 @@ func (r *FabricNetworkReconciler) externalOrgUpdateEvidence(
 	channelName string,
 	externalOrg fabricopsv1alpha1.ChannelExternalOrg,
 ) (*externalOrgUpdateEvidence, string, error) {
+	return r.externalOrgUpdateEvidenceNamed(ctx, namespace, channelName, externalOrg, channelExternalOrgUpdateResultConfigMapName(channelName, externalOrg))
+}
+
+func (r *FabricNetworkReconciler) externalOrgUpdateEvidenceNamed(
+	ctx context.Context,
+	namespace string,
+	channelName string,
+	externalOrg fabricopsv1alpha1.ChannelExternalOrg,
+	name string,
+) (*externalOrgUpdateEvidence, string, error) {
 	var result corev1.ConfigMap
 	err := r.Get(ctx, client.ObjectKey{
 		Namespace: namespace,
-		Name:      channelExternalOrgUpdateResultConfigMapName(channelName, externalOrg),
+		Name:      name,
 	}, &result)
 	if apierrors.IsNotFound(err) {
 		return nil, "", nil
@@ -917,6 +960,7 @@ configtxlator proto_encode \
   --input "$CONFIG_UPDATE_ENVELOPE_JSON" \
   --type common.Envelope \
   --output "$CONFIG_UPDATE_ENVELOPE_PB"
+chmod 0644 "$CONFIG_UPDATE_ENVELOPE_PB"
 
 if [ "$SUBMIT_UPDATE" = "true" ]; then
   retry 30 5 peer channel update \

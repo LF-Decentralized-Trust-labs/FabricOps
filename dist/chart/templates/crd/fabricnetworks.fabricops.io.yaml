@@ -636,6 +636,62 @@ spec:
                               type: string
                             maxItems: 16
                             type: array
+                          signedUpdateRef:
+                            description: |-
+                              SignedUpdateRef supplies signatures for the exact staged config update.
+                              Fabric validates the signatures against the live channel policy.
+                            properties:
+                              configMapKeyRef:
+                                description: |-
+                                  ConfigMapKeyRef points at a key in a ConfigMap in the FabricNetwork
+                                  namespace.
+                                properties:
+                                  key:
+                                    description: The key to select.
+                                    type: string
+                                  name:
+                                    default: ""
+                                    description: |-
+                                      Name of the referent.
+                                      This field is effectively required, but due to backwards compatibility is
+                                      allowed to be empty. Instances of this type with an empty value here are
+                                      almost certainly wrong.
+                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    type: string
+                                  optional:
+                                    description: Specify whether the ConfigMap or
+                                      its key must be defined
+                                    type: boolean
+                                required:
+                                - key
+                                type: object
+                                x-kubernetes-map-type: atomic
+                              secretKeyRef:
+                                description: SecretKeyRef points at a key in a Secret
+                                  in the FabricNetwork namespace.
+                                properties:
+                                  key:
+                                    description: The key of the secret to select from.  Must
+                                      be a valid secret key.
+                                    type: string
+                                  name:
+                                    default: ""
+                                    description: |-
+                                      Name of the referent.
+                                      This field is effectively required, but due to backwards compatibility is
+                                      allowed to be empty. Instances of this type with an empty value here are
+                                      almost certainly wrong.
+                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    type: string
+                                  optional:
+                                    description: Specify whether the Secret or its
+                                      key must be defined
+                                    type: boolean
+                                required:
+                                - key
+                                type: object
+                                x-kubernetes-map-type: atomic
+                            type: object
                           state:
                             default: Present
                             description: |-
@@ -669,6 +725,62 @@ spec:
                               type: string
                             minItems: 1
                             type: array
+                          signedUpdateRef:
+                            description: |-
+                              SignedUpdateRef supplies the signed envelope for a staged day-two local
+                              org admission. The referenced ConfigMap or Secret is in the network namespace.
+                            properties:
+                              configMapKeyRef:
+                                description: |-
+                                  ConfigMapKeyRef points at a key in a ConfigMap in the FabricNetwork
+                                  namespace.
+                                properties:
+                                  key:
+                                    description: The key to select.
+                                    type: string
+                                  name:
+                                    default: ""
+                                    description: |-
+                                      Name of the referent.
+                                      This field is effectively required, but due to backwards compatibility is
+                                      allowed to be empty. Instances of this type with an empty value here are
+                                      almost certainly wrong.
+                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    type: string
+                                  optional:
+                                    description: Specify whether the ConfigMap or
+                                      its key must be defined
+                                    type: boolean
+                                required:
+                                - key
+                                type: object
+                                x-kubernetes-map-type: atomic
+                              secretKeyRef:
+                                description: SecretKeyRef points at a key in a Secret
+                                  in the FabricNetwork namespace.
+                                properties:
+                                  key:
+                                    description: The key of the secret to select from.  Must
+                                      be a valid secret key.
+                                    type: string
+                                  name:
+                                    default: ""
+                                    description: |-
+                                      Name of the referent.
+                                      This field is effectively required, but due to backwards compatibility is
+                                      allowed to be empty. Instances of this type with an empty value here are
+                                      almost certainly wrong.
+                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    type: string
+                                  optional:
+                                    description: Specify whether the Secret or its
+                                      key must be defined
+                                    type: boolean
+                                required:
+                                - key
+                                type: object
+                                x-kubernetes-map-type: atomic
+                            type: object
                         required:
                         - name
                         - peers
@@ -687,6 +799,18 @@ spec:
                     minLength: 1
                     pattern: ^[A-Za-z0-9][A-Za-z0-9._-]*$
                     type: string
+                  images:
+                    properties:
+                      fabricTools:
+                        description: |-
+                          FabricTools overrides the image used by Fabric CLI helper Jobs that run
+                          configtxgen, configtxlator, peer, osnadmin, and related tooling. This is
+                          useful when a Fabric version needs tooling that is not available from the
+                          default hyperledger/fabric-tools tag.
+                        maxLength: 253
+                        minLength: 1
+                        type: string
+                    type: object
                   jobs:
                     properties:
                       succeededHistoryTTLSeconds:
@@ -896,6 +1020,9 @@ spec:
                             pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                             type: string
                           type:
+                            description: |-
+                              Type declares the orderer consensus implementation. Supported values
+                              are "raft"/"etcdraft" and, for Fabric v3 networks, "bft"/"smartbft".
                             maxLength: 32
                             minLength: 1
                             pattern: ^[A-Za-z0-9_-]+$

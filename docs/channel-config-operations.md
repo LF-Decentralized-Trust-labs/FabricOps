@@ -6,6 +6,62 @@ organization under the channel `Application` group. FabricOps fetches the live
 channel config, computes the smallest protobuf update, and keeps evidence after
 the helper Job is cleaned up.
 
+Locally managed organizations declared under `spec.orgs` can also be added to
+an existing channel. This differs from a federated handoff because FabricOps
+already owns the joining org's CA, admin identity, and peer infrastructure.
+
+## Add A Local Org To An Existing Channel
+
+After a channel is ready, add the local org and its peer to the existing
+channel declaration:
+
+```yaml
+orgs:
+  - organization:
+      name: BankC
+      domain: bankc.example.com
+      mspName: BankCMSP
+    ca:
+      db: postgres
+    peer:
+      instances: 1
+      db: CouchDB
+      prefix: peer
+
+channels:
+  - name: audit
+    orgs:
+      - name: BankA
+        peers: ["peer0", "peer1"]
+      - name: BankB
+        peers: ["peer0"]
+      - name: BankC
+        peers: ["peer0"]
+```
+
+FabricOps uses successful anchor-update receipts to identify existing member
+admins. A peer-join receipt alone is insufficient because a peer can join using
+a block that does not yet contain its organization's MSP. An existing member
+admin fetches the live configuration and renders BankC's Application org
+definition from operator-managed MSP material. If BankC is missing, the Job
+stages an unsigned envelope in `<channel>-<org>-local-org-add-result` in that
+admin's namespace and channel readiness waits for signatures.
+
+This flow is idempotent. If the MSP is already in the live channel configuration,
+FabricOps records the operation as already applied and still uses the freshly
+fetched block for the peer join. Adding another peer to an organization already
+on the channel remains normal peer scale-up; it does not create another
+membership update.
+
+Use the signed handoff below and set `signedUpdateRef` on BankC's channel entry.
+After submission, FabricOps waits for a fetched config block containing BankC
+before allowing its peer join and anchor update. The fetched config block is
+retained as operation evidence. `peer channel join` still receives the original
+block 0, which remains unchanged in the channel block ConfigMap; the peer then
+catches up through the committed membership update. Local additions always
+stage a proposal when membership must change; Fabric policy determines which
+admins must sign.
+
 ## Add An External Application Org
 
 Declare the rendered Application org JSON and leave `state` omitted, or set it
@@ -88,11 +144,56 @@ kubectl get configmap "$ARTIFACT" -n <founder-org-namespace> \
   -o jsonpath='{.binaryData.config-update\.pb}' | base64 --decode > config-update.pb
 ```
 
-Automated import and submission of a fully signed handoff is not implemented in
-this slice. Until it is, the required admins sign and submit the staged envelope
-with the Fabric peer CLI, and the FabricOps status remains
-`PendingSignatures`. This is deliberately visible rather than reported as an
-automated success.
+Each required administrator signs the same envelope using their own Fabric CLI
+admin environment. Pass the resulting file between administrators without
+recomputing its config update:
+
+```bash
+peer channel signconfigtx -f config-update.pb
+```
+
+Store the signed envelope in a Secret in the `FabricNetwork` namespace:
+
+```bash
+kubectl create secret generic signed-bankc-admission -n default \
+  --from-file=envelope.pb=config-update.pb --dry-run=client -o yaml | kubectl apply -f -
+```
+
+Reference it on the joining local org:
+
+```yaml
+channels:
+  - name: audit
+    orgs:
+      - name: BankA
+        peers: ["peer0", "peer1"]
+      - name: BankB
+        peers: ["peer0"]
+      - name: BankC
+        peers: ["peer0"]
+        signedUpdateRef:
+          secretKeyRef:
+            name: signed-bankc-admission
+            key: envelope.pb
+```
+
+For external additions or removals, put the same `signedUpdateRef` field on the
+relevant `externalOrgs` entry. A `configMapKeyRef` is also supported. To retrieve
+a local proposal, read `binaryData.config-update.pb` from the ConfigMap reported
+in the channel's waiting message, using the same base64 decoding shown above.
+
+The submission Job rejects a different channel, a missing signature list, or
+any alteration to the staged config update before contacting Fabric. The
+orderer validates signature authenticity and policy satisfaction; listing
+`requiredSignerMSPIDs` does not replace Fabric's policy. The submitter's admin
+signature is also added by `peer channel update`.
+
+FabricOps waits until the requested membership is visible in a fetched config
+block before reporting success. Corrected signed bytes create a new submission
+Job, while completed submissions retain durable receipts after Job cleanup.
+If another config change makes the staged read versions stale, the orderer can
+reject it. Regenerate and sign a fresh proposal rather than editing its delta
+under existing signatures.
 
 ## Status And Evidence
 
@@ -133,7 +234,8 @@ the operation pending and reports the mismatch.
 
 ## Current Scope
 
-This slice covers external application org addition/removal and durable update
-evidence. Orderer consenter changes and signed-envelope ingestion remain the
-next channel-operation slices. Both will use the same explicit status and
-artifact model.
+This slice covers local-org addition to an existing channel, external
+application org addition/removal, signed-envelope submission, and durable update
+evidence. The Node kind e2e flow exercises two-admin admission to two existing
+channels, genesis preservation, and a query of pre-admission ledger data through
+the new org. Orderer consenter changes remain outstanding.

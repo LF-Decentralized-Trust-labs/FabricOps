@@ -81,6 +81,9 @@ func validateFabricNetworkTopology(net *fabricopsv1alpha1.FabricNetwork) []strin
 		}
 		localChannelOrgNames := map[string]struct{}{}
 		for _, channelOrg := range channel.Orgs {
+			if channelOrg.SignedUpdateRef != nil {
+				problems = append(problems, validateChannelArtifactRef("channel "+channel.Name+" org "+channelOrg.Name+" signedUpdateRef", channelOrg.SignedUpdateRef)...)
+			}
 			orgName := strings.TrimSpace(channelOrg.Name)
 			if orgName != "" {
 				localChannelOrgNames[orgName] = struct{}{}
@@ -215,6 +218,9 @@ func validateChannelExternalOrgs(
 
 	for i, externalOrg := range channel.ExternalOrgs {
 		path := fmt.Sprintf("channel %q externalOrgs[%d]", channel.Name, i)
+		if externalOrg.SignedUpdateRef != nil {
+			problems = append(problems, validateChannelArtifactRef(path+".signedUpdateRef", externalOrg.SignedUpdateRef)...)
+		}
 		name := strings.TrimSpace(externalOrg.Name)
 		mspID := strings.TrimSpace(externalOrg.MSPID)
 		if name == "" {

@@ -192,24 +192,32 @@ func (r *FabricNetworkReconciler) reconcileChannels(
 					status.Message = "Waiting for orderer join Jobs"
 					setChannelOrgMessages(&status, status.Message)
 				} else {
-					peersJoined, peerMessage, err := r.reconcilePeerJoins(ctx, net, channel, hostNamespace, &status)
+					localOrgMessage, err := r.reconcileLocalOrgAdditions(ctx, net, channel, &status)
 					if err != nil {
 						return statuses, err
 					}
-					status.Peers.Ready = peersJoined
-					status.Message = peerMessage
-					if peerMessage == "" {
-						anchorMessage, err := r.reconcileAnchorPeerUpdates(ctx, net, channel, &status)
+					if localOrgMessage != "" {
+						status.Message = localOrgMessage
+					} else {
+						peersJoined, peerMessage, err := r.reconcilePeerJoins(ctx, net, channel, hostNamespace, &status)
 						if err != nil {
 							return statuses, err
 						}
-						status.Message = anchorMessage
-						if anchorMessage == "" {
-							externalOrgMessage, err := r.reconcileExternalOrgUpdates(ctx, net, channel, &status)
+						status.Peers.Ready = peersJoined
+						status.Message = peerMessage
+						if peerMessage == "" {
+							anchorMessage, err := r.reconcileAnchorPeerUpdates(ctx, net, channel, &status)
 							if err != nil {
 								return statuses, err
 							}
-							status.Message = externalOrgMessage
+							status.Message = anchorMessage
+							if anchorMessage == "" {
+								externalOrgMessage, err := r.reconcileExternalOrgUpdates(ctx, net, channel, &status)
+								if err != nil {
+									return statuses, err
+								}
+								status.Message = externalOrgMessage
+							}
 						}
 					}
 				}

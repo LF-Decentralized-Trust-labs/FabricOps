@@ -267,6 +267,15 @@ participant runbooks, DNS/TLS requirements, and two-cluster e2e acceptance
 criteria. See [Channel Config Operations](docs/channel-config-operations.md)
 for add/remove semantics, phases, durable artifacts, and recovery.
 
+For a locally managed organization, add its `spec.orgs` entry and add the org
+to an existing channel's `orgs` list. FabricOps recognizes the day-two
+membership change and stages a channel config update for admin signatures.
+Supply the signed envelope through `signedUpdateRef`; FabricOps submits it,
+verifies committed membership, then joins the new peer using the original
+genesis block and configures its anchor peer. This differs from adding another peer to an org
+already on the channel, which remains regular peer scale-up. See
+[Channel Config Operations](docs/channel-config-operations.md#add-a-local-org-to-an-existing-channel).
+
 ### Uninstall
 
 Delete `FabricNetwork` resources before removing the operator so FabricOps finalizers can clean up generated org namespaces:
@@ -300,7 +309,7 @@ FabricOps supports:
 
 - A namespaced `FabricNetwork` CRD at `fabricops.io/v1alpha1`
 - Per-org Kubernetes namespaces with compact network-scoped names
-- Founder-side external application org add/remove operations with durable channel update evidence
+- Day-two local-org channel admission plus founder-side external application org add/remove operations with durable channel update evidence
 - Preview `FabricParticipant` CRD for federated-join imported artifacts, participant-local org reconciliation, peer channel joins, participant-side chaincode install/approval, and participant-scoped invoke/query with imported remote peer targets
 - Fabric CA, orderer, peer, and CCaaS chaincode workloads
 - Fabric CA registrar bootstrap, admin enrollment, and workload enrollment Secrets
