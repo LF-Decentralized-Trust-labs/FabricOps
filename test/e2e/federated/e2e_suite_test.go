@@ -54,7 +54,7 @@ const (
 	ordererTLSKey             = "ca.crt"
 	channelBlockConfigMapName = "settlement-channel-block"
 	channelBlockKey           = "settlement.block"
-	nodeSettlementImage       = "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.3.0"
+	nodeSettlementImage       = "ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.4.0"
 	federatedEndorsement      = "OR('BankAMSP.member','BankBMSP.member')"
 )
 

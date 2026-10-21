@@ -67,14 +67,14 @@ Requirements:
 Install the latest published release bundle:
 
 ```bash
-kubectl apply -f https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.3.0/install.yaml
+kubectl apply -f https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.4.0/install.yaml
 kubectl rollout status deployment/fabricops-controller-manager -n fabricops-system --timeout=120s
 ```
 
 The bundle installs the `FabricNetwork` CRD, RBAC, ServiceAccount, manager Deployment, and metrics Service. The manager image is pinned to the release tag:
 
 ```text
-ghcr.io/lf-decentralized-trust-labs/fabricops:0.3.0
+ghcr.io/lf-decentralized-trust-labs/fabricops:0.4.0
 ```
 
 ### Install With Helm
@@ -83,7 +83,7 @@ Install the release chart directly from the GitHub release:
 
 ```bash
 helm upgrade --install fabricops \
-  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.3.0/fabricops-0.3.0.tgz \
+  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.4.0/fabricops-0.4.0.tgz \
   --namespace fabricops-system \
   --create-namespace \
   --wait
@@ -95,11 +95,11 @@ Override the manager image if needed:
 
 ```bash
 helm upgrade --install fabricops \
-  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.3.0/fabricops-0.3.0.tgz \
+  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.4.0/fabricops-0.4.0.tgz \
   --namespace fabricops-system \
   --create-namespace \
   --set manager.image.repository=ghcr.io/lf-decentralized-trust-labs/fabricops \
-  --set manager.image.tag=0.3.0 \
+  --set manager.image.tag=0.4.0 \
   --wait
 ```
 
@@ -109,7 +109,7 @@ If you want to review the Kubernetes objects before applying them:
 
 ```bash
 helm template fabricops \
-  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.3.0/fabricops-0.3.0.tgz \
+  https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.4.0/fabricops-0.4.0.tgz \
   --namespace fabricops-system > fabricops-install.yaml
 
 kubectl apply -f fabricops-install.yaml
@@ -121,7 +121,7 @@ kubectl rollout status deployment/fabricops-controller-manager -n fabricops-syst
 After installing the operator, apply the sample `FabricNetwork`:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/LF-Decentralized-Trust-labs/FabricOps/v0.3.0/config/samples/fabricops_v1alpha1_fabricnetwork.yaml
+kubectl apply -f https://raw.githubusercontent.com/LF-Decentralized-Trust-labs/FabricOps/v0.4.0/config/samples/fabricops_v1alpha1_fabricnetwork.yaml
 kubectl wait fabricnetwork/fabricnetwork-sample -n default --for=condition=Ready --timeout=20m
 ```
 
@@ -177,7 +177,7 @@ fabricopsctl query --participant -n default --org BankB \
 ```
 
 For reproducible installs, replace `@latest` with a release tag such as
-`@v0.3.0`.
+`@v0.4.0`.
 
 If `go install` succeeds but your shell cannot find `fabricopsctl`, make the
 PATH export permanent in your shell profile, for example `~/.zshrc`.
@@ -295,7 +295,7 @@ Delete `FabricNetwork` resources before removing the operator so FabricOps final
 
 ```bash
 kubectl delete fabricnetwork fabricnetwork-sample -n default --ignore-not-found
-kubectl delete -f https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.3.0/install.yaml
+kubectl delete -f https://github.com/LF-Decentralized-Trust-labs/FabricOps/releases/download/v0.4.0/install.yaml
 ```
 
 For Helm installs:
@@ -307,14 +307,14 @@ helm uninstall fabricops -n fabricops-system
 
 ## Release Artifacts
 
-Release `v0.3.0` publishes:
+Release `v0.4.0` publishes:
 
 - `install.yaml`: single-file Kubernetes install bundle
-- `fabricops-0.3.0.tgz`: Helm chart archive
-- `ghcr.io/lf-decentralized-trust-labs/fabricops:0.3.0`: multi-platform manager image
-- `ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.3.0`: Node CCaaS sample
-- `ghcr.io/lf-decentralized-trust-labs/fabricops-go-settlement:0.3.0`: Go CCaaS sample
-- `ghcr.io/lf-decentralized-trust-labs/fabricops-java-settlement:0.3.0`: Java CCaaS sample
+- `fabricops-0.4.0.tgz`: Helm chart archive
+- `ghcr.io/lf-decentralized-trust-labs/fabricops:0.4.0`: multi-platform manager image
+- `ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.4.0`: Node CCaaS sample
+- `ghcr.io/lf-decentralized-trust-labs/fabricops-go-settlement:0.4.0`: Go CCaaS sample
+- `ghcr.io/lf-decentralized-trust-labs/fabricops-java-settlement:0.4.0`: Java CCaaS sample
 
 ## Capabilities
 
@@ -506,11 +506,15 @@ ghcr.io/lf-decentralized-trust-labs/fabricops-fabric-tools:<fabricops-version>
 Use the `Release` GitHub Actions workflow from the GitHub UI when publishing a
 new release. Trigger it from `main` with a release tag such as `v<version>`.
 
-The workflow validates the tag, updates release-version files, runs the Go test
-and lint gates, builds and pushes the manager, Fabric tools helper, and sample
+First run `hack/prepare-release.sh v<version>` and
+`make build-installer-release VERSION=<version>` on a release-preparation branch,
+then test and merge those changes through a pull request.
+
+The workflow validates the tag and committed release-version files, runs the Go
+test and lint gates, builds and pushes the manager, Fabric tools helper, and sample
 chaincode images, generates `install.yaml` and the Helm chart package, verifies
-GHCR public visibility, commits the release-prep changes, tags the commit, and
-creates the GitHub release with the generated assets.
+GHCR public visibility, tags the prepared commit, and creates the GitHub release
+with the generated assets. It stops if release preparation would change files.
 
 The workflow also builds `fabricopsctl` with the release version embedded and
 verifies the binary through the normal build gate.
@@ -519,8 +523,8 @@ The local release helpers remain useful for debugging individual steps. For
 example:
 
 ```bash
-make docker-buildx-release VERSION=0.3.0
-make build-installer-release VERSION=0.3.0
+make docker-buildx-release VERSION=0.4.0
+make build-installer-release VERSION=0.4.0
 ```
 
 `docker-buildx-release` publishes the manager image for all configured `PLATFORMS`. For local single-platform sanity checks, use `docker-build-release` and `docker-push-release`.
@@ -528,7 +532,7 @@ make build-installer-release VERSION=0.3.0
 Use that same tag for Helm installs:
 
 ```bash
-make helm-deploy-release VERSION=0.3.0
+make helm-deploy-release VERSION=0.4.0
 ```
 
 The release helpers derive `RELEASE_IMG` from `IMAGE_REGISTRY`, `IMAGE_REPOSITORY`, and `VERSION`. Override those variables if the image moves to another registry or repository.
@@ -537,7 +541,7 @@ Before publishing release instructions, verify that the manager image, Fabric
 tools helper image, and sample chaincode images are publicly pullable from GHCR:
 
 ```bash
-make release-check-ghcr VERSION=0.3.0
+make release-check-ghcr VERSION=0.4.0
 ```
 
 See [docs/first-release-checklist.md](docs/first-release-checklist.md) for the full release checklist.
@@ -769,7 +773,7 @@ spec:
     - name: settlement
       version: "0.0.1"
       channel: settlement
-      image: ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.3.0
+      image: ghcr.io/lf-decentralized-trust-labs/fabricops-node-settlement:0.4.0
       sequence: 1
       ccaas:
         replicas: 1
