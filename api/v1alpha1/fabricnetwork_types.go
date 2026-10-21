@@ -287,11 +287,35 @@ type Channel struct {
 	Orgs []ChannelOrg `json:"orgs"`
 
 	// ExternalOrgs declares participant-owned organizations that the founder
-	// cluster should admit to this channel through a channel config update.
+	// cluster should add to or remove from this channel through config updates.
 	// The org material should be the rendered Application org JSON produced
 	// by `fabricopsctl join-bundle render-org`; private keys are never imported.
 	// +optional
 	ExternalOrgs []ChannelExternalOrg `json:"externalOrgs,omitempty"`
+	// RaftUpdate stages a reviewed single-consenter plan and optionally submits
+	// its signed envelope after managed-orderer preflight checks.
+	// +optional
+	RaftUpdate *ChannelRaftUpdate `json:"raftUpdate,omitempty"`
+}
+
+type ChannelRaftUpdate struct {
+	// OperationID identifies this reviewed proposal. Use a new ID for a new operation.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+	OperationID string `json:"operationID"`
+	// AdminOrg selects a local ordering organization, not an application org.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	AdminOrg string `json:"adminOrg"`
+	// Orderer selects the config-fetch endpoint within AdminOrg. Both fields are required.
+	Orderer ChannelOrdererRef `json:"orderer"`
+	// PlanRef points to a FabricChannelRaftUpdatePlan in the FabricNetwork namespace.
+	PlanRef ChannelArtifactKeyRef `json:"planRef"`
+	// SignedUpdateRef supplies signatures for the exact staged Raft envelope.
+	// Submission is gated on managed orderer health and follower catch-up.
+	// +optional
+	SignedUpdateRef *ChannelArtifactKeyRef `json:"signedUpdateRef,omitempty"`
 }
 
 type ChannelOrg struct {
@@ -301,6 +325,10 @@ type ChannelOrg struct {
 	Name string `json:"name"`
 	// +kubebuilder:validation:MinItems=1
 	Peers []string `json:"peers"`
+	// SignedUpdateRef supplies the signed envelope for a staged day-two local
+	// org admission. The referenced ConfigMap or Secret is in the network namespace.
+	// +optional
+	SignedUpdateRef *ChannelArtifactKeyRef `json:"signedUpdateRef,omitempty"`
 }
 
 type ChannelExternalOrg struct {
@@ -316,9 +344,26 @@ type ChannelExternalOrg struct {
 	// +kubebuilder:validation:MaxLength=64
 	// +kubebuilder:validation:Pattern="^[A-Za-z][A-Za-z0-9]*$"
 	MSPID string `json:"mspID"`
+	// State declares whether the external application org should be present in
+	// the channel configuration. Present preserves the existing admission
+	// behavior; Absent removes the org when channel policy permits it.
+	// +optional
+	// +kubebuilder:default=Present
+	// +kubebuilder:validation:Enum=Present;Absent
+	State ChannelExternalOrgState `json:"state,omitempty"`
+	// OperationID distinguishes a new membership transition from durable
+	// evidence left by an earlier operation with the same desired state. Omit
+	// it for the first operation; set a new value when intentionally repeating
+	// an add or removal after the org has transitioned in the opposite direction.
+	// +optional
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+	OperationID string `json:"operationID,omitempty"`
 	// ApplicationOrgRef points at the rendered channel Application org JSON for
-	// this external organization.
-	ApplicationOrgRef ChannelArtifactKeyRef `json:"applicationOrgRef"`
+	// this external organization. It is required when state is Present and
+	// ignored when state is Absent.
+	// +optional
+	ApplicationOrgRef ChannelArtifactKeyRef `json:"applicationOrgRef,omitempty"`
 	// AdminOrg optionally selects the local founder org whose admin identity
 	// submits the channel update. When omitted, the first local org declared on
 	// the channel is used.
@@ -329,11 +374,15 @@ type ChannelExternalOrg struct {
 	// RequiredSignerMSPIDs lists founder-side MSP IDs expected to sign the
 	// channel config update before submission. When omitted, FabricOps attempts
 	// the update with the selected AdminOrg only. When this list names
-	// additional MSPs, FabricOps prepares the admission inputs and waits for a
-	// manual multi-admin signature handoff instead of launching an update Job.
+	// additional MSPs, FabricOps stages an unsigned update envelope and waits
+	// for a manual multi-admin signature handoff instead of submitting it.
 	// +optional
 	// +kubebuilder:validation:MaxItems=16
 	RequiredSignerMSPIDs []string `json:"requiredSignerMSPIDs,omitempty"`
+	// SignedUpdateRef supplies signatures for the exact staged config update.
+	// Fabric validates the signatures against the live channel policy.
+	// +optional
+	SignedUpdateRef *ChannelArtifactKeyRef `json:"signedUpdateRef,omitempty"`
 	// Orderer optionally selects the local orderer endpoint used to fetch and
 	// submit the channel config update. When omitted, the first local orderer is
 	// used.
@@ -344,6 +393,13 @@ type ChannelExternalOrg struct {
 	// +optional
 	AnchorPeers []ChannelExternalAnchorPeer `json:"anchorPeers,omitempty"`
 }
+
+type ChannelExternalOrgState string
+
+const (
+	ChannelExternalOrgPresent ChannelExternalOrgState = "Present"
+	ChannelExternalOrgAbsent  ChannelExternalOrgState = "Absent"
+)
 
 type ChannelArtifactKeyRef struct {
 	// ConfigMapKeyRef points at a key in a ConfigMap in the FabricNetwork
@@ -668,14 +724,34 @@ type ChannelStatus struct {
 	Peers              WorkloadStatus             `json:"peers,omitempty"`
 	Orgs               []ChannelOrgStatus         `json:"orgs,omitempty"`
 	ExternalOrgs       []ChannelExternalOrgStatus `json:"externalOrgs,omitempty"`
+	RaftUpdate         *ChannelRaftUpdateStatus   `json:"raftUpdate,omitempty"`
 	Ready              bool                       `json:"ready"`
 	Message            string                     `json:"message,omitempty"`
+}
+
+type ChannelRaftUpdateStatus struct {
+	OperationID           string                   `json:"operationID"`
+	Namespace             string                   `json:"namespace,omitempty"`
+	AdminOrg              string                   `json:"adminOrg,omitempty"`
+	Orderer               string                   `json:"orderer,omitempty"`
+	Phase                 ChannelConfigUpdatePhase `json:"phase,omitempty"`
+	Action                string                   `json:"action,omitempty"`
+	ConfigSequence        string                   `json:"configSequence,omitempty"`
+	PlanHash              string                   `json:"planHash,omitempty"`
+	ArtifactConfigMapName string                   `json:"artifactConfigMapName,omitempty"`
+	UpdateJobName         string                   `json:"updateJobName,omitempty"`
+	Ready                 bool                     `json:"ready"`
+	Message               string                   `json:"message,omitempty"`
 }
 
 type ChannelExternalOrgStatus struct {
 	Name                        string                      `json:"name"`
 	MSPID                       string                      `json:"mspID"`
+	DesiredState                ChannelExternalOrgState     `json:"desiredState,omitempty"`
+	OperationID                 string                      `json:"operationID,omitempty"`
+	Phase                       ChannelConfigUpdatePhase    `json:"phase,omitempty"`
 	ApplicationOrgConfigMapName string                      `json:"applicationOrgConfigMapName,omitempty"`
+	ArtifactConfigMapName       string                      `json:"artifactConfigMapName,omitempty"`
 	UpdateJobName               string                      `json:"updateJobName,omitempty"`
 	AdminOrg                    string                      `json:"adminOrg,omitempty"`
 	Orderer                     string                      `json:"orderer,omitempty"`
@@ -684,6 +760,17 @@ type ChannelExternalOrgStatus struct {
 	Ready                       bool                        `json:"ready"`
 	Message                     string                      `json:"message,omitempty"`
 }
+
+type ChannelConfigUpdatePhase string
+
+const (
+	ChannelConfigUpdatePending           ChannelConfigUpdatePhase = "Pending"
+	ChannelConfigUpdateStaged            ChannelConfigUpdatePhase = "Staged"
+	ChannelConfigUpdatePendingSignatures ChannelConfigUpdatePhase = "PendingSignatures"
+	ChannelConfigUpdateSubmitted         ChannelConfigUpdatePhase = "Submitted"
+	ChannelConfigUpdateAlreadyApplied    ChannelConfigUpdatePhase = "AlreadyApplied"
+	ChannelConfigUpdateFailed            ChannelConfigUpdatePhase = "Failed"
+)
 
 type ChaincodeTargetStatus struct {
 	OrgName                string         `json:"orgName"`

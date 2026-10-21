@@ -81,6 +81,9 @@ func validateFabricNetworkTopology(net *fabricopsv1alpha1.FabricNetwork) []strin
 		}
 		localChannelOrgNames := map[string]struct{}{}
 		for _, channelOrg := range channel.Orgs {
+			if channelOrg.SignedUpdateRef != nil {
+				problems = append(problems, validateChannelArtifactRef("channel "+channel.Name+" org "+channelOrg.Name+" signedUpdateRef", channelOrg.SignedUpdateRef)...)
+			}
 			orgName := strings.TrimSpace(channelOrg.Name)
 			if orgName != "" {
 				localChannelOrgNames[orgName] = struct{}{}
@@ -106,6 +109,7 @@ func validateFabricNetworkTopology(net *fabricopsv1alpha1.FabricNetwork) []strin
 			}
 		}
 		problems = append(problems, validateChannelExternalOrgs(channel, orgs, localChannelOrgNames, net)...)
+		problems = append(problems, validateChannelRaftUpdate(net, channel)...)
 	}
 
 	seenChaincodes := map[string]struct{}{}
@@ -215,6 +219,9 @@ func validateChannelExternalOrgs(
 
 	for i, externalOrg := range channel.ExternalOrgs {
 		path := fmt.Sprintf("channel %q externalOrgs[%d]", channel.Name, i)
+		if externalOrg.SignedUpdateRef != nil {
+			problems = append(problems, validateChannelArtifactRef(path+".signedUpdateRef", externalOrg.SignedUpdateRef)...)
+		}
 		name := strings.TrimSpace(externalOrg.Name)
 		mspID := strings.TrimSpace(externalOrg.MSPID)
 		if name == "" {
@@ -240,7 +247,11 @@ func validateChannelExternalOrgs(
 			}
 		}
 
-		problems = append(problems, validateChannelArtifactRef(path+".applicationOrgRef", &externalOrg.ApplicationOrgRef)...)
+		if channelExternalOrgDesiredState(externalOrg) == fabricopsv1alpha1.ChannelExternalOrgPresent {
+			problems = append(problems, validateChannelArtifactRef(path+".applicationOrgRef", &externalOrg.ApplicationOrgRef)...)
+		} else if len(externalOrg.AnchorPeers) > 0 {
+			problems = append(problems, path+" anchorPeers must be empty when state is Absent")
+		}
 		if adminOrg := strings.TrimSpace(externalOrg.AdminOrg); adminOrg != "" {
 			if _, ok := orgs[adminOrg]; !ok {
 				problems = append(problems, fmt.Sprintf("%s adminOrg %q is not a local org", path, adminOrg))
@@ -563,6 +574,9 @@ func validateSignaturePolicyMSPReferences(
 	problems := []string{}
 	allMSPs := orgMSPNames(orgs)
 	for _, externalOrg := range channel.ExternalOrgs {
+		if channelExternalOrgDesiredState(externalOrg) == fabricopsv1alpha1.ChannelExternalOrgAbsent {
+			continue
+		}
 		mspName := strings.TrimSpace(externalOrg.MSPID)
 		if mspName != "" {
 			allMSPs[mspName] = struct{}{}
@@ -646,6 +660,9 @@ func channelMSPNames(
 		}
 	}
 	for _, externalOrg := range channel.ExternalOrgs {
+		if channelExternalOrgDesiredState(externalOrg) == fabricopsv1alpha1.ChannelExternalOrgAbsent {
+			continue
+		}
 		mspName := strings.TrimSpace(externalOrg.MSPID)
 		if mspName != "" {
 			mspNames[mspName] = struct{}{}

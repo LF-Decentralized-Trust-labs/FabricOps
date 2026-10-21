@@ -2946,6 +2946,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(network.Status.ChannelStatus[0].Ready).To(BeTrue())
 			Expect(network.Status.ChannelStatus[0].Message).To(BeEmpty())
 			Expect(network.Status.ChannelStatus[0].ExternalOrgs[0].Ready).To(BeTrue())
+			Expect(network.Status.ChannelStatus[0].ExternalOrgs[0].Phase).To(Equal(fabricopsv1alpha1.ChannelConfigUpdateSubmitted))
 
 			channels := apiMeta.FindStatusCondition(network.Status.Conditions, conditionChannelsReady)
 			Expect(channels).NotTo(BeNil())
@@ -3056,9 +3057,10 @@ var _ = Describe("FabricNetwork Controller", func() {
 			status, err := controllerReconciler.reconcileExternalOrgUpdate(ctx, &network, channel, externalOrg)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(status.Ready).To(BeFalse())
+			Expect(status.Phase).To(Equal(fabricopsv1alpha1.ChannelConfigUpdateStaged))
 			Expect(status.AdminOrg).To(Equal("BankA"))
 			Expect(status.RequiredSignerMSPIDs).To(Equal([]string{"BankAMSP", "BankCMSP"}))
-			Expect(status.Message).To(Equal("BankB: Waiting for manual channel config update signatures from BankAMSP, BankCMSP"))
+			Expect(status.Message).To(Equal("BankB: Waiting for external org channel update staging Job"))
 
 			var normalizedOrg corev1.ConfigMap
 			Expect(k8sClient.Get(ctx, types.NamespacedName{
@@ -3072,7 +3074,34 @@ var _ = Describe("FabricNetwork Controller", func() {
 				Namespace: adminNamespace,
 				Name:      "federated-manual-bankb-external-org-update",
 			}, &updateJob)
-			Expect(errors.IsNotFound(err)).To(BeTrue())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updateJob.Spec.Template.Spec.InitContainers).To(HaveLen(1))
+			Expect(updateJob.Spec.Template.Spec.InitContainers[0].Command[2]).To(ContainSubstring("SUBMIT_UPDATE=false"))
+
+			stagedEvidence := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "federated-manual-bankb-external-org-update-result",
+					Namespace: adminNamespace,
+				},
+				Data: map[string]string{
+					externalOrgUpdateResultKey: `{"channel":"federated-manual","mspID":"BankBMSP","state":"Present","outcome":"staged"}`,
+				},
+				BinaryData: map[string][]byte{
+					externalOrgUpdateArtifactKey: []byte("unsigned-config-update"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, stagedEvidence)).To(Succeed())
+			DeferCleanup(func() {
+				Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, stagedEvidence))).To(Succeed())
+			})
+
+			status, err = controllerReconciler.reconcileExternalOrgUpdate(ctx, &network, channel, externalOrg)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(status.Ready).To(BeFalse())
+			Expect(status.Phase).To(Equal(fabricopsv1alpha1.ChannelConfigUpdatePendingSignatures))
+			Expect(status.ArtifactConfigMapName).To(Equal("federated-manual-bankb-external-org-update-result"))
+			Expect(status.Message).To(ContainSubstring("Waiting for manual channel config update signatures from BankAMSP, BankCMSP"))
+			Expect(status.Message).To(ContainSubstring("unsigned update is stored in ConfigMap fo-test-banka/federated-manual-bankb-external-org-update-result"))
 		})
 
 		It("should generate channel config and a channel block Job after components are ready", func() {

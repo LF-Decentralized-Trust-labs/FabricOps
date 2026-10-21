@@ -2321,6 +2321,9 @@ func (r *FabricNetworkReconciler) externalChaincodeLifecyclePeers(
 
 	peers := []chaincodeLifecyclePeer{}
 	for _, externalOrg := range channel.ExternalOrgs {
+		if channelExternalOrgDesiredState(externalOrg) == fabricopsv1alpha1.ChannelExternalOrgAbsent {
+			continue
+		}
 		raw, ready, message, err := r.channelArtifactBytes(ctx, net.Namespace, &externalOrg.ApplicationOrgRef)
 		if err != nil {
 			return nil, err
