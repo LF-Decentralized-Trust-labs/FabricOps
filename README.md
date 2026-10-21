@@ -560,7 +560,8 @@ The Raft planner has a short protobuf compatibility check using Docker and
 
 ```bash
 go test -tags=integration ./cmd/fabricopsctl ./internal/controller \
-  -run 'Test(RaftUpdateConfigtxlator|RaftStagingFabricTools|RaftSubmissionFabricTools)' -count=1 -timeout 5m
+  -run 'TestRaft(UpdateConfigtxlator|StagingFabricTools|SubmissionFabricTools|FabricToolsHostIdentity|StagingToolsHostIdentity)' \
+  -count=1 -timeout 5m
 ```
 
 The Tests workflow runs this check on pushes and pull requests. Set

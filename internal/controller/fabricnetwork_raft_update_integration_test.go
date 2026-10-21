@@ -21,6 +21,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -173,6 +174,22 @@ jq -e '.payload.header.channel_header.channel_id == "settlement" and
 	}
 }
 
+func TestRaftStagingToolsHostIdentity(t *testing.T) {
+	dir := t.TempDir()
+	output, err := runRaftStagingTools(dir, fmt.Sprintf(`
+test "$(id -u)" = %d
+test "$(id -g)" = %d
+umask 077
+printf owned-by-caller > owner-only.txt`, os.Getuid(), os.Getgid()))
+	if err != nil {
+		t.Fatalf("Fabric tools must use the test runner's identity: %v\n%s", err, output)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "owner-only.txt"))
+	if err != nil || string(raw) != "owned-by-caller" {
+		t.Fatalf("container output must remain readable by the test runner: %q, %v", raw, err)
+	}
+}
+
 func runRaftStagingTools(dir, script string) ([]byte, error) {
 	image := os.Getenv("FABRIC_TOOLS_TEST_IMAGE")
 	if image == "" {
@@ -180,6 +197,8 @@ func runRaftStagingTools(dir, script string) ([]byte, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	return exec.CommandContext(ctx, "docker", "run", "--rm", "--network", "none", "-v", dir+":/fabricops/channel",
+	// Keep owner-only codec outputs accessible to the non-root Linux runner.
+	return exec.CommandContext(ctx, "docker", "run", "--rm", "--network", "none",
+		"--user", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()), "-v", dir+":/fabricops/channel",
 		"-w", "/fabricops/channel", image, "sh", "-ec", script).CombinedOutput()
 }

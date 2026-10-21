@@ -22,6 +22,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -105,6 +106,19 @@ configtxlator proto_decode --input update.pb --type common.ConfigUpdate --output
 	}
 }
 
+func TestRaftFabricToolsHostIdentity(t *testing.T) {
+	dir := t.TempDir()
+	runRaftFabricTools(t, dir, fmt.Sprintf(`
+test "$(id -u)" = %d
+test "$(id -g)" = %d
+umask 077
+printf owned-by-caller > owner-only.txt`, os.Getuid(), os.Getgid()))
+	raw, err := os.ReadFile(filepath.Join(dir, "owner-only.txt"))
+	if err != nil || string(raw) != "owned-by-caller" {
+		t.Fatalf("container output must remain readable by the test runner: %q, %v", raw, err)
+	}
+}
+
 func writeRaftIntegrationJSON(t *testing.T, dir, name string, value any) {
 	t.Helper()
 	raw, err := json.Marshal(value)
@@ -124,7 +138,10 @@ func runRaftFabricTools(t *testing.T, dir, script string) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
+	// Fabric codecs create owner-only files on the bind mount. Match the host
+	// runner so subsequent Go reads work on Linux as well as Docker Desktop.
 	command := exec.CommandContext(ctx, "docker", "run", "--rm", "--network", "none",
+		"--user", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()),
 		"-v", dir+":/work", "-w", "/work", image, "sh", "-ec", script)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("Fabric tools failed: %v\n%s", err, output)
