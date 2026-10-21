@@ -94,7 +94,7 @@ that proof is already present.
 | Channel readiness status | n/a | n/a | Supported | README | | `.status.channelStatus` and `ChannelsReady` |
 | Multiple channels | yes | yes | Supported | samples | | The sample declares `settlement` and `audit`; kind e2e waits for all declared channels through `Ready=True` |
 | Channel query scripts | yes | yes | Planned | | | Dedicated channel query helper scripts are not implemented yet |
-| Channel config updates beyond anchor peers | yes | yes | Partial | docs/channel-config-operations.md | | Local org admission and external Application org add/remove operations retain durable evidence and accept signed-envelope handoffs; orderer consenter changes remain planned |
+| Channel config updates beyond anchor peers | yes | yes | Partial | docs/channel-config-operations.md | | Application org add/remove and reviewed single-consenter Raft updates accept signed-envelope handoffs and retain durable evidence; Raft submission checks health, catch-up, and committed membership, with live add/remove coverage; automatic Raft submission requires consenters managed by one ordering org; endpoint, certificate rotation, and ordering-MSP updates are not covered |
 
 ## Chaincodes
 

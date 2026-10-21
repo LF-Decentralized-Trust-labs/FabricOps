@@ -31,6 +31,34 @@ import (
 )
 
 var _ = Describe("Channel config operations", func() {
+	It("preserves reviewed Raft proposal references through the API server", func() {
+		net, channel, _, _, _ := channelConfigOperationFixture()
+		net.Name, net.Namespace = "raft-proposal", "raft-proposal-schema"
+		namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: net.Namespace}}
+		Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+		DeferCleanup(func() { Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, namespace))).To(Succeed()) })
+		channel.RaftUpdate = &fabricopsv1alpha1.ChannelRaftUpdate{
+			OperationID: "add-orderer1", AdminOrg: "Orderer",
+			Orderer: fabricopsv1alpha1.ChannelOrdererRef{Org: "Orderer", Name: "orderer0"},
+			PlanRef: fabricopsv1alpha1.ChannelArtifactKeyRef{ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: "reviewed-raft-plan"}, Key: "plan.json"}},
+			SignedUpdateRef: &fabricopsv1alpha1.ChannelArtifactKeyRef{SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: "signed-raft-update"}, Key: "envelope.pb"}},
+		}
+		net.Spec.Channels = []fabricopsv1alpha1.Channel{channel}
+		net.Spec.Chaincodes = []fabricopsv1alpha1.Chaincode{}
+		Expect(k8sClient.Create(ctx, net)).To(Succeed())
+		DeferCleanup(func() { Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, net))).To(Succeed()) })
+		actual := &fabricopsv1alpha1.FabricNetwork{}
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(net), actual)).To(Succeed())
+		Expect(actual.Spec.Channels[0].RaftUpdate).To(Equal(channel.RaftUpdate))
+		copy := actual.DeepCopy()
+		copy.Spec.Channels[0].RaftUpdate.PlanRef.ConfigMapKeyRef.Key = "other.json"
+		Expect(actual.Spec.Channels[0].RaftUpdate.PlanRef.ConfigMapKeyRef.Key).To(Equal("plan.json"))
+		copy.Spec.Channels[0].RaftUpdate.SignedUpdateRef.SecretKeyRef.Key = "other.pb"
+		Expect(actual.Spec.Channels[0].RaftUpdate.SignedUpdateRef.SecretKeyRef.Key).To(Equal("envelope.pb"))
+	})
+
 	It("runs local org admission before attempting the new peer join", func() {
 		net, channel, _, _, _ := channelConfigOperationFixture()
 		net.Name = "operations-additions"

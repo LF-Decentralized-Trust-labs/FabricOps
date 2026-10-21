@@ -791,6 +791,159 @@ spec:
                         type: object
                       minItems: 1
                       type: array
+                    raftUpdate:
+                      description: |-
+                        RaftUpdate stages a reviewed single-consenter plan and optionally submits
+                        its signed envelope after managed-orderer preflight checks.
+                      properties:
+                        adminOrg:
+                          description: AdminOrg selects a local ordering organization,
+                            not an application org.
+                          maxLength: 63
+                          minLength: 1
+                          type: string
+                        operationID:
+                          description: OperationID identifies this reviewed proposal.
+                            Use a new ID for a new operation.
+                          maxLength: 63
+                          minLength: 1
+                          pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                          type: string
+                        orderer:
+                          description: Orderer selects the config-fetch endpoint within
+                            AdminOrg. Both fields are required.
+                          properties:
+                            name:
+                              description: Name is the local orderer instance name,
+                                for example orderer0.
+                              maxLength: 63
+                              pattern: ^[A-Za-z0-9]([A-Za-z0-9_.-]*[A-Za-z0-9])?$
+                              type: string
+                            org:
+                              description: |-
+                                Org optionally scopes the selected orderer to a local orderer
+                                organization.
+                              maxLength: 63
+                              pattern: ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$
+                              type: string
+                          type: object
+                        planRef:
+                          description: PlanRef points to a FabricChannelRaftUpdatePlan
+                            in the FabricNetwork namespace.
+                          properties:
+                            configMapKeyRef:
+                              description: |-
+                                ConfigMapKeyRef points at a key in a ConfigMap in the FabricNetwork
+                                namespace.
+                              properties:
+                                key:
+                                  description: The key to select.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the ConfigMap or its
+                                    key must be defined
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            secretKeyRef:
+                              description: SecretKeyRef points at a key in a Secret
+                                in the FabricNetwork namespace.
+                              properties:
+                                key:
+                                  description: The key of the secret to select from.  Must
+                                    be a valid secret key.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the Secret or its key
+                                    must be defined
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                          type: object
+                        signedUpdateRef:
+                          description: |-
+                            SignedUpdateRef supplies signatures for the exact staged Raft envelope.
+                            Submission is gated on managed orderer health and follower catch-up.
+                          properties:
+                            configMapKeyRef:
+                              description: |-
+                                ConfigMapKeyRef points at a key in a ConfigMap in the FabricNetwork
+                                namespace.
+                              properties:
+                                key:
+                                  description: The key to select.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the ConfigMap or its
+                                    key must be defined
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            secretKeyRef:
+                              description: SecretKeyRef points at a key in a Secret
+                                in the FabricNetwork namespace.
+                              properties:
+                                key:
+                                  description: The key of the secret to select from.  Must
+                                    be a valid secret key.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the Secret or its key
+                                    must be defined
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                          type: object
+                      required:
+                      - adminOrg
+                      - operationID
+                      - orderer
+                      - planRef
+                      type: object
                   required:
                   - name
                   - orgs
@@ -1415,6 +1568,36 @@ spec:
                           type: integer
                       required:
                       - desired
+                      - ready
+                      type: object
+                    raftUpdate:
+                      properties:
+                        action:
+                          type: string
+                        adminOrg:
+                          type: string
+                        artifactConfigMapName:
+                          type: string
+                        configSequence:
+                          type: string
+                        message:
+                          type: string
+                        namespace:
+                          type: string
+                        operationID:
+                          type: string
+                        orderer:
+                          type: string
+                        phase:
+                          type: string
+                        planHash:
+                          type: string
+                        ready:
+                          type: boolean
+                        updateJobName:
+                          type: string
+                      required:
+                      - operationID
                       - ready
                       type: object
                     ready:

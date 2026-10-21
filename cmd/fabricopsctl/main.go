@@ -96,6 +96,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runConnectionProfile(args[1:], stdout, stderr)
 	case "join-bundle":
 		return runJoinBundle(args[1:], stdout, stderr)
+	case "channel":
+		return runChannel(args[1:], stdout, stderr)
 	case "invoke":
 		return runChaincodeOperation(args[1:], stdout, stderr, chaincodeOperationInvoke)
 	case "query":
@@ -985,6 +987,7 @@ func printUsage(out io.Writer) {
   fabricopsctl join-bundle plan [flags] <bundle.json>
   fabricopsctl join-bundle render-org [flags] <bundle.json>
   fabricopsctl join-bundle render-update [flags] <bundle.json>
+  fabricopsctl channel plan-raft-update [flags]
   fabricopsctl invoke [flags] <fabricnetwork>
   fabricopsctl invoke --participant [flags] <fabricparticipant>
   fabricopsctl query [flags] <fabricnetwork>

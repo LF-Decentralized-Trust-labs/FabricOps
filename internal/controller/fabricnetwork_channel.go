@@ -108,6 +108,12 @@ func (r *FabricNetworkReconciler) reconcileChannels(
 			ExternalOrgs:       channelExternalOrgStatuses(channel, "Waiting for local channel bootstrap"),
 		}
 		messages := []string{}
+		if channel.RaftUpdate != nil {
+			status.RaftUpdate = &fabricopsv1alpha1.ChannelRaftUpdateStatus{
+				OperationID: channel.RaftUpdate.OperationID, Phase: fabricopsv1alpha1.ChannelConfigUpdatePending,
+				Message: "Waiting for channel bootstrap",
+			}
+		}
 
 		if strings.TrimSpace(channel.Name) == "" {
 			messages = append(messages, "Channel name is required")
@@ -225,11 +231,20 @@ func (r *FabricNetworkReconciler) reconcileChannels(
 				status.Message = blockMessage
 			}
 		}
+		if status.Message == "" && channel.RaftUpdate != nil {
+			var err error
+			status.RaftUpdate, err = r.reconcileRaftUpdate(ctx, net, channel)
+			if err != nil {
+				return statuses, err
+			}
+			status.Message = status.RaftUpdate.Message
+		}
 		status.Ready = status.Orderers.Ready >= status.Orderers.Desired &&
 			status.Peers.Ready >= status.Peers.Desired &&
 			status.Orderers.Desired > 0 &&
 			status.Peers.Desired > 0 &&
 			channelExternalOrgsReady(status.ExternalOrgs) &&
+			(status.RaftUpdate == nil || status.RaftUpdate.Ready) &&
 			status.Message == ""
 		statuses = append(statuses, status)
 	}

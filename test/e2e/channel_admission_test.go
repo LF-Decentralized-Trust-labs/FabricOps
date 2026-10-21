@@ -46,13 +46,21 @@ func testLocalOrgAdmission(existingSettlement string) {
   {"op":"replace","path":"/spec/global/jobs/succeededHistoryTTLSeconds","value":600},
   {"op":"add","path":"/spec/orgs/-","value":{
     "organization":{"name":"BankC","domain":"bankc.example.com","mspName":"BankCMSP"},
-    "ca":{"db":"sqlite"},"peer":{"instances":1,"db":"CouchDB","prefix":"peer"}}},
+    "ca":{"db":"sqlite"},"peer":{"instances":1,"db":"CouchDB","prefix":"peer"}}}
+]`
+	runCommand(time.Minute, kubectlBin, "patch", "fabricnetwork", sampleName,
+		"-n", sampleNamespace, "--type=json", "-p", patch)
+	waitForFabricNetworkReadyGeneration(getFabricNetworkProbe().Metadata.Generation, 20*time.Minute)
+	dir := GinkgoT().TempDir()
+	By("joining BankC to settlement block 0 before its MSP has been admitted")
+	prejoinChannelWithoutMembership(dir, "settlement", genesisBlocks["settlement"])
+
+	patch = `[
   {"op":"add","path":"/spec/channels/0/orgs/-","value":{"name":"BankC","peers":["peer0"]}},
   {"op":"add","path":"/spec/channels/1/orgs/-","value":{"name":"BankC","peers":["peer0"]}}
 ]`
 	runCommand(time.Minute, kubectlBin, "patch", "fabricnetwork", sampleName,
 		"-n", sampleNamespace, "--type=json", "-p", patch)
-	dir := GinkgoT().TempDir()
 	for index, channel := range []string{"settlement", "audit"} {
 		proposalName := channel + "-bankc-local-org-add-result"
 		var envelope []byte
@@ -67,7 +75,7 @@ func testLocalOrgAdmission(existingSettlement string) {
 			g.Expect(envelope).NotTo(BeEmpty())
 		}, 20*time.Minute, 10*time.Second).Should(Succeed())
 
-		By("checking that " + channel + " is waiting for approval and BankC has not joined")
+		By("checking that " + channel + " still requires approval before controller-managed joins")
 		expectCommandFailure(30*time.Second, kubectlBin, "get", "job",
 			channel+"-bankc-peer0-peer-join", "-n", "fo-sample-bankc")
 		network := runCommandQuiet(30*time.Second, kubectlBin, "get", "fabricnetwork",
@@ -77,7 +85,7 @@ func testLocalOrgAdmission(existingSettlement string) {
 		Expect(string(net.Status.Phase)).NotTo(Equal("Ready"))
 
 		for _, org := range []string{"banka", "bankb"} {
-			envelope = signChannelEnvelope(dir, channel, org, envelope)
+			envelope = signChannelEnvelope(dir, channel, org, "admission-sign", envelope)
 		}
 		envelopePath := filepath.Join(dir, channel+"-signed.pb")
 		Expect(os.WriteFile(envelopePath, envelope, 0600)).To(Succeed())
@@ -117,17 +125,87 @@ func admissionChannelBlock(channel string) []byte {
 	return configMap.BinaryData[channel+".block"]
 }
 
-func signChannelEnvelope(dir, channel, org string, envelope []byte) []byte {
+func signChannelEnvelope(dir, channel, org, purpose string, envelope []byte) []byte {
+	GinkgoHelper()
+	logs := runAdmissionAdminJob(dir, channel, org, purpose, envelope, `cp /proposal/envelope.pb /tmp/signed.pb
+peer channel signconfigtx -f /tmp/signed.pb
+echo FABRICOPS_SIGNED_ENVELOPE
+base64 /tmp/signed.pb | tr -d '\n'
+echo`)
+	_, encoded, found := strings.Cut(logs, "FABRICOPS_SIGNED_ENVELOPE\n")
+	Expect(found).To(BeTrue())
+	result, err := base64.StdEncoding.DecodeString(strings.TrimSpace(encoded))
+	Expect(err).NotTo(HaveOccurred())
+	return result
+}
+
+func prejoinChannelWithoutMembership(dir, channel string, genesis []byte) {
+	GinkgoHelper()
+	logs := runAdmissionAdminJob(dir, channel, "bankc", "prejoin", genesis, fmt.Sprintf(`
+configtxlator proto_decode --input /proposal/envelope.pb --type common.Block --output /tmp/genesis.json
+jq -e '.data.data[0].payload.data.config.channel_group.groups.Application.groups.BankCMSP == null' /tmp/genesis.json
+export CORE_PEER_ADDRESS=peer0.fo-sample-bankc.svc.cluster.local:7051
+export CORE_PEER_TLS_ENABLED=true
+export CORE_PEER_TLS_ROOTCERT_FILE=/tls/ca.crt
+export CORE_PEER_TLS_CERT_FILE=/tls/client.crt
+export CORE_PEER_TLS_KEY_FILE=/tls/client.key
+peer channel join -b /proposal/envelope.pb
+peer channel list > /tmp/channels.txt
+grep -Fx %q /tmp/channels.txt
+if peer channel fetch config /tmp/config.pb -c %q \
+  -o orderer0.fo-sample-orderer.svc.cluster.local:7050 \
+  --tls --cafile /proposal/orderer-ca.crt > /tmp/fetch.log 2>&1; then
+  echo "Unadmitted BankC unexpectedly fetched channel config" >&2
+  exit 1
+fi
+grep FORBIDDEN /tmp/fetch.log
+echo FABRICOPS_PREJOIN_WITHOUT_MSP
+`, channel, channel))
+	Expect(logs).To(ContainSubstring("FABRICOPS_PREJOIN_WITHOUT_MSP"))
+	// Emulate the durable receipt left by the older join-before-admission flow,
+	// but only after a real peer has successfully joined the original block.
+	runCommand(time.Minute, kubectlBin, "create", "configmap", channel+"-bankc-peer0-peer-join-result",
+		"-n", "fo-sample-bankc", "--from-literal=channels.txt="+channel)
+	expectCommandFailure(30*time.Second, kubectlBin, "get", "configmap",
+		channel+"-bankc-anchor-peer-update-result", "-n", "fo-sample-bankc")
+}
+
+func runAdmissionAdminJob(dir, channel, org, purpose string, input []byte, command string) string {
 	GinkgoHelper()
 	namespace := "fo-sample-" + org
-	name := channel + "-bankc-sign-" + org
+	name := channel + "-" + purpose + "-" + org
 	inputPath := filepath.Join(dir, name+".pb")
-	Expect(os.WriteFile(inputPath, envelope, 0600)).To(Succeed())
-	runCommand(time.Minute, kubectlBin, "create", "configmap", name, "-n", namespace, "--from-file=envelope.pb="+inputPath)
-	stageJobJSON := runCommandQuiet(30*time.Second, kubectlBin, "get", "job",
-		channel+"-bankc-local-org-add", "-n", "fo-sample-banka", "-o", "json")
-	var stage batchv1.Job
-	Expect(json.Unmarshal([]byte(stageJobJSON), &stage)).To(Succeed())
+	Expect(os.WriteFile(inputPath, input, 0600)).To(Succeed())
+	configMapArgs := []string{"create", "configmap", name, "-n", namespace, "--from-file=envelope.pb=" + inputPath}
+	if purpose == "prejoin" {
+		// Only the orderer's public CA certificate crosses the namespace boundary.
+		encoded := runCommandQuiet(30*time.Second, kubectlBin, "get", "secret", "orderer0-tls",
+			"-n", "fo-sample-orderer", "-o", `jsonpath={.data.ca\.crt}`)
+		ca, err := base64.StdEncoding.DecodeString(strings.TrimSpace(encoded))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ca).NotTo(BeEmpty())
+		caPath := filepath.Join(dir, "orderer-ca.crt")
+		Expect(os.WriteFile(caPath, ca, 0600)).To(Succeed())
+		configMapArgs = append(configMapArgs, "--from-file=orderer-ca.crt="+caPath)
+	}
+	runCommand(time.Minute, kubectlBin, configMapArgs...)
+	networkJSON := runCommandQuiet(30*time.Second, kubectlBin, "get", "fabricnetwork",
+		sampleName, "-n", sampleNamespace, "-o", "json")
+	var network fabricopsv1alpha1.FabricNetwork
+	Expect(json.Unmarshal([]byte(networkJSON), &network)).To(Succeed())
+	var mspID string
+	for _, candidate := range network.Spec.Orgs {
+		if strings.EqualFold(candidate.Organization.Name, org) {
+			mspID = candidate.Organization.MSPName
+		}
+	}
+	Expect(mspID).NotTo(BeEmpty(), "admin Job requires a declared organization")
+	// This suite uses Fabric v3 with the operator's v2.5 CLI compatibility image.
+	// Discover overrides from the CR, not from bootstrap Jobs removed by cleanup.
+	toolsImage := "hyperledger/fabric-tools:2.5.14"
+	if network.Spec.Global.Images != nil && network.Spec.Global.Images.FabricTools != "" {
+		toolsImage = network.Spec.Global.Images.FabricTools
+	}
 	backoff := int32(0)
 	job := batchv1.Job{
 		TypeMeta:   metav1.TypeMeta{APIVersion: "batch/v1", Kind: "Job"},
@@ -138,6 +216,9 @@ func signChannelEnvelope(dir, channel, org string, envelope []byte) []byte {
 				{Name: "proposal", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{
 					LocalObjectReference: corev1.LocalObjectReference{Name: name},
 				}}},
+				{Name: "tls", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
+					SecretName: org + "-admin-tls",
+				}}},
 				{Name: "admin", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
 					SecretName: org + "-admin-msp", Items: []corev1.KeyToPath{
 						{Key: "config.yaml", Path: "config.yaml"}, {Key: "cacert.pem", Path: "cacerts/ca.pem"},
@@ -147,19 +228,16 @@ func signChannelEnvelope(dir, channel, org string, envelope []byte) []byte {
 				}}},
 			},
 			Containers: []corev1.Container{{
-				Name: "sign", Image: stage.Spec.Template.Spec.InitContainers[0].Image,
+				Name: purpose, Image: toolsImage,
 				Env: []corev1.EnvVar{
-					{Name: "CORE_PEER_LOCALMSPID", Value: "Bank" + strings.ToUpper(strings.TrimPrefix(org, "bank")) + "MSP"},
+					{Name: "CORE_PEER_LOCALMSPID", Value: mspID},
 					{Name: "CORE_PEER_MSPCONFIGPATH", Value: "/msp"},
 				},
-				Command: []string{"sh", "-ec", `cp /proposal/envelope.pb /tmp/signed.pb
-peer channel signconfigtx -f /tmp/signed.pb
-echo FABRICOPS_SIGNED_ENVELOPE
-base64 /tmp/signed.pb | tr -d '\n'
-echo`},
+				Command: []string{"sh", "-ec", command},
 				VolumeMounts: []corev1.VolumeMount{
 					{Name: "proposal", MountPath: "/proposal", ReadOnly: true},
 					{Name: "admin", MountPath: "/msp", ReadOnly: true},
+					{Name: "tls", MountPath: "/tls", ReadOnly: true},
 				},
 			}},
 		}}},
@@ -171,10 +249,5 @@ echo`},
 	runCommand(time.Minute, kubectlBin, "apply", "-f", jobPath)
 	runCommand(4*time.Minute, kubectlBin, "wait", "--for=condition=complete",
 		"job/"+name, "-n", namespace, "--timeout=180s")
-	logs := runCommandQuiet(30*time.Second, kubectlBin, "logs", "job/"+name, "-n", namespace)
-	_, encoded, found := strings.Cut(logs, "FABRICOPS_SIGNED_ENVELOPE\n")
-	Expect(found).To(BeTrue())
-	result, err := base64.StdEncoding.DecodeString(strings.TrimSpace(encoded))
-	Expect(err).NotTo(HaveOccurred())
-	return result
+	return runCommandQuiet(30*time.Second, kubectlBin, "logs", "job/"+name, "-n", namespace)
 }

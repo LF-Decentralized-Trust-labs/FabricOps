@@ -166,6 +166,8 @@ fabricopsctl join-bundle validate banka-join-bundle.json
 fabricopsctl join-bundle plan --channel settlement banka-join-bundle.json
 fabricopsctl join-bundle render-org --channel settlement --out banka-org.json banka-join-bundle.json
 fabricopsctl join-bundle render-update --channel settlement --out settlement-join-update.sh banka-join-bundle.json
+fabricopsctl channel plan-raft-update --channel settlement \
+  --block config-block.json --consenters desired-consenters.json --out raft-plan.json
 fabricopsctl query -n default --org BankA \
   --channel settlement --chaincode settlement --function readSettlement \
   --args '["settlement-001"]' fabricnetwork-sample
@@ -275,6 +277,17 @@ verifies committed membership, then joins the new peer using the original
 genesis block and configures its anchor peer. This differs from adding another peer to an org
 already on the channel, which remains regular peer scale-up. See
 [Channel Config Operations](docs/channel-config-operations.md#add-a-local-org-to-an-existing-channel).
+
+For offline, one-node-at-a-time Raft membership planning, see
+[Plan A Raft Consenter Change](docs/channel-config-operations.md#plan-a-raft-consenter-change).
+Planning does not submit an update or change running orderer workloads.
+The resulting plan can be [staged by the controller](docs/channel-config-operations.md#stage-a-reviewed-raft-plan)
+as an unsigned envelope after checking that its source snapshot still matches
+live config. Administrators can then provide a signed envelope through
+`raftUpdate.signedUpdateRef` for submission with health, catch-up, and committed
+membership checks. Automatic submission currently requires all consenters to
+belong to the selected locally managed ordering organization. See
+[Submit A Signed Raft Update](docs/channel-config-operations.md#submit-a-signed-raft-update).
 
 ### Uninstall
 
@@ -539,6 +552,21 @@ cd examples/terraform/local-kind
 terraform init
 terraform apply
 ```
+
+### CLI Integration Validation
+
+The Raft planner has a short protobuf compatibility check using Docker and
+`hyperledger/fabric-tools:2.5.14`, without creating a cluster:
+
+```bash
+go test -tags=integration ./cmd/fabricopsctl ./internal/controller \
+  -run 'Test(RaftUpdateConfigtxlator|RaftStagingFabricTools|RaftSubmissionFabricTools)' -count=1 -timeout 5m
+```
+
+The Tests workflow runs this check on pushes and pull requests. Set
+`FABRIC_TOOLS_TEST_IMAGE` to test another compatible Fabric tools image.
+The staging check uses real Fabric protobuf tools with stubbed peer transport;
+it does not replace a live network authorization or consensus test.
 
 ### E2E Validation
 

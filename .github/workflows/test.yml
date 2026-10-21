@@ -32,6 +32,11 @@ jobs:
         run: |
           make test
 
+      - name: Verify Raft planner with Fabric tools
+        run: |
+          go test -tags=integration ./cmd/fabricopsctl ./internal/controller \
+            -run 'Test(RaftUpdateConfigtxlator|RaftStagingFabricTools|RaftSubmissionFabricTools)' -count=1 -timeout 5m
+
       - name: Run Go settlement sample contract tests
         working-directory: config/samples/chaincodes/go_settlement
         run: go test ./...

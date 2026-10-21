@@ -109,6 +109,7 @@ func validateFabricNetworkTopology(net *fabricopsv1alpha1.FabricNetwork) []strin
 			}
 		}
 		problems = append(problems, validateChannelExternalOrgs(channel, orgs, localChannelOrgNames, net)...)
+		problems = append(problems, validateChannelRaftUpdate(net, channel)...)
 	}
 
 	seenChaincodes := map[string]struct{}{}

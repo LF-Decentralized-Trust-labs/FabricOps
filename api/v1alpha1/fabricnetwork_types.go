@@ -292,6 +292,30 @@ type Channel struct {
 	// by `fabricopsctl join-bundle render-org`; private keys are never imported.
 	// +optional
 	ExternalOrgs []ChannelExternalOrg `json:"externalOrgs,omitempty"`
+	// RaftUpdate stages a reviewed single-consenter plan and optionally submits
+	// its signed envelope after managed-orderer preflight checks.
+	// +optional
+	RaftUpdate *ChannelRaftUpdate `json:"raftUpdate,omitempty"`
+}
+
+type ChannelRaftUpdate struct {
+	// OperationID identifies this reviewed proposal. Use a new ID for a new operation.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+	OperationID string `json:"operationID"`
+	// AdminOrg selects a local ordering organization, not an application org.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	AdminOrg string `json:"adminOrg"`
+	// Orderer selects the config-fetch endpoint within AdminOrg. Both fields are required.
+	Orderer ChannelOrdererRef `json:"orderer"`
+	// PlanRef points to a FabricChannelRaftUpdatePlan in the FabricNetwork namespace.
+	PlanRef ChannelArtifactKeyRef `json:"planRef"`
+	// SignedUpdateRef supplies signatures for the exact staged Raft envelope.
+	// Submission is gated on managed orderer health and follower catch-up.
+	// +optional
+	SignedUpdateRef *ChannelArtifactKeyRef `json:"signedUpdateRef,omitempty"`
 }
 
 type ChannelOrg struct {
@@ -700,8 +724,24 @@ type ChannelStatus struct {
 	Peers              WorkloadStatus             `json:"peers,omitempty"`
 	Orgs               []ChannelOrgStatus         `json:"orgs,omitempty"`
 	ExternalOrgs       []ChannelExternalOrgStatus `json:"externalOrgs,omitempty"`
+	RaftUpdate         *ChannelRaftUpdateStatus   `json:"raftUpdate,omitempty"`
 	Ready              bool                       `json:"ready"`
 	Message            string                     `json:"message,omitempty"`
+}
+
+type ChannelRaftUpdateStatus struct {
+	OperationID           string                   `json:"operationID"`
+	Namespace             string                   `json:"namespace,omitempty"`
+	AdminOrg              string                   `json:"adminOrg,omitempty"`
+	Orderer               string                   `json:"orderer,omitempty"`
+	Phase                 ChannelConfigUpdatePhase `json:"phase,omitempty"`
+	Action                string                   `json:"action,omitempty"`
+	ConfigSequence        string                   `json:"configSequence,omitempty"`
+	PlanHash              string                   `json:"planHash,omitempty"`
+	ArtifactConfigMapName string                   `json:"artifactConfigMapName,omitempty"`
+	UpdateJobName         string                   `json:"updateJobName,omitempty"`
+	Ready                 bool                     `json:"ready"`
+	Message               string                   `json:"message,omitempty"`
 }
 
 type ChannelExternalOrgStatus struct {

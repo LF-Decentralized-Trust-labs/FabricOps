@@ -274,6 +274,7 @@ var _ = Describe("Kind bundle install", Ordered, func() {
 
 		By("admitting BankC to both existing channels with BankA and BankB signatures")
 		testLocalOrgAdmission(upgradeSmokeID)
+		testRaftConsenterUpdates(upgradeSmokeID)
 	})
 })
 
