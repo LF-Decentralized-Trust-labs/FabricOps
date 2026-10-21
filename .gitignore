@@ -29,6 +29,9 @@ go.work
 # Gradle local build cache
 **/.gradle/
 
+# Node sample dependencies
+node_modules/
+
 # Kubeconfig might contain secrets
 *.kubeconfig
 
