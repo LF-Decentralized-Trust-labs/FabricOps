@@ -264,6 +264,15 @@ var _ = Describe("Kind bundle install", Ordered, func() {
 		By("verifying the upgraded chaincode status and workload image")
 		expectSampleChaincodeReady("0.0.2", 2, nodeUpgradeImage, baseSampleChaincodeTargets())
 
+		By("requiring explicit initialization of the upgraded definition")
+		initArgs := []string{"-n", sampleNamespace, "--org", "BankA", "--peer", "BankA/peer0",
+			"--channel", "settlement", "--chaincode", "settlement", "--function", "initLedger"}
+		rejected := expectCommandFailure(2*time.Minute, fabricopsctlBin,
+			append([]string{"invoke"}, append(initArgs, sampleName)...)...)
+		Expect(rejected).To(ContainSubstring("has not been initialized"))
+		runFabricOpsctl(4*time.Minute, append([]string{"invoke", "--is-init", "--peer", "BankB/peer0"},
+			append(initArgs, sampleName)...)...)
+
 		By("invoking and querying the upgraded chaincode")
 		upgradeSmokeID := smokeID + "-upgrade"
 		invokeAndQuerySettlement(upgradeSmokeID, runtimeConfig.createFunction, runtimeConfig.readFunction, "BankA/peer0", "BankB/peer0")
@@ -271,6 +280,9 @@ var _ = Describe("Kind bundle install", Ordered, func() {
 		By("confirming cleanup continues after chaincode upgrades without losing channel proof Jobs")
 		expectNoCleanupEligibleSucceededJobs(4 * time.Minute)
 		expectRetainedChannelProofJobs()
+
+		By("inspecting retained chaincode evidence after lifecycle Job cleanup")
+		expectRecordedChaincodeEvidence()
 
 		By("admitting BankC to both existing channels with BankA and BankB signatures")
 		testLocalOrgAdmission(upgradeSmokeID)
@@ -411,7 +423,10 @@ func patchSampleChaincode(version string, sequence int32, image string) int64 {
 	GinkgoHelper()
 
 	patch := fmt.Sprintf(
-		`[{"op":"replace","path":"/spec/chaincodes/0/version","value":%q},{"op":"replace","path":"/spec/chaincodes/0/sequence","value":%d},{"op":"replace","path":"/spec/chaincodes/0/image","value":%q}]`,
+		`[{"op":"replace","path":"/spec/chaincodes/0/version","value":%q},`+
+			`{"op":"replace","path":"/spec/chaincodes/0/sequence","value":%d},`+
+			`{"op":"replace","path":"/spec/chaincodes/0/image","value":%q},`+
+			`{"op":"add","path":"/spec/chaincodes/0/initRequired","value":true}]`,
 		version,
 		sequence,
 		image,
@@ -623,6 +638,38 @@ func expectSampleChaincodeReady(version string, sequence int32, image string, ta
 		))
 		Expect(deploymentImage).To(Equal(image))
 	}
+}
+
+func expectRecordedChaincodeEvidence() {
+	GinkgoHelper()
+	output := runFabricOpsctl(time.Minute, "chaincode", "inspect", "-n", sampleNamespace,
+		"--channel", "settlement", "--name", "settlement", "-o", "json", sampleName)
+	var result struct {
+		Status struct {
+			Sequence  int  `json:"sequence"`
+			Committed bool `json:"committed"`
+		} `json:"recordedStatus"`
+		Committed struct {
+			Version string `json:"version"`
+		} `json:"recordedQueryCommitted"`
+		Installs []struct {
+			Org            string          `json:"org"`
+			Peer           string          `json:"peer"`
+			ConfigMap      string          `json:"configMap"`
+			QueryInstalled json.RawMessage `json:"queryInstalled"`
+		} `json:"recordedInstalls"`
+	}
+	Expect(json.Unmarshal([]byte(output), &result)).To(Succeed())
+	Expect(result.Status.Sequence).To(Equal(2))
+	Expect(result.Status.Committed).To(BeTrue())
+	Expect(result.Committed.Version).To(Equal("0.0.2"))
+	var peers []string
+	for _, install := range result.Installs {
+		peers = append(peers, install.Org+"/"+install.Peer)
+		Expect(install.ConfigMap).To(HavePrefix("fo-sample-" + strings.ToLower(install.Org) + "/"))
+		Expect(install.QueryInstalled).NotTo(BeEmpty())
+	}
+	Expect(peers).To(ConsistOf("BankA/peer0", "BankA/peer1", "BankB/peer0"))
 }
 
 func runCommand(timeout time.Duration, name string, args ...string) string {

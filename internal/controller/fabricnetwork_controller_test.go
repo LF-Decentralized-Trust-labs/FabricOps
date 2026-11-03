@@ -3915,6 +3915,8 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(chaincodeStatus.Workloads.Ready).To(Equal(int32(0)))
 			Expect(chaincodeStatus.WorkloadsReady).To(BeFalse())
 			Expect(chaincodeStatus.CommitJobName).To(Equal(commitJobName))
+			Expect(chaincodeStatus.CommitResultNamespace).To(Equal(bankNamespace))
+			Expect(chaincodeStatus.CommitResultConfigMapName).To(Equal(commitJobName + "-result"))
 			Expect(chaincodeStatus.Committed).To(BeFalse())
 			Expect(chaincodeStatus.Ready).To(BeFalse())
 			Expect(chaincodeStatus.Message).To(Equal("Waiting for chaincode commit Job"))
