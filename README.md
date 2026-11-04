@@ -289,6 +289,47 @@ membership checks. Automatic submission currently requires all consenters to
 belong to the selected locally managed ordering organization. See
 [Submit A Signed Raft Update](docs/channel-config-operations.md#submit-a-signed-raft-update).
 
+### Initialize Chaincode
+
+When a committed definition uses `initRequired: true`, explicitly initialize
+that chaincode version before ordinary calls. FabricOps does not initialize it
+automatically. Use the contract's initialization function and the peers needed
+by its endorsement policy:
+
+```bash
+fabricopsctl invoke --is-init -n default --org BankA \
+  --peer BankA/peer0 --peer BankB/peer0 --channel settlement \
+  --chaincode settlement --function initLedger fabricnetwork-sample
+```
+
+### Inspect Chaincode
+
+Read the operator's recorded chaincode status and peer install evidence:
+
+```bash
+fabricopsctl chaincode list -n default fabricnetwork-sample
+fabricopsctl chaincode inspect -n default --channel settlement --name settlement -o json fabricnetwork-sample
+```
+
+`list` reports observed lifecycle status, including whether reconciliation
+recorded a committed definition. `inspect` also reads the referenced
+`queryinstalled.json` ConfigMap for each peer and the recorded
+`querycommitted.json` result from the commit submitter. Missing references
+or ConfigMaps mean evidence was not observed, not that a package or definition
+is absent. Older controllers may report commit status without an artifact reference.
+These commands are read-only and do not query peers or create Jobs.
+For troubleshooting, the text output of `inspect` shows each target's
+recorded lifecycle message and the namespaced Jobs, Deployments, and evidence
+ConfigMaps to check. A Job reference may remain after Job cleanup.
+
+Pass `--participant` to list or inspect a `FabricParticipant`. This shows
+recorded package readiness, installation, and approval for the local
+organization. It does not expose raw peer install or channel commit evidence.
+
+```bash
+fabricopsctl chaincode list --participant -n default participant-sample
+```
+
 ### Uninstall
 
 Delete `FabricNetwork` resources before removing the operator so FabricOps finalizers can clean up generated org namespaces:

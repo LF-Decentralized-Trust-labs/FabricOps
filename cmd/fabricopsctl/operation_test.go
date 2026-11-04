@@ -383,7 +383,7 @@ func TestEnsureParticipantOperationTLSSecretUsesImportedPeerRoot(t *testing.T) {
 }
 
 func TestOperationScriptPassesTransientForQuery(t *testing.T) {
-	script := operationScript(true, false, 1)
+	script := operationScript(true, false, false, 1)
 	for _, want := range []string{
 		`if [ "$FABRICOPS_OPERATION" = "query" ]; then`,
 		`set -- peer chaincode query`,
@@ -393,6 +393,27 @@ func TestOperationScriptPassesTransientForQuery(t *testing.T) {
 		if !strings.Contains(script, want) {
 			t.Fatalf("operation script does not contain %q\nscript:\n%s", want, script)
 		}
+	}
+}
+
+func TestOperationScriptInitializationIsOptIn(t *testing.T) {
+	const flag = `set -- "$@" --isInit`
+	for _, init := range []bool{false, true} {
+		script := operationScript(true, true, init, 2)
+		if strings.Contains(script, flag) != init {
+			t.Fatalf("unexpected init flag for isInit=%t", init)
+		}
+		if init && strings.Index(script, flag) < strings.Index(script, "set -- peer chaincode invoke") {
+			t.Fatal("initialization flag must be in the invoke path")
+		}
+	}
+}
+
+func TestQueryRejectsInitializationFlag(t *testing.T) {
+	var stderr bytes.Buffer
+	err := runChaincodeOperation([]string{"--is-init", "sample"}, &bytes.Buffer{}, &stderr, chaincodeOperationQuery)
+	if err == nil || !strings.Contains(err.Error(), "flag provided but not defined") {
+		t.Fatalf("expected query to reject --is-init, got %v", err)
 	}
 }
 

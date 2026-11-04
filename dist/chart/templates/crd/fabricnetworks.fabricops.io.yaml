@@ -1312,6 +1312,10 @@ spec:
                       type: string
                     commitJobName:
                       type: string
+                    commitResultConfigMapName:
+                      type: string
+                    commitResultNamespace:
+                      type: string
                     committed:
                       type: boolean
                     installed:
