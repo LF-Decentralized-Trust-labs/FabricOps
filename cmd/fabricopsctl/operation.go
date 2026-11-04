@@ -76,6 +76,7 @@ type chaincodeOperationOptions struct {
 	timeout      string
 	output       string
 	waitForEvent bool
+	isInit       bool
 	keepJob      bool
 	participant  bool
 }
@@ -130,6 +131,9 @@ func runChaincodeOperation(args []string, stdout, stderr io.Writer, operation st
 	flags.StringVar(&options.output, "o", operationOutputText, "Output format: text or json")
 	flags.StringVar(&options.output, "output", operationOutputText, "Output format: text or json")
 	flags.BoolVar(&options.waitForEvent, "wait-for-event", true, "Pass --waitForEvent to invoke")
+	if operation == chaincodeOperationInvoke {
+		flags.BoolVar(&options.isInit, "is-init", false, "Submit a Fabric lifecycle initialization transaction")
+	}
 	flags.BoolVar(&options.keepJob, "keep-job", false, "Keep the operation Job and temporary Secret")
 	flags.BoolVar(&options.participant, "participant", false, "Treat the resource argument as a FabricParticipant")
 	if err := flags.Parse(args); err != nil {
@@ -709,7 +713,7 @@ func buildOperationJob(
 	targets []operationPeerTarget,
 ) *batchv1.Job {
 	backoffLimit := int32(0)
-	script := operationScript(network.Spec.Global.TLS, options.waitForEvent, len(targets))
+	script := operationScript(network.Spec.Global.TLS, options.waitForEvent, options.isInit, len(targets))
 	labels := map[string]string{
 		"app.kubernetes.io/name":      "fabricops",
 		"app.kubernetes.io/component": "operation",
@@ -773,7 +777,7 @@ func operationEnv(
 	return env
 }
 
-func operationScript(tlsEnabled bool, waitForEvent bool, peerCount int) string {
+func operationScript(tlsEnabled, waitForEvent, isInit bool, peerCount int) string {
 	tlsSetup := "export CORE_PEER_TLS_ENABLED=false"
 	invokeTLSArgs := ""
 	if tlsEnabled {
@@ -793,6 +797,10 @@ fi`, operationTLSRootPath)
 	}
 
 	peerArgs := operationPeerArgs(tlsEnabled, peerCount)
+	initArg := ""
+	if isInit {
+		initArg = `set -- "$@" --isInit`
+	}
 
 	return fmt.Sprintf(`set -eu
 
@@ -822,6 +830,7 @@ set -- peer chaincode invoke \
   -c "$FABRICOPS_PAYLOAD"
 %s
 %s
+%s
 
 if [ -n "$FABRICOPS_TRANSIENT" ]; then
   set -- "$@" --transient "$FABRICOPS_TRANSIENT"
@@ -830,7 +839,7 @@ fi
 %s
 
 "$@"
-`, operationAdminMSPPath, tlsSetup, invokeTLSArgs, waitArg, peerArgs)
+`, operationAdminMSPPath, tlsSetup, invokeTLSArgs, waitArg, initArg, peerArgs)
 }
 
 func operationPeerArgs(tlsEnabled bool, peerCount int) string {

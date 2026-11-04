@@ -377,7 +377,7 @@ func (r *FabricNetworkReconciler) reconcileChaincodes(
 				lifecycleMessage = "Waiting for chaincode package ID before lifecycle commit"
 			} else {
 				status.CommitJobName = chaincodeCommitJobName(chaincode, packageID)
-				committed, message, err := r.reconcileChaincodeCommit(ctx, net, channel, chaincode, packageID)
+				committed, message, err := r.reconcileChaincodeCommit(ctx, net, channel, chaincode, packageID, &status)
 				if err != nil {
 					return statuses, err
 				}
@@ -1296,6 +1296,7 @@ func (r *FabricNetworkReconciler) reconcileChaincodeCommit(
 	channel fabricopsv1alpha1.Channel,
 	chaincode fabricopsv1alpha1.Chaincode,
 	packageID string,
+	status *fabricopsv1alpha1.ChaincodeStatus,
 ) (bool, string, error) {
 	orderer, ok := chaincodeLifecycleOrderer(net)
 	if !ok {
@@ -1316,6 +1317,8 @@ func (r *FabricNetworkReconciler) reconcileChaincodeCommit(
 	namespace := submitter.namespace
 	jobName := chaincodeCommitJobName(chaincode, packageID)
 	resultConfigMapName := chaincodeCommitResultConfigMapName(chaincode, packageID)
+	status.CommitResultNamespace = namespace
+	status.CommitResultConfigMapName = resultConfigMapName
 
 	committed, message, err := r.chaincodeCommitReadiness(
 		ctx,

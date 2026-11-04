@@ -794,26 +794,28 @@ type ChaincodeTargetStatus struct {
 }
 
 type ChaincodeStatus struct {
-	Name                 string                  `json:"name"`
-	Channel              string                  `json:"channel"`
-	Version              string                  `json:"version"`
-	PackageLabel         string                  `json:"packageLabel,omitempty"`
-	Sequence             int32                   `json:"sequence,omitempty"`
-	CollectionConfigMap  string                  `json:"collectionConfigMap,omitempty"`
-	CollectionConfigHash string                  `json:"collectionConfigHash,omitempty"`
-	PackageMetadata      WorkloadStatus          `json:"packageMetadata,omitempty"`
-	PackageMetadataReady bool                    `json:"packageMetadataReady"`
-	Installed            WorkloadStatus          `json:"installed,omitempty"`
-	InstalledReady       bool                    `json:"installedReady"`
-	Workloads            WorkloadStatus          `json:"workloads,omitempty"`
-	WorkloadsReady       bool                    `json:"workloadsReady"`
-	Approved             WorkloadStatus          `json:"approved,omitempty"`
-	ApprovedReady        bool                    `json:"approvedReady"`
-	CommitJobName        string                  `json:"commitJobName,omitempty"`
-	Committed            bool                    `json:"committed"`
-	Ready                bool                    `json:"ready"`
-	Targets              []ChaincodeTargetStatus `json:"targets,omitempty"`
-	Message              string                  `json:"message,omitempty"`
+	Name                      string                  `json:"name"`
+	Channel                   string                  `json:"channel"`
+	Version                   string                  `json:"version"`
+	PackageLabel              string                  `json:"packageLabel,omitempty"`
+	Sequence                  int32                   `json:"sequence,omitempty"`
+	CollectionConfigMap       string                  `json:"collectionConfigMap,omitempty"`
+	CollectionConfigHash      string                  `json:"collectionConfigHash,omitempty"`
+	PackageMetadata           WorkloadStatus          `json:"packageMetadata,omitempty"`
+	PackageMetadataReady      bool                    `json:"packageMetadataReady"`
+	Installed                 WorkloadStatus          `json:"installed,omitempty"`
+	InstalledReady            bool                    `json:"installedReady"`
+	Workloads                 WorkloadStatus          `json:"workloads,omitempty"`
+	WorkloadsReady            bool                    `json:"workloadsReady"`
+	Approved                  WorkloadStatus          `json:"approved,omitempty"`
+	ApprovedReady             bool                    `json:"approvedReady"`
+	CommitJobName             string                  `json:"commitJobName,omitempty"`
+	CommitResultNamespace     string                  `json:"commitResultNamespace,omitempty"`
+	CommitResultConfigMapName string                  `json:"commitResultConfigMapName,omitempty"`
+	Committed                 bool                    `json:"committed"`
+	Ready                     bool                    `json:"ready"`
+	Targets                   []ChaincodeTargetStatus `json:"targets,omitempty"`
+	Message                   string                  `json:"message,omitempty"`
 }
 
 // FabricNetworkStatus defines the observed state of FabricNetwork.

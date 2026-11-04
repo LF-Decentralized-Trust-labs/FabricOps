@@ -98,6 +98,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runJoinBundle(args[1:], stdout, stderr)
 	case "channel":
 		return runChannel(args[1:], stdout, stderr)
+	case "chaincode":
+		return runChaincodeInspection(args[1:], stdout, stderr)
 	case "invoke":
 		return runChaincodeOperation(args[1:], stdout, stderr, chaincodeOperationInvoke)
 	case "query":
@@ -988,6 +990,8 @@ func printUsage(out io.Writer) {
   fabricopsctl join-bundle render-org [flags] <bundle.json>
   fabricopsctl join-bundle render-update [flags] <bundle.json>
   fabricopsctl channel plan-raft-update [flags]
+  fabricopsctl chaincode list [flags] <fabricnetwork|fabricparticipant>
+  fabricopsctl chaincode inspect --channel <channel> --name <chaincode> [flags] <fabricnetwork|fabricparticipant>
   fabricopsctl invoke [flags] <fabricnetwork>
   fabricopsctl invoke --participant [flags] <fabricparticipant>
   fabricopsctl query [flags] <fabricnetwork>
