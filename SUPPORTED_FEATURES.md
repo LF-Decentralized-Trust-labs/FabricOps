@@ -147,6 +147,7 @@ that proof is already present.
 |---------|----------|----------|------------------|------------|----------|-------|
 | Create snapshot | yes | yes | Planned | | | Fabric snapshot operations are not automated yet |
 | Restore snapshot | yes | yes | Planned | | | Restore workflow is not automated yet |
+| Operator metadata export | n/a | n/a | Partial | [README](README.md#backup-and-restore) | unit | `fabricopsctl backup export` exports network metadata and optional Secrets; no volume data or automated restore |
 
 ## Other features
 

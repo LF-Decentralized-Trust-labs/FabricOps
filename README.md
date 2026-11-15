@@ -673,6 +673,45 @@ window, and rolls workloads when mounted identity material changes. See
 paths and the boundary between leaf identity renewal, bootstrap registrar
 rotation, and CA root rollover.
 
+## Backup And Restore
+
+Export a `FabricNetwork` spec, owned ConfigMaps, and PVC inventory:
+
+```bash
+fabricopsctl backup export -n default --out network-metadata.json fabricnetwork-sample
+```
+
+Add `--include-secrets` to include identity private keys and credentials.
+The output file must not exist and is created with mode `0600`. Archives are
+not encrypted; protect them outside Git, including exports without Secrets,
+which can still contain sensitive configuration.
+
+Ownership is checked against network name, namespace, and UID. Label-only Job
+outputs are included only inside UID-verified org namespaces and listed under
+`namespaceScopedArtifacts`. Review those entries before recovery. The caller
+needs namespace discovery and ConfigMap/PVC read access; exporting Secrets also
+requires Secret read access. Collection failures abort the command; discard any
+incomplete file after a write failure.
+
+**This is metadata export, not a full or consistent point-in-time backup.**
+Volume contents are not copied. Separately preserve CA databases/signing state,
+peer ledgers/private data, orderer ledgers, and coordinated CouchDB state, plus
+external dependencies, installation values, software versions, and image digests.
+CSI volume snapshots depend on the storage provider and do not alone guarantee
+application consistency. Disposable development networks may be recreated;
+staging and production networks need coordinated, encrypted off-cluster backups
+and rehearsed recovery.
+
+Automated restore and `FabricParticipant` export are not supported yet. Archives
+are not apply-ready: they retain source ownership annotations, while PVC entries
+are inventory only. For a recovery rehearsal, isolate the target, keep the
+manager stopped, restore compatible storage and identities, explicitly rebind
+ownership to the target CR UID, and review pending operations before resuming
+reconciliation. Verify quorum, membership, certificates, ledger state, and
+invoke/query results. Do not blindly replay operation receipts or signed updates.
+Never delete the source FabricNetwork to pause it: its finalizer can delete
+generated namespaces. A full-network recovery path has not yet been validated.
+
 ## Storage
 
 Persistent data is configured through `spec.global.storage.ca`, `spec.global.storage.orderer`, and `spec.global.storage.peer`. Each component accepts a `size` and optional `storageClassName`.
