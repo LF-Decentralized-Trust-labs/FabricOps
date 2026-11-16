@@ -22,6 +22,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
+// RestoreHoldAnnotation blocks all reconciliation, including cleanup, during staged recovery.
+const RestoreHoldAnnotation = "fabricops.io/restore-hold"
+
 // FabricNetworkSpec defines the desired state of FabricNetwork
 type FabricNetworkSpec struct {
 	Global GlobalConfig `json:"global"`

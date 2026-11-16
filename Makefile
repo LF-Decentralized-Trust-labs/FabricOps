@@ -122,6 +122,10 @@ test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expect
 	fi; \
 	exit $$status
 
+.PHONY: test-e2e-restore
+test-e2e-restore: manifests generate ## Test metadata recovery in a fresh isolated Kind cluster, then remove it.
+	KIND=$(KIND) KUBECTL=$(KUBECTL) bash hack/test-restore-e2e.sh
+
 .PHONY: test-e2e-bft
 test-e2e-bft: setup-test-e2e manifests generate fmt vet ## Run the Fabric v3 BFT kind e2e test.
 	@status=0; \

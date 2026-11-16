@@ -981,6 +981,8 @@ func printUsage(out io.Writer) {
 	printLine(out, `Usage:
   fabricopsctl version
   fabricopsctl backup export --out <file.json> [--include-secrets] [flags] <fabricnetwork>
+  fabricopsctl backup plan-restore --file <archive.json> --out <plan.json> --context <target> [flags]
+  fabricopsctl backup restore-metadata --file <archive.json> --out <receipt.json> --context <target> [flags]
   fabricopsctl status [flags] <fabricnetwork>
   fabricopsctl status --participant [flags] <fabricparticipant>
   fabricopsctl wait [flags] <fabricnetwork>

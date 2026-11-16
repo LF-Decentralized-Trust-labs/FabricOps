@@ -27,3 +27,6 @@ jobs:
         run: make lint-config
       - name: Run linter
         run: make lint
+
+      - name: Lint metadata recovery smoke
+        run: bin/golangci-lint run --build-tags=restore_e2e ./cmd/fabricopsctl/... ./internal/controller/...

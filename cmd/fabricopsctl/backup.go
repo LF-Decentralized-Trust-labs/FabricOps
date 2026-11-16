@@ -54,6 +54,12 @@ type backupBundle struct {
 }
 
 func runBackup(args []string, stdout, stderr io.Writer) error {
+	if len(args) > 0 && args[0] == "restore-metadata" {
+		return runMetadataRestore(args[1:], stdout, stderr)
+	}
+	if len(args) > 0 && args[0] == "plan-restore" {
+		return runRestorePlan(args[1:], stdout, stderr)
+	}
 	if len(args) == 0 || args[0] != "export" {
 		printLine(stderr, "Usage: fabricopsctl backup export --out <file.json> [--include-secrets] [flags] <fabricnetwork>")
 		return errUsage
