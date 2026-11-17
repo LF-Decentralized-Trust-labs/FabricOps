@@ -1131,6 +1131,43 @@ spec:
                                   maxLength: 253
                                   minLength: 1
                                   type: string
+                                exposure:
+                                  description: |-
+                                    Exposure opts into external client-port exposure and certificate checks.
+                                    When omitted, existing advertised-address behavior is unchanged.
+                                  properties:
+                                    allowedSourceCIDRs:
+                                      description: AllowedSourceCIDRs restricts LoadBalancer
+                                        sources and, when enabled, ingress NetworkPolicies.
+                                      items:
+                                        type: string
+                                      maxItems: 32
+                                      minItems: 1
+                                      type: array
+                                    loadBalancerClass:
+                                      description: |-
+                                        LoadBalancerClass selects a cluster-provided implementation. Once assigned,
+                                        the class cannot be replaced; omission preserves an assigned class.
+                                      type: string
+                                    serviceAnnotations:
+                                      additionalProperties:
+                                        type: string
+                                      description: ServiceAnnotations configures the
+                                        managed external Service; fabricops.io keys
+                                        are reserved.
+                                      maxProperties: 32
+                                      type: object
+                                    type:
+                                      description: Type selects operator-managed LoadBalancer
+                                        or user-managed infrastructure.
+                                      enum:
+                                      - UserManaged
+                                      - LoadBalancer
+                                      type: string
+                                  required:
+                                  - allowedSourceCIDRs
+                                  - type
+                                  type: object
                                 name:
                                   description: Name is the generated workload name,
                                     for example orderer0 or peer0.
@@ -1231,6 +1268,43 @@ spec:
                                 maxLength: 253
                                 minLength: 1
                                 type: string
+                              exposure:
+                                description: |-
+                                  Exposure opts into external client-port exposure and certificate checks.
+                                  When omitted, existing advertised-address behavior is unchanged.
+                                properties:
+                                  allowedSourceCIDRs:
+                                    description: AllowedSourceCIDRs restricts LoadBalancer
+                                      sources and, when enabled, ingress NetworkPolicies.
+                                    items:
+                                      type: string
+                                    maxItems: 32
+                                    minItems: 1
+                                    type: array
+                                  loadBalancerClass:
+                                    description: |-
+                                      LoadBalancerClass selects a cluster-provided implementation. Once assigned,
+                                      the class cannot be replaced; omission preserves an assigned class.
+                                    type: string
+                                  serviceAnnotations:
+                                    additionalProperties:
+                                      type: string
+                                    description: ServiceAnnotations configures the
+                                      managed external Service; fabricops.io keys
+                                      are reserved.
+                                    maxProperties: 32
+                                    type: object
+                                  type:
+                                    description: Type selects operator-managed LoadBalancer
+                                      or user-managed infrastructure.
+                                    enum:
+                                    - UserManaged
+                                    - LoadBalancer
+                                    type: string
+                                required:
+                                - allowedSourceCIDRs
+                                - type
+                                type: object
                               name:
                                 description: Name is the generated workload name,
                                   for example orderer0 or peer0.
@@ -1769,6 +1843,52 @@ spec:
                         ConnectionProfileConfigMapName points application clients at the
                         generated Fabric connection profile ConfigMap for this org.
                       type: string
+                    externalEndpoints:
+                      description: ExternalEndpoints reports opted-in exposure configuration,
+                        not end-to-end reachability.
+                      items:
+                        properties:
+                          advertisedAddress:
+                            type: string
+                          allocatedAddresses:
+                            items:
+                              type: string
+                            type: array
+                          component:
+                            type: string
+                          configurationReady:
+                            description: ConfigurationReady covers certificate identity
+                              and managed address allocation, not remote connectivity
+                              or DNS.
+                            type: boolean
+                          exposureType:
+                            type: string
+                          ingressPolicyName:
+                            type: string
+                          internalAddress:
+                            type: string
+                          message:
+                            type: string
+                          name:
+                            type: string
+                          reason:
+                            type: string
+                          serviceName:
+                            type: string
+                          tlsValid:
+                            type: boolean
+                        required:
+                        - advertisedAddress
+                        - component
+                        - configurationReady
+                        - exposureType
+                        - internalAddress
+                        - message
+                        - name
+                        - reason
+                        - tlsValid
+                        type: object
+                      type: array
                     identityError:
                       type: string
                     identityReady:
@@ -1786,6 +1906,10 @@ spec:
                           adminAddress:
                             type: string
                           clientAddress:
+                            type: string
+                          internalAddress:
+                            description: InternalAddress remains the in-cluster client
+                              endpoint regardless of external advertising.
                             type: string
                           name:
                             type: string
@@ -1826,6 +1950,8 @@ spec:
                           database:
                             description: Database is the peer state database backend
                               requested for this peer.
+                            type: string
+                          internalAddress:
                             type: string
                           name:
                             type: string

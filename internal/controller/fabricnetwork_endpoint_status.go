@@ -48,6 +48,7 @@ func ordererEndpointStatuses(org fabricopsv1alpha1.Org, namespace string) []fabr
 				Name:                name,
 				Namespace:           namespace,
 				ClientAddress:       ordererAdvertisedClientAddress(orderer),
+				InternalAddress:     ordererClientAddress(orderer),
 				TLSHostnameOverride: ordererTLSHostnameOverride(orderer),
 				AdminAddress:        serviceDNS(name, namespace, ordererAdminPort),
 				OperationsAddress:   "http://" + serviceDNS(operationsServiceName(name), namespace, ordererOpsPort),
@@ -70,6 +71,7 @@ func peerEndpointStatuses(org fabricopsv1alpha1.Org, namespace string) []fabrico
 		endpoints = append(endpoints, fabricopsv1alpha1.PeerEndpointStatus{
 			Name:                name,
 			Address:             peerAdvertisedAddress(peer),
+			InternalAddress:     peerAddress(peer),
 			TLSHostnameOverride: peerTLSHostnameOverride(peer),
 			ChaincodeAddress:    serviceDNS(name, namespace, peerChaincodePort),
 			OperationsAddress:   "http://" + serviceDNS(operationsServiceName(name), namespace, peerOpsPort),

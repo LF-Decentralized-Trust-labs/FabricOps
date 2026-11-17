@@ -53,6 +53,9 @@ func validateFabricNetworkTopology(net *fabricopsv1alpha1.FabricNetwork) []strin
 		problems = append(problems, validateOrgOrdererConsensus(net, org)...)
 		problems = append(problems, validateOrgPeerDatabase(org)...)
 		problems = append(problems, validateOrgExternalEndpoints(org)...)
+		if !net.Spec.Global.TLS && len(orgExposureTargets(net, org, "")) > 0 {
+			problems = append(problems, "external exposure requires spec.global.tls=true")
+		}
 	}
 
 	if ordererCount == 0 {
@@ -332,6 +335,7 @@ func validateExternalEndpoints(
 	seen := map[string]struct{}{}
 	for i, endpoint := range endpoints {
 		endpointPath := fmt.Sprintf("%s[%d]", path, i)
+		problems = append(problems, validateExternalExposure(endpointPath, endpoint)...)
 		name := strings.TrimSpace(endpoint.Name)
 		if name == "" {
 			problems = append(problems, endpointPath+".name is required")

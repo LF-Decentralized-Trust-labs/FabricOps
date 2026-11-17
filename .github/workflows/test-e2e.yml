@@ -124,7 +124,7 @@ jobs:
   test-e2e-federated:
     permissions:
       contents: read
-    name: Federated join smoke on kind
+    name: Federated DNS/TLS join smoke on kind
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
@@ -152,7 +152,7 @@ jobs:
       - name: Verify kind installation
         run: kind version
 
-      - name: Run federated join e2e smoke
+      - name: Run federated DNS/TLS join e2e smoke
         run: |
           make test-e2e-federated
 

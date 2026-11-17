@@ -92,9 +92,6 @@ E2E_BFT_FABRIC_TOOLS_IMAGE ?= fabricops-fabric-tools:e2e
 KIND_FEDERATED_FOUNDER_CLUSTER ?= fabricops-fed-founder
 KIND_FEDERATED_PARTICIPANT_CLUSTER ?= fabricops-fed-participant
 E2E_FEDERATED_GO_TEST_TIMEOUT ?= 90m
-E2E_FEDERATED_ORDERER_NODE_PORT ?= 30050
-E2E_FEDERATED_PEER_NODE_PORT ?= 30051
-E2E_FEDERATED_FOUNDER_PEER_NODE_PORT ?= 30052
 
 .PHONY: setup-test-e2e
 setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
@@ -156,7 +153,7 @@ setup-test-e2e-federated: ## Set up two Kind clusters for federated e2e tests if
 .PHONY: test-e2e-federated
 test-e2e-federated: setup-test-e2e-federated manifests generate fmt vet ## Run the two-cluster federated join e2e test.
 	@status=0; \
-	KIND=$(KIND) KUBECTL=$(KUBECTL) KIND_FEDERATED_FOUNDER_CLUSTER=$(KIND_FEDERATED_FOUNDER_CLUSTER) KIND_FEDERATED_PARTICIPANT_CLUSTER=$(KIND_FEDERATED_PARTICIPANT_CLUSTER) E2E_FEDERATED_ORDERER_NODE_PORT=$(E2E_FEDERATED_ORDERER_NODE_PORT) E2E_FEDERATED_PEER_NODE_PORT=$(E2E_FEDERATED_PEER_NODE_PORT) E2E_FEDERATED_FOUNDER_PEER_NODE_PORT=$(E2E_FEDERATED_FOUNDER_PEER_NODE_PORT) IMG=$(IMG) go test -tags=e2e ./test/e2e/federated/ -v -ginkgo.v -timeout $(E2E_FEDERATED_GO_TEST_TIMEOUT) || status=$$?; \
+	KIND=$(KIND) KUBECTL=$(KUBECTL) KIND_FEDERATED_FOUNDER_CLUSTER=$(KIND_FEDERATED_FOUNDER_CLUSTER) KIND_FEDERATED_PARTICIPANT_CLUSTER=$(KIND_FEDERATED_PARTICIPANT_CLUSTER) IMG=$(IMG) go test -tags=e2e ./test/e2e/federated/ -v -ginkgo.v -timeout $(E2E_FEDERATED_GO_TEST_TIMEOUT) || status=$$?; \
 	if [ "$(E2E_SKIP_CLEANUP)" = "true" ]; then \
 		echo "Keeping Kind clusters '$(KIND_FEDERATED_FOUNDER_CLUSTER)' and '$(KIND_FEDERATED_PARTICIPANT_CLUSTER)' because E2E_SKIP_CLEANUP=true"; \
 	else \

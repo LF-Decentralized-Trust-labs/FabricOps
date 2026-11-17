@@ -29,16 +29,17 @@ spec:
       prefix: peer
       externalEndpoints:
         - name: peer0
-          address: __PEER_ADDRESS__
-          tlsHostnameOverride: localhost
+          address: peer0.bankb.fabricops.test:7051
+          exposure:
+            type: LoadBalancer
+            allowedSourceCIDRs: ["192.0.2.0/24"]
   network:
     name: federated-founder
     founderMSPID: BankAMSP
     orderers:
       - org: Orderer
         name: orderer0
-        clientAddress: __ORDERER_ADDRESS__
-        tlsHostnameOverride: localhost
+        clientAddress: orderer.founder.fabricops.test:7050
         tlsRootCARef:
           configMapKeyRef:
             name: orderer0-artifacts
@@ -46,7 +47,7 @@ spec:
     peers:
       - org: BankA
         name: peer0
-        address: __FOUNDER_PEER_ADDRESS__
+        address: peer0.banka.fabricops.test:7051
         tlsRootCARef:
           configMapKeyRef:
             name: banka-peer0-artifacts
@@ -61,5 +62,5 @@ spec:
         - peer0
       anchorPeers:
         - name: peer0
-          host: __PEER_HOST__
-          port: __PEER_PORT__
+          host: peer0.bankb.fabricops.test
+          port: 7051

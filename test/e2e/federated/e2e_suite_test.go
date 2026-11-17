@@ -28,10 +28,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	fabricopsv1alpha1 "github.com/LF-Decentralized-Trust-labs/FabricOps/api/v1alpha1"
+	"sigs.k8s.io/yaml"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -67,9 +69,6 @@ var (
 	founderCluster           string
 	participantCluster       string
 	managerImage             string
-	ordererNodePort          string
-	founderPeerNodePort      string
-	peerNodePort             string
 	founderContext           string
 	participantContext       string
 	federatedSampleDirectory string
@@ -89,9 +88,6 @@ var _ = BeforeSuite(func() {
 	founderCluster = envOrDefault("KIND_FEDERATED_FOUNDER_CLUSTER", "fabricops-fed-founder")
 	participantCluster = envOrDefault("KIND_FEDERATED_PARTICIPANT_CLUSTER", "fabricops-fed-participant")
 	managerImage = envOrDefault("IMG", "controller:latest")
-	ordererNodePort = envOrDefault("E2E_FEDERATED_ORDERER_NODE_PORT", "30050")
-	founderPeerNodePort = envOrDefault("E2E_FEDERATED_FOUNDER_PEER_NODE_PORT", "30052")
-	peerNodePort = envOrDefault("E2E_FEDERATED_PEER_NODE_PORT", "30051")
 	founderContext = "kind-" + founderCluster
 	participantContext = "kind-" + participantCluster
 	federatedSampleDirectory = filepath.Join(repoRoot, "config", "samples", "e2e", "federated")
@@ -126,11 +122,8 @@ var _ = Describe("Federated join handoff", Ordered, func() {
 		installFabricOps(participantContext)
 
 		tempDir := GinkgoT().TempDir()
-		founderHost := kindNodeIPAddress(founderCluster)
-		ordererAddress := founderHost + ":" + ordererNodePort
-		founderPeerAddress := founderHost + ":" + founderPeerNodePort
-		participantPeerHost := kindNodeIPAddress(participantCluster)
-		participantPeerAddress := participantPeerHost + ":" + peerNodePort
+		By("installing isolated LoadBalancer pools and cross-cluster DNS")
+		addresses, sources := setupFederatedNetworking(tempDir)
 		founderManifestPath := filepath.Join(tempDir, "founder.yaml")
 		participantManifestPath := filepath.Join(tempDir, "participant.yaml")
 		ordererTLSPath := filepath.Join(tempDir, "orderer0-tls-ca.pem")
@@ -140,13 +133,17 @@ var _ = Describe("Federated join handoff", Ordered, func() {
 		participantOrgPath := filepath.Join(tempDir, "bankb-org.json")
 
 		By("creating the founder network with BankA and the ordering service")
-		renderFounderManifest(founderManifestPath, ordererAddress, founderPeerAddress)
+		renderFounderManifest(founderManifestPath, addresses, sources)
 		runKubectl(founderContext, 3*time.Minute, "apply", "-f", founderManifestPath)
 		runFabricOpsctl(25*time.Minute, "wait", "-n", sampleNamespace, "--context", founderContext, "--timeout", "20m", founderName)
 
-		By("exposing the founder orderer and peer through local kind NodePorts")
-		exposeFounderOrdererNodePort()
-		exposeFounderPeerNodePort()
+		By("checking that only client ports are published through managed LoadBalancers")
+		expectExternalService(founderContext, founderOrdererNamespace, ordererServiceName, addresses[0], 7050)
+		expectExternalService(founderContext, founderPeerNamespace, founderPeerService, addresses[1], 7051)
+		profile := configMapValue(founderContext, founderPeerNamespace,
+			founderName+"-connection-profile", "connection.json")
+		Expect(string(profile)).NotTo(ContainSubstring("ssl-target-name-override"))
+		Expect(string(profile)).NotTo(ContainSubstring("hostnameOverride"))
 
 		By("exporting founder artifacts for the participant cluster")
 		writeFile(ordererTLSPath, secretDataValue(founderContext, founderOrdererNamespace, ordererTLSSecretName, ordererTLSKey))
@@ -156,13 +153,7 @@ var _ = Describe("Federated join handoff", Ordered, func() {
 		createConfigMapFromFile(participantContext, sampleNamespace, "banka-peer0-artifacts", "tls-ca.pem", founderPeerTLSPath)
 
 		By("applying the participant manifest before the channel block is imported")
-		renderParticipantManifest(
-			participantManifestPath,
-			ordererAddress,
-			participantPeerAddress,
-			participantPeerHost,
-			founderPeerAddress,
-		)
+		renderParticipantManifest(participantManifestPath, addresses, sources)
 		runKubectl(participantContext, 3*time.Minute, "apply", "-f", participantManifestPath)
 		runFabricOpsctl(
 			25*time.Minute,
@@ -178,8 +169,9 @@ var _ = Describe("Federated join handoff", Ordered, func() {
 			participantName,
 		)
 
-		By("exposing the participant peer through a local kind NodePort")
-		exposeParticipantPeerNodePort()
+		expectExternalService(participantContext, participantPeerNamespace, participantPeerService, addresses[2], 7051)
+		By("verifying DNS-based TLS accepts the correct name and rejects a mismatched name")
+		expectDNSHostnameVerification(tempDir)
 
 		By("exporting BankB membership material from the participant cluster")
 		runFabricOpsctl(
@@ -195,6 +187,9 @@ var _ = Describe("Federated join handoff", Ordered, func() {
 			participantName,
 		)
 		runFabricOpsctl(30*time.Second, "join-bundle", "validate", participantBundlePath)
+		bundle, err := os.ReadFile(participantBundlePath)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(bundle)).NotTo(ContainSubstring("tlsHostnameOverride"))
 		runFabricOpsctl(
 			30*time.Second,
 			"join-bundle",
@@ -208,7 +203,7 @@ var _ = Describe("Federated join handoff", Ordered, func() {
 
 		By("admitting BankB on the founder channel")
 		createConfigMapFromFile(founderContext, sampleNamespace, "bankb-application-org", "org.json", participantOrgPath)
-		founderGeneration := patchFounderExternalOrg(participantPeerHost)
+		founderGeneration := patchFounderExternalOrg(participantPeerDNS)
 		waitFounderExternalOrgReady(founderGeneration, 25*time.Minute)
 
 		By("importing the channel block and waiting for BankB peers to join")
@@ -246,103 +241,38 @@ func installFabricOps(contextName string) {
 	)
 }
 
-func exposeFounderOrdererNodePort() {
+func renderFounderManifest(path string, addresses, sources []string) {
 	GinkgoHelper()
-
-	patch := fmt.Sprintf(
-		`{"spec":{"type":"NodePort","ports":[{"name":"orderer","port":7050,"protocol":"TCP","targetPort":7050,"nodePort":%s},{"name":"admin","port":9443,"protocol":"TCP","targetPort":9443}]}}`,
-		ordererNodePort,
-	)
-	runKubectl(
-		founderContext,
-		2*time.Minute,
-		"patch",
-		"service",
-		ordererServiceName,
-		"-n",
-		founderOrdererNamespace,
-		"--type=merge",
-		"-p",
-		patch,
-	)
-}
-
-func exposeFounderPeerNodePort() {
-	GinkgoHelper()
-
-	patch := fmt.Sprintf(
-		`{"spec":{"type":"NodePort","ports":[{"name":"peer","port":7051,"protocol":"TCP","targetPort":7051,"nodePort":%s},{"name":"chaincode","port":7052,"protocol":"TCP","targetPort":7052}]}}`,
-		founderPeerNodePort,
-	)
-	runKubectl(
-		founderContext,
-		2*time.Minute,
-		"patch",
-		"service",
-		founderPeerService,
-		"-n",
-		founderPeerNamespace,
-		"--type=merge",
-		"-p",
-		patch,
-	)
-}
-
-func exposeParticipantPeerNodePort() {
-	GinkgoHelper()
-
-	patch := fmt.Sprintf(
-		`{"spec":{"type":"NodePort","ports":[{"name":"peer","port":7051,"protocol":"TCP","targetPort":7051,"nodePort":%s},{"name":"chaincode","port":7052,"protocol":"TCP","targetPort":7052}]}}`,
-		peerNodePort,
-	)
-	runKubectl(
-		participantContext,
-		2*time.Minute,
-		"patch",
-		"service",
-		participantPeerService,
-		"-n",
-		participantPeerNamespace,
-		"--type=merge",
-		"-p",
-		patch,
-	)
-}
-
-func renderFounderManifest(path string, ordererAddress string, founderPeerAddress string) {
-	GinkgoHelper()
-
 	template, err := os.ReadFile(filepath.Join(federatedSampleDirectory, "founder.yaml"))
 	Expect(err).NotTo(HaveOccurred())
-	rendered := strings.ReplaceAll(string(template), "__ORDERER_ADDRESS__", ordererAddress)
-	rendered = strings.ReplaceAll(rendered, "__FOUNDER_PEER_ADDRESS__", founderPeerAddress)
-	writeFile(path, []byte(rendered))
+	var network fabricopsv1alpha1.FabricNetwork
+	Expect(yaml.UnmarshalStrict(template, &network)).To(Succeed())
+	configureExposure(&network.Spec.Orgs[0].Orderers[0].ExternalEndpoints[0], addresses[0], sources)
+	configureExposure(&network.Spec.Orgs[1].Peer.ExternalEndpoints[0], addresses[1], sources)
+	rendered, err := yaml.Marshal(network)
+	Expect(err).NotTo(HaveOccurred())
+	writeFile(path, rendered)
 }
 
-func renderParticipantManifest(
-	path string,
-	ordererAddress string,
-	peerAddress string,
-	peerHost string,
-	founderPeerAddress string,
-) {
+func renderParticipantManifest(path string, addresses, sources []string) {
 	GinkgoHelper()
-
 	template, err := os.ReadFile(filepath.Join(federatedSampleDirectory, "participant.yaml"))
 	Expect(err).NotTo(HaveOccurred())
-	rendered := strings.ReplaceAll(string(template), "__ORDERER_ADDRESS__", ordererAddress)
-	rendered = strings.ReplaceAll(rendered, "__FOUNDER_PEER_ADDRESS__", founderPeerAddress)
-	rendered = strings.ReplaceAll(rendered, "__PEER_ADDRESS__", peerAddress)
-	rendered = strings.ReplaceAll(rendered, "__PEER_HOST__", peerHost)
-	rendered = strings.ReplaceAll(rendered, "__PEER_PORT__", peerNodePort)
-	writeFile(path, []byte(rendered))
+	var participant fabricopsv1alpha1.FabricParticipant
+	Expect(yaml.UnmarshalStrict(template, &participant)).To(Succeed())
+	configureExposure(&participant.Spec.Org.Peer.ExternalEndpoints[0], addresses[2], sources)
+	rendered, err := yaml.Marshal(participant)
+	Expect(err).NotTo(HaveOccurred())
+	writeFile(path, rendered)
+}
+
+func configureExposure(endpoint *fabricopsv1alpha1.ExternalEndpoint, address string, sources []string) {
+	endpoint.Exposure.AllowedSourceCIDRs = sources
+	endpoint.Exposure.ServiceAnnotations = map[string]string{"metallb.io/loadBalancerIPs": address}
 }
 
 func patchFounderExternalOrg(participantPeerHost string) int64 {
 	GinkgoHelper()
-
-	participantPeerPort, err := strconv.Atoi(peerNodePort)
-	Expect(err).NotTo(HaveOccurred())
 
 	value := []map[string]any{
 		{
@@ -357,7 +287,7 @@ func patchFounderExternalOrg(participantPeerHost string) int64 {
 			"anchorPeers": []map[string]any{
 				{
 					"host": participantPeerHost,
-					"port": participantPeerPort,
+					"port": 7051,
 				},
 			},
 		},
@@ -736,28 +666,6 @@ func writeFile(path string, contents []byte) {
 	GinkgoHelper()
 
 	Expect(os.WriteFile(path, contents, 0o600)).To(Succeed())
-}
-
-func kindNodeIPAddress(clusterName string) string {
-	GinkgoHelper()
-
-	output := runCommandQuiet(30*time.Second, dockerBin, "inspect", clusterName+"-control-plane")
-	var nodes []struct {
-		NetworkSettings struct {
-			Networks map[string]struct {
-				IPAddress string `json:"IPAddress"`
-			} `json:"Networks"`
-		} `json:"NetworkSettings"`
-	}
-	Expect(json.Unmarshal([]byte(output), &nodes)).To(Succeed())
-	Expect(nodes).NotTo(BeEmpty())
-	for _, network := range nodes[0].NetworkSettings.Networks {
-		if strings.TrimSpace(network.IPAddress) != "" {
-			return network.IPAddress
-		}
-	}
-	Fail("kind control-plane node does not have a Docker network IP address")
-	return ""
 }
 
 func marshalJSON(value any) string {

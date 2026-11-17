@@ -306,8 +306,24 @@ The current automated two-kind smoke covers the handoff through participant
 channel join, participant-side chaincode approval, founder-side chaincode
 commit, application traffic submitted through the founder peer then queried
 through the participant peer, and a participant-side invoke that targets both
-BankB's local peer and BankA's imported peer. It uses local kind NodePorts for
-the founder orderer and founder peer so the participant cluster can reach the
-remote Fabric endpoints. Production deployments should use the same explicit
-endpoint contract with stable DNS and certificates whose SANs match the
+BankB's local peer and BankA's imported peer. Both isolated clusters install
+MetalLB with disjoint address pools on the Docker `kind` network. The operator
+creates dedicated client-only LoadBalancer Services from each endpoint's
+`exposure` configuration; internal Services remain ClusterIP Services.
+
+CoreDNS in each test cluster resolves a reserved `fabricops.test` zone to those
+LoadBalancer addresses. Peer and orderer certificates include the advertised DNS
+names. The test uses neither port forwarding nor TLS hostname overrides, and a
+negative TLS probe resolves another name to the same peer address and verifies
+that certificate validation rejects it. Join bundles must omit hostname
+overrides too.
+
+Run this smoke only on dedicated, disposable Kind clusters: it installs MetalLB,
+updates CoreDNS, and removes the control-plane node label that excludes external
+load balancers. The suite selects three unused addresses near the end of the
+Docker subnet and reserves them for this run; do not run concurrent copies on
+the same Docker network. It requires an IPv4 Docker subnet between /8 and /24.
+This validates DNS/TLS traffic, not production DNS provisioning, firewall
+enforcement, or CNI NetworkPolicy enforcement. Production deployments still need
+stable DNS, appropriate source restrictions, and certificate SANs matching their
 advertised names.
