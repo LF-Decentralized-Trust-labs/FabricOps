@@ -100,6 +100,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runChannel(args[1:], stdout, stderr)
 	case "chaincode":
 		return runChaincodeInspection(args[1:], stdout, stderr)
+	case "backup":
+		return runBackup(args[1:], stdout, stderr)
 	case "invoke":
 		return runChaincodeOperation(args[1:], stdout, stderr, chaincodeOperationInvoke)
 	case "query":
@@ -978,6 +980,9 @@ func printResourceName(out io.Writer, resource, name string) {
 func printUsage(out io.Writer) {
 	printLine(out, `Usage:
   fabricopsctl version
+  fabricopsctl backup export --out <file.json> [--include-secrets] [flags] <fabricnetwork>
+  fabricopsctl backup plan-restore --file <archive.json> --out <plan.json> --context <target> [flags]
+  fabricopsctl backup restore-metadata --file <archive.json> --out <receipt.json> --context <target> [flags]
   fabricopsctl status [flags] <fabricnetwork>
   fabricopsctl status --participant [flags] <fabricparticipant>
   fabricopsctl wait [flags] <fabricnetwork>

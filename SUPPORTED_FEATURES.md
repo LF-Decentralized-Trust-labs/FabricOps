@@ -147,6 +147,9 @@ that proof is already present.
 |---------|----------|----------|------------------|------------|----------|-------|
 | Create snapshot | yes | yes | Planned | | | Fabric snapshot operations are not automated yet |
 | Restore snapshot | yes | yes | Planned | | | Restore workflow is not automated yet |
+| Operator metadata export | n/a | n/a | Partial | [README](README.md#backup-and-restore) | unit | `fabricopsctl backup export` exports network metadata and optional Secrets; no volume data or automated restore |
+| Restore preflight | n/a | n/a | Partial | [README](README.md#backup-and-restore) | unit | Read-only `backup plan-restore` validates archives and reports target conflicts and recovery prerequisites; no apply |
+| Metadata restore | n/a | n/a | Partial | [README](README.md#backup-and-restore) | unit | Explicitly confirmed create-only staging with new-UID ownership and persistent restore hold; no PVC or full-network recovery |
 
 ## Other features
 

@@ -35,21 +35,9 @@ Identity enrollment, MSP material, TLS, channel governance, chaincode
 lifecycle, organization boundaries, and operational state must remain
 consistent across the network.
 
-Component-oriented tools expose the pieces. FabricOps adds a complementary
-full-network intent layer:
-
-```text
-CA + Peer + Peer + Orderer + Channel + ...
-                    becomes
-              FabricNetwork
-                    |
-                    v
-        continuously reconciled state
-```
-
-One manifest describes the network operators intend to run. Kubernetes status
-conditions show whether identities, components, channels, chaincode, and
-observability have converged.
+FabricOps manages the network through a single `FabricNetwork` resource.
+Kubernetes status conditions show whether identities, components, channels,
+chaincode, and observability have converged.
 
 ## Quick Start
 
@@ -640,6 +628,19 @@ and verifies the BFT channel reports all four orderers joined. See
 [docs/e2e-validation.md](docs/e2e-validation.md) for kind, OrbStack, and
 cleanup notes.
 
+Run the metadata recovery smoke separately:
+
+```bash
+make test-e2e-restore
+```
+
+This target creates `fabricops-restore-e2e` with a temporary kubeconfig, installs
+CRDs, and tests export, planning, confirmed metadata restore, and the persistent
+restore hold. It refuses an existing cluster of that name and removes the cluster
+it created on success or test failure. It leaves your normal kubeconfig unchanged.
+The CI metadata-recovery job runs the same target. The fixture uses synthetic
+identity data; it does not run a Fabric network or test ledger/PVC recovery.
+
 ## Identity Secrets
 
 FabricOps uses Fabric CA enrollment as the identity material path. The deterministic Secret contract is:
@@ -672,6 +673,129 @@ window, and rolls workloads when mounted identity material changes. See
 [docs/certificate-lifecycle.md](docs/certificate-lifecycle.md) for recovery
 paths and the boundary between leaf identity renewal, bootstrap registrar
 rotation, and CA root rollover.
+
+## Backup And Restore
+
+Export a `FabricNetwork` spec, owned ConfigMaps, and PVC inventory:
+
+```bash
+fabricopsctl backup export -n default --out network-metadata.json fabricnetwork-sample
+```
+
+Add `--include-secrets` to include identity private keys and credentials.
+The output file must not exist and is created with mode `0600`. Archives are
+not encrypted; protect them outside Git, including exports without Secrets,
+which can still contain sensitive configuration.
+
+Ownership is checked against network name, namespace, and UID. Label-only Job
+outputs are included only inside UID-verified org namespaces and listed under
+`namespaceScopedArtifacts`. Review those entries before recovery. The caller
+needs namespace discovery and ConfigMap/PVC read access; exporting Secrets also
+requires Secret read access. Collection failures abort the command; discard any
+incomplete file after a write failure.
+
+**This is metadata export, not a full or consistent point-in-time backup.**
+Volume contents are not copied. Separately preserve CA databases/signing state,
+peer ledgers/private data, orderer ledgers, and coordinated CouchDB state, plus
+external dependencies, installation values, software versions, and image digests.
+CSI volume snapshots depend on the storage provider and do not alone guarantee
+application consistency. Disposable development networks may be recreated;
+staging and production networks need coordinated, encrypted off-cluster backups
+and rehearsed recovery.
+
+Generate a read-only restore preflight against an explicitly selected cluster:
+
+```bash
+fabricopsctl backup plan-restore --context recovery-cluster -n default \
+  --file network-metadata.json --out restore-plan.json
+```
+
+The planner validates archive structure and ownership provenance, records its
+SHA-256 digest, and checks the named manager is fully scaled down with no live
+pods or unfinished Jobs in the operator/target namespaces. It reports existing
+destination objects/namespaces, omitted Secrets, and unverified volume recovery
+as blockers. Use `--operator-namespace` and `--operator-deployment` for a custom
+installation. Names and namespaces cannot be remapped. The source namespace may
+already exist; adopting existing org namespaces or overwriting resources is not
+supported. A network with the source UID is rejected for in-place recovery.
+
+Plans contain references and findings, not Secret data. Files are private and
+never overwritten. Blocked plans are still written, but the command exits
+nonzero; API permission/read failures abort planning. By default, even with zero
+blockers, `applySupported` remains `false`: manual checks are required, the named context
+is not proof of a separate cluster, and a preflight is not a lock. The digest
+identifies the input bytes, not their authenticity; use trusted archives only.
+Planning performs no cluster writes or automatic manager scaling.
+
+For **create-only metadata staging**, generate a plan with `--metadata-only`.
+This excludes PVC inventory from staging, not from the recovery requirements.
+Staging requires an archive exported with `--include-secrets`; the default export
+omits identities and is blocked for restore. Review the plan, then confirm its
+archive digest and network identity explicitly:
+
+```bash
+fabricopsctl backup export --context source-cluster --include-secrets \
+  --out network-recovery.json fabricnetwork-sample
+fabricopsctl backup plan-restore --metadata-only --context recovery-cluster \
+  --file network-recovery.json --out metadata-plan.json
+fabricopsctl backup restore-metadata --context recovery-cluster \
+  --file network-recovery.json --out restore-receipt.json \
+  --confirm-sha256 <archiveSHA256-from-plan> \
+  --confirm-network default/fabricnetwork-sample --acknowledge-incomplete-recovery
+```
+
+Use a compatible operator version that honors `fabricops.io/restore-hold`.
+Restore rechecks the stopped manager and target activity before each create,
+assigns a fresh network UID, and rebinds namespace/resource ownership. Existing
+resources are never overwritten or adopted. The new CR has a persistent restore
+hold and finalizer: reconciliation and cleanup remain blocked even if the manager
+restarts. The command creates no PVCs or workloads and never removes that hold.
+
+The private receipt file lists the resources created and whether metadata
+staging completed (`metadataStaged`). It does not confirm that network recovery succeeded.
+On failure, retain the held partial state and inspect it before further action;
+there is no automatic rollback or retry/adoption. An interrupted API request may
+have persisted a resource even if it was not recorded in the receipt.
+
+Recover matching storage and external dependencies separately. Verify certificates,
+quorum, membership, ledger/private-data continuity, and pending signed operations
+before deliberately removing the hold and resuming workloads. Never clear the
+hold on a deleting CR unless cleanup is intended. Full-network/PVC restore and
+`FabricParticipant` restore remain unsupported; the tested Kind path proves only
+synthetic metadata recovery, not a live Fabric ledger/CA recovery. Never delete
+the source network to pause it: its finalizer can delete generated namespaces.
+
+If staging fails, inspect the receipt and the target CR's hold and UID before
+doing anything else. The receipt can omit a resource whose create request lost
+its response. Keep the manager stopped and the hold set. Re-running the command
+against partial state is intentionally rejected; use a fresh isolated recovery
+target after reviewing the failed attempt. Do not delete resources or clear the
+hold as an automatic retry step.
+
+### Volume Recovery Requirements
+
+FabricOps does not create or restore storage snapshots. Keep snapshot identifiers,
+`VolumeSnapshot`/`VolumeSnapshotContent` manifests, driver configuration, retention
+policy, and required encryption-key access with the recovery set. Check the
+snapshot's readiness and retention before relying on it: a `Delete` policy can
+remove the backing snapshot when its Kubernetes snapshot object is deleted.
+See [Kubernetes volume snapshots](https://kubernetes.io/docs/concepts/storage/volume-snapshots/).
+
+| Storage environment | What to arrange separately |
+| --- | --- |
+| kind/local storage | Back up storage outside disposable cluster nodes. The metadata smoke does not install a snapshot driver or preserve node data. |
+| [Amazon EKS/EBS](https://docs.aws.amazon.com/eks/latest/userguide/csi-snapshot-controller.html) | Use a compatible CSI driver, snapshot controller, and snapshot class. Verify AWS permissions and access to the saved snapshots before recovery. |
+| [Azure AKS/Disk](https://learn.microsoft.com/en-us/azure/aks/csi-storage-drivers) | Verify that the Disk CSI driver and snapshot controller are enabled, and retain the Azure disk/snapshot recovery information. |
+| [Google GKE](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/volume-snapshots) | Use the snapshot support appropriate to the source disk and cluster, and verify the destination supports restoring that snapshot. |
+
+Coordinate writes and database backups across the recovery set. A storage
+snapshot does not include application data still in memory; AWS, for example,
+recommends [pausing volume writes before an EBS snapshot](https://docs.aws.amazon.com/ebs/latest/userguide/ebs-creating-snapshot.html).
+A peer, its CouchDB database, and the CA/ordering state need a reviewed recovery
+procedure, not independently timed copies. Restore volumes with the names and
+storage settings expected by the network spec before releasing the restore hold.
+These are provider prerequisites, not claims that FabricOps has tested cloud
+storage recovery.
 
 ## Storage
 

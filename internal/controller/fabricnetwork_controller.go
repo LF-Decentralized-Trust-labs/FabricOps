@@ -762,6 +762,10 @@ func (r *FabricNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if err := r.Get(ctx, req.NamespacedName, &network); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	if network.Annotations[fabricopsv1alpha1.RestoreHoldAnnotation] != "" {
+		log.Info("Holding FabricNetwork reconciliation for recovery", "name", network.Name)
+		return ctrl.Result{}, nil
+	}
 
 	if !network.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(&network, fabricNetworkFinalizer) {
