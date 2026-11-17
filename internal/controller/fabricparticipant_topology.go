@@ -39,6 +39,10 @@ func validateFabricParticipantTopology(participant *fabricopsv1alpha1.FabricPart
 	}
 
 	problems = append(problems, validateFabricParticipantOrg(spec.Org)...)
+	problems = append(problems, validateOrgExternalEndpoints(spec.Org)...)
+	if !spec.Global.TLS && len(orgExposureTargets(participantLocalFabricNetwork(participant), spec.Org, "")) > 0 {
+		problems = append(problems, "external exposure requires spec.global.tls=true")
+	}
 	problems = append(problems, validateParticipantNetwork(spec.Global.TLS, spec.Network)...)
 	problems = append(problems, validateParticipantChannels(spec.Org, spec.Channels)...)
 	problems = append(problems, validateParticipantChaincodes(spec.Channels, spec.Chaincodes)...)

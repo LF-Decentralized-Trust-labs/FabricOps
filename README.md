@@ -883,6 +883,76 @@ When enabled, FabricOps creates one `fabricops-org-boundary` NetworkPolicy per g
 
 Your cluster CNI must support Kubernetes NetworkPolicy enforcement. If Prometheus or other operational tools run outside the generated Fabric namespaces, add a separate allow policy for those clients.
 
+## External Client Exposure
+
+`externalEndpoints` advertises peer/orderer addresses and adds their hostnames to
+TLS enrollment requests. Add `exposure` to manage a separate client-facing
+LoadBalancer Service or to check a user-managed endpoint:
+
+```yaml
+peer:
+  instances: 1
+  db: LevelDB
+  prefix: peer
+  externalEndpoints:
+    - name: peer0
+      address: peer0.banka.example.com:7051
+      exposure:
+        type: LoadBalancer
+        allowedSourceCIDRs: ["203.0.113.0/24"]
+```
+
+Replace the example hostname and CIDR with your DNS name and trusted source
+ranges. This also works under an orderer group's `externalEndpoints` and a
+participant's local peer config. Explicit exposure requires TLS, a DNS hostname,
+and source CIDRs; it rejects `tlsHostnameOverride`. Existing endpoints without
+`exposure` retain their current behavior, including local-test overrides.
+
+`LoadBalancer` creates `<workload>-external`, forwarding only the advertised
+client port to the peer/orderer client listener. Existing internal Services stay
+unchanged. Admin, CA, metrics, and peer-to-chaincode ports are not included.
+Use TCP/TLS passthrough so clients validate the Fabric endpoint certificate.
+The cluster must provide a LoadBalancer implementation; otherwise allocation
+stays pending. Optional `loadBalancerClass` and `serviceAnnotations` configure the
+external Service. An assigned class cannot be replaced in place; omitting it
+preserves the assigned class. Annotation keys under `fabricops.io/` are reserved.
+
+`UserManaged` creates no external Service. You provide the load balancer, proxy,
+or private routing. DNS remains your responsibility in both modes. Connection
+profiles and join bundles use the declared advertised address, while endpoint
+status also retains the internal address.
+
+`allowedSourceCIDRs` sets managed LoadBalancer source ranges. With
+`spec.global.networkPolicy.enabled=true`, FabricOps also creates a per-workload
+ingress policy restricted to those ranges and the client port. Verify your CNI
+and load balancer's source-IP handling and enforcement; `externalTrafficPolicy`
+is set to `Local`, but provider proxies can still affect observed source IPs.
+Without NetworkPolicies, user-managed infrastructure must enforce its own source
+restrictions. Remote peer/orderer egress requires separately reviewed policies;
+this slice does not open cross-cluster egress automatically.
+Kubernetes can allocate NodePorts for a LoadBalancer Service. Restrict node access
+as well; LoadBalancer source ranges are not a substitute for node firewall rules.
+
+`status.orgStatus[].externalEndpoints` reports the internal/advertised addresses,
+managed Service/policy names, allocated addresses, TLS validity, and a diagnostic
+message. `ExternalEndpointsConfigured` and network readiness wait for matching
+TLS identity and, for managed Services, an allocated address. These checks do
+not prove DNS resolution, firewall access, or remote connectivity. The operator
+does not replace live certificates when a new hostname is missing from their
+SANs; review enrollment/renewal and channel implications before changing them.
+Participants report these records under `status.localOrgStatus.externalEndpoints`;
+their local-infrastructure readiness includes the same configuration checks.
+
+Removing exposure or switching to `UserManaged` removes the operator-owned
+external Service, which can also remove its cloud load balancer. Prepare any
+replacement infrastructure first. Stale source policies are removed when no
+longer requested; resources with a different network UID are left untouched.
+
+Unit/envtest coverage verifies Service shape, allocation preservation, TLS SAN
+mismatches, and cleanup. Real load-balancer provisioning and DNS-based
+cross-cluster traffic are not yet covered by this slice. Gateway API and ingress
+passthrough reconciliation are not implemented yet.
+
 ## Cleanup
 
 FabricOps adds a finalizer to each `FabricNetwork`. When a `FabricNetwork` is deleted, the controller deletes generated org namespaces after confirming their FabricOps ownership labels.

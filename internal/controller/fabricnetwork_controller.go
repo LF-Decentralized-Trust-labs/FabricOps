@@ -347,6 +347,11 @@ func (r *FabricNetworkReconciler) reconcileOrg(
 	if err := r.ensureNamespace(ctx, buildOrgNamespace(net, org)); err != nil {
 		return status, err
 	}
+	external, err := r.reconcileExternalExposure(ctx, net, org, namespace)
+	status.ExternalEndpoints = external
+	if err != nil {
+		return status, err
+	}
 
 	if networkPolicyEnabled(net) {
 		if err := r.ensureNetworkPolicy(ctx, buildOrgNetworkPolicy(net, org, namespace)); err != nil {
@@ -436,6 +441,8 @@ func (r *FabricNetworkReconciler) reconcileOrg(
 	status.Peers = peers
 	status.PeersReady = workloadReady(peers)
 	status.Ready = status.IdentityReady && status.CAReady && status.OrderersReady && status.PeersReady
+	configured, _ := externalExposureConfigured([]fabricopsv1alpha1.OrgStatus{status})
+	status.Ready = status.Ready && configured
 
 	return status, nil
 }
@@ -598,7 +605,15 @@ func channelsReadyCondition(
 }
 
 func observabilityReady(statuses []fabricopsv1alpha1.OrgStatus) bool {
-	return allOrgsReady(statuses)
+	if len(statuses) == 0 {
+		return false
+	}
+	for _, status := range statuses {
+		if !status.IdentityReady || !status.CAReady || !status.OrderersReady || !status.PeersReady {
+			return false
+		}
+	}
+	return true
 }
 
 func observabilityStatusMessage(statuses []fabricopsv1alpha1.OrgStatus) string {
@@ -687,6 +702,7 @@ func (r *FabricNetworkReconciler) updateStatus(
 	chaincodeStatus []fabricopsv1alpha1.ChaincodeStatus,
 	conditions []metav1.Condition,
 ) error {
+	conditions = externalExposureCondition(net, orgStatus, conditions)
 	if net.Status.Phase == newPhase &&
 		net.Status.Message == newMessage &&
 		orgStatusesEqual(net.Status.OrgStatus, orgStatus) &&
@@ -1067,6 +1083,9 @@ func (r *FabricNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if !identityReady {
 		readyReason = "IdentityMaterialMissing"
 		readyMessage = "Waiting for required Fabric identity material"
+	} else if configured, message := externalExposureConfigured(orgStatuses); !configured {
+		readyReason = "ExternalConfigurationPending"
+		readyMessage = message
 	} else if allOrgsReady(orgStatuses) && certificateStatus != metav1.ConditionTrue {
 		readyReason = "CertificateLifecyclePending"
 		readyMessage = "Waiting for Fabric certificate lifecycle to become ready"

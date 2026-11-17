@@ -278,6 +278,47 @@ type ExternalEndpoint struct {
 	// +optional
 	// +kubebuilder:validation:MaxLength=253
 	TLSHostnameOverride string `json:"tlsHostnameOverride,omitempty"`
+	// Exposure opts into external client-port exposure and certificate checks.
+	// When omitted, existing advertised-address behavior is unchanged.
+	// +optional
+	Exposure *ExternalEndpointExposure `json:"exposure,omitempty"`
+}
+
+type ExternalEndpointExposure struct {
+	// Type selects operator-managed LoadBalancer or user-managed infrastructure.
+	// +kubebuilder:validation:Enum=UserManaged;LoadBalancer
+	Type string `json:"type"`
+	// AllowedSourceCIDRs restricts LoadBalancer sources and, when enabled, ingress NetworkPolicies.
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=32
+	AllowedSourceCIDRs []string `json:"allowedSourceCIDRs"`
+	// LoadBalancerClass selects a cluster-provided implementation. Once assigned,
+	// the class cannot be replaced; omission preserves an assigned class.
+	// +optional
+	LoadBalancerClass *string `json:"loadBalancerClass,omitempty"`
+	// ServiceAnnotations configures the managed external Service; fabricops.io keys are reserved.
+	// +optional
+	// +kubebuilder:validation:MaxProperties=32
+	ServiceAnnotations map[string]string `json:"serviceAnnotations,omitempty"`
+}
+
+type ExternalEndpointStatus struct {
+	Name              string `json:"name"`
+	Component         string `json:"component"`
+	InternalAddress   string `json:"internalAddress"`
+	AdvertisedAddress string `json:"advertisedAddress"`
+	ExposureType      string `json:"exposureType"`
+	// +optional
+	ServiceName string `json:"serviceName,omitempty"`
+	// +optional
+	IngressPolicyName string `json:"ingressPolicyName,omitempty"`
+	// +optional
+	AllocatedAddresses []string `json:"allocatedAddresses,omitempty"`
+	// ConfigurationReady covers certificate identity and managed address allocation, not remote connectivity or DNS.
+	ConfigurationReady bool   `json:"configurationReady"`
+	TLSValid           bool   `json:"tlsValid"`
+	Reason             string `json:"reason"`
+	Message            string `json:"message"`
 }
 
 type Channel struct {
@@ -613,17 +654,22 @@ type WorkloadStatus struct {
 }
 
 type OrdererEndpointStatus struct {
-	Name                string `json:"name"`
-	Namespace           string `json:"namespace,omitempty"`
-	ClientAddress       string `json:"clientAddress,omitempty"`
+	Name          string `json:"name"`
+	Namespace     string `json:"namespace,omitempty"`
+	ClientAddress string `json:"clientAddress,omitempty"`
+	// InternalAddress remains the in-cluster client endpoint regardless of external advertising.
+	// +optional
+	InternalAddress     string `json:"internalAddress,omitempty"`
 	TLSHostnameOverride string `json:"tlsHostnameOverride,omitempty"`
 	AdminAddress        string `json:"adminAddress,omitempty"`
 	OperationsAddress   string `json:"operationsAddress,omitempty"`
 }
 
 type PeerEndpointStatus struct {
-	Name                string `json:"name"`
-	Address             string `json:"address,omitempty"`
+	Name    string `json:"name"`
+	Address string `json:"address,omitempty"`
+	// +optional
+	InternalAddress     string `json:"internalAddress,omitempty"`
 	TLSHostnameOverride string `json:"tlsHostnameOverride,omitempty"`
 	ChaincodeAddress    string `json:"chaincodeAddress,omitempty"`
 	OperationsAddress   string `json:"operationsAddress,omitempty"`
@@ -664,11 +710,14 @@ type CertificateStatus struct {
 }
 
 type OrgStatus struct {
-	Name          string `json:"name"`
-	Namespace     string `json:"namespace,omitempty"`
-	IdentityReady bool   `json:"identityReady"`
-	IdentityError string `json:"identityError,omitempty"`
-	CAReady       bool   `json:"caReady"`
+	// ExternalEndpoints reports opted-in exposure configuration, not end-to-end reachability.
+	// +optional
+	ExternalEndpoints []ExternalEndpointStatus `json:"externalEndpoints,omitempty"`
+	Name              string                   `json:"name"`
+	Namespace         string                   `json:"namespace,omitempty"`
+	IdentityReady     bool                     `json:"identityReady"`
+	IdentityError     string                   `json:"identityError,omitempty"`
+	CAReady           bool                     `json:"caReady"`
 	// CAEndpoint is the in-cluster Fabric CA endpoint for this org.
 	// +optional
 	CAEndpoint string `json:"caEndpoint,omitempty"`

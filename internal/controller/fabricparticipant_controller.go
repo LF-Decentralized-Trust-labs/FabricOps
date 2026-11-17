@@ -656,6 +656,9 @@ func participantLocalInfrastructureMessage(status fabricopsv1alpha1.OrgStatus) s
 	if !status.PeersReady {
 		return "Waiting for participant peers to become ready"
 	}
+	if configured, message := externalExposureConfigured([]fabricopsv1alpha1.OrgStatus{status}); !configured {
+		return message
+	}
 	return "Waiting for participant local infrastructure"
 }
 
