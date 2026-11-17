@@ -33,7 +33,10 @@ spec:
           prefix: orderer
           externalEndpoints:
             - name: orderer0
-              address: __ORDERER_ADDRESS__
+              address: orderer.founder.fabricops.test:7050
+              exposure:
+                type: LoadBalancer
+                allowedSourceCIDRs: ["192.0.2.0/24"] # Replaced with test-cluster ranges by the suite.
 
     - organization:
         name: BankA
@@ -47,7 +50,10 @@ spec:
         prefix: peer
         externalEndpoints:
           - name: peer0
-            address: __FOUNDER_PEER_ADDRESS__
+            address: peer0.banka.fabricops.test:7051
+            exposure:
+              type: LoadBalancer
+              allowedSourceCIDRs: ["192.0.2.0/24"]
 
   channels:
     - name: settlement

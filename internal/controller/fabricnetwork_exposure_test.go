@@ -23,8 +23,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apiMeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -44,6 +46,57 @@ func exposureFixture() (*fabricopsv1alpha1.FabricNetwork, fabricopsv1alpha1.Org,
 	net := &fabricopsv1alpha1.FabricNetwork{ObjectMeta: metav1.ObjectMeta{Name: "network", Namespace: "default", UID: "owner"},
 		Spec: fabricopsv1alpha1.FabricNetworkSpec{Global: fabricopsv1alpha1.GlobalConfig{TLS: true}, Orgs: []fabricopsv1alpha1.Org{org}}}
 	return net, org, endpoint
+}
+
+func TestExplicitExposureProfilesUseDNSWithoutTLSOverrides(t *testing.T) {
+	net, org, endpoint := exposureFixture()
+	orderer := desiredOrdererInstances(net)[0]
+	peerOrg := org
+	peerOrg.Orderers = nil
+	endpoint.Name = "peer0"
+	peerOrg.Peer = &fabricopsv1alpha1.PeerConfig{Instances: 1, Prefix: "peer", ExternalEndpoints: []fabricopsv1alpha1.ExternalEndpoint{endpoint}}
+	net.Spec.Orgs = []fabricopsv1alpha1.Org{peerOrg}
+	peer := desiredPeerInstances(net)[0]
+	for _, host := range []string{ordererConnectionProfileTLSHost(orderer), peerConnectionProfileTLSHost(peer)} {
+		if host != "" {
+			t.Errorf("explicit exposure must not supply a TLS override, got %q", host)
+		}
+		profile := connectionProfileGRPCEndpoint(endpoint.Address, host, "CA PEM")
+		if len(profile.GRPCOptions) != 0 || profile.TLSCACerts == nil {
+			t.Errorf("expected trusted TLS with no hostname overrides: %+v", profile)
+		}
+	}
+}
+
+func TestPeerScaleDownCleanupPreservesExternalServices(t *testing.T) {
+	net, org, endpoint := exposureFixture()
+	org.Orderers = nil
+	endpoint.Name = "peer0"
+	org.Peer = &fabricopsv1alpha1.PeerConfig{Instances: 1, Prefix: "peer", ExternalEndpoints: []fabricopsv1alpha1.ExternalEndpoint{endpoint}}
+	net.Spec.Orgs = []fabricopsv1alpha1.Org{org}
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	internal := buildPeerService(net, org, 0, "org")
+	external := buildExternalClientService(net, org, internal, endpoint)
+	stale := buildPeerService(net, org, 1, "org")
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(internal, external, stale).Build()
+	r := &FabricNetworkReconciler{Client: c, Scheme: scheme}
+	if err := r.cleanupScaledDownPeerWorkloads(t.Context(), net, org, "org", map[string]struct{}{"peer0": {}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []*corev1.Service{internal, external} {
+		if err := c.Get(t.Context(), client.ObjectKeyFromObject(expected), &corev1.Service{}); err != nil {
+			t.Errorf("cleanup removed desired service %s: %v", expected.Name, err)
+		}
+	}
+	if err := c.Get(t.Context(), client.ObjectKeyFromObject(stale), &corev1.Service{}); !apierrors.IsNotFound(err) {
+		t.Errorf("stale internal peer service was not removed: %v", err)
+	}
 }
 
 func TestExternalConfigurationTracksAllocationAndTLSWithoutRotatingIdentity(t *testing.T) {

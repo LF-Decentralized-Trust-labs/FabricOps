@@ -290,8 +290,10 @@ func connectionProfileGRPCEndpoint(address, host, tlsCACert string) fabricConnec
 	if tlsCACert != "" {
 		scheme = "grpcs"
 		tlsCert = &fabricConnectionProfileTLSCert{PEM: tlsCACert}
-		grpcOptions["ssl-target-name-override"] = host
-		grpcOptions["hostnameOverride"] = host
+		if host != "" {
+			grpcOptions["ssl-target-name-override"] = host
+			grpcOptions["hostnameOverride"] = host
+		}
 	}
 
 	return fabricConnectionProfileGRPCEndpoint{

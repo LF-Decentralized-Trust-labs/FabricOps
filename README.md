@@ -920,7 +920,9 @@ preserves the assigned class. Annotation keys under `fabricops.io/` are reserved
 `UserManaged` creates no external Service. You provide the load balancer, proxy,
 or private routing. DNS remains your responsibility in both modes. Connection
 profiles and join bundles use the declared advertised address, while endpoint
-status also retains the internal address.
+status also retains the internal address. For explicit exposure, connection
+profiles omit hostname overrides so SDKs verify the advertised DNS name against
+the endpoint certificate.
 
 `allowedSourceCIDRs` sets managed LoadBalancer source ranges. With
 `spec.global.networkPolicy.enabled=true`, FabricOps also creates a per-workload

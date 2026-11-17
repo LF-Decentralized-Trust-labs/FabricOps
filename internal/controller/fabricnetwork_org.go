@@ -2111,6 +2111,10 @@ func (r *FabricNetworkReconciler) cleanupScaledDownComponentWorkloads(
 	}
 	for i := range services.Items {
 		service := &services.Items[i]
+		// External endpoint cleanup owns these Services independently of peer scaling.
+		if service.Labels[labelEndpoint] == externalClientEndpoint {
+			continue
+		}
 		if _, ok := desiredServices[service.Name]; ok {
 			continue
 		}

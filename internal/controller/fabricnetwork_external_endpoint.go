@@ -44,6 +44,9 @@ func ordererConnectionProfileTLSHost(orderer ordererInstance) string {
 	if override := ordererTLSHostnameOverride(orderer); override != "" {
 		return override
 	}
+	if endpoint, ok := externalEndpointForWorkload(orderer.group.ExternalEndpoints, orderer.name); ok && endpoint.Exposure != nil {
+		return ""
+	}
 	return ordererAdvertisedHost(orderer)
 }
 
@@ -72,6 +75,11 @@ func peerTLSHostnameOverride(peer peerInstance) string {
 func peerConnectionProfileTLSHost(peer peerInstance) string {
 	if override := peerTLSHostnameOverride(peer); override != "" {
 		return override
+	}
+	if peer.org.Peer != nil {
+		if endpoint, ok := externalEndpointForWorkload(peer.org.Peer.ExternalEndpoints, peer.name); ok && endpoint.Exposure != nil {
+			return ""
+		}
 	}
 	return peerAdvertisedHost(peer)
 }
