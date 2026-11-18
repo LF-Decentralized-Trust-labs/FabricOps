@@ -22,6 +22,7 @@ import (
 	"hash/fnv"
 	"maps"
 	"reflect"
+	"slices"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -313,11 +314,15 @@ func resourceRequirements(requestCPU, requestMemory, limitCPU, limitMemory strin
 }
 
 func mspSecretItems(tlsEnabled bool) []corev1.KeyToPath {
+	items := mspPublicSecretItems(tlsEnabled)
+	return slices.Insert(items, 3, corev1.KeyToPath{Key: mspKeyStoreKey, Path: "keystore/key.pem"})
+}
+
+func mspPublicSecretItems(tlsEnabled bool) []corev1.KeyToPath {
 	items := []corev1.KeyToPath{
 		{Key: mspConfigKey, Path: "config.yaml"},
 		{Key: mspCACertKey, Path: "cacerts/ca.pem"},
 		{Key: mspSignCertKey, Path: "signcerts/cert.pem"},
-		{Key: mspKeyStoreKey, Path: "keystore/key.pem"},
 	}
 
 	if tlsEnabled {
@@ -331,10 +336,13 @@ func mspSecretItems(tlsEnabled bool) []corev1.KeyToPath {
 }
 
 func tlsSecretItems() []corev1.KeyToPath {
+	return append(tlsPublicSecretItems(), corev1.KeyToPath{Key: tlsServerKeyKey, Path: "server.key"})
+}
+
+func tlsPublicSecretItems() []corev1.KeyToPath {
 	return []corev1.KeyToPath{
 		{Key: tlsCACertKey, Path: "ca.crt"},
 		{Key: tlsServerCertKey, Path: "server.crt"},
-		{Key: tlsServerKeyKey, Path: "server.key"},
 	}
 }
 

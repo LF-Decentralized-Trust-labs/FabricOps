@@ -313,7 +313,8 @@ func (r *FabricNetworkReconciler) ensureChannelCryptoSecrets(
 			Namespace: orgNamespaceName(net, org),
 			Name:      identitySecretName(adminIdentityName(org), secretKindMSP),
 		}
-		if err := r.ensureCopiedSecret(ctx, source, namespace, channelOrgMSPSecretName(channel.Name, org), labels, annotations); err != nil {
+		if err := r.ensureCopiedSecret(ctx, source, namespace, channelOrgMSPSecretName(channel.Name, org), labels, annotations,
+			mspPublicSecretItems(net.Spec.Global.TLS)); err != nil {
 			return err
 		}
 	}
@@ -330,7 +331,8 @@ func (r *FabricNetworkReconciler) ensureChannelCryptoSecrets(
 			Namespace: orderer.namespace,
 			Name:      identitySecretName(adminIdentityName(orderer.org), secretKindTLS),
 		}
-		if err := r.ensureCopiedSecret(ctx, source, namespace, channelOrdererAdminTLSSecretName(channel.Name, orderer.org), labels, annotations); err != nil {
+		if err := r.ensureCopiedSecret(ctx, source, namespace, channelOrdererAdminTLSSecretName(channel.Name, orderer.org), labels, annotations,
+			adminTLSSecretItems()); err != nil {
 			return err
 		}
 	}
@@ -340,7 +342,8 @@ func (r *FabricNetworkReconciler) ensureChannelCryptoSecrets(
 			Namespace: orderer.namespace,
 			Name:      identitySecretName(orderer.name, secretKindTLS),
 		}
-		if err := r.ensureCopiedSecret(ctx, source, namespace, channelOrdererTLSSecretName(channel.Name, orderer.name), labels, annotations); err != nil {
+		if err := r.ensureCopiedSecret(ctx, source, namespace, channelOrdererTLSSecretName(channel.Name, orderer.name), labels, annotations,
+			tlsPublicSecretItems()); err != nil {
 			return err
 		}
 	}
@@ -351,7 +354,8 @@ func (r *FabricNetworkReconciler) ensureChannelCryptoSecrets(
 				Namespace: orderer.namespace,
 				Name:      identitySecretName(orderer.name, secretKindMSP),
 			}
-			if err := r.ensureCopiedSecret(ctx, source, namespace, channelOrdererMSPSecretName(channel.Name, orderer.name), labels, annotations); err != nil {
+			if err := r.ensureCopiedSecret(ctx, source, namespace, channelOrdererMSPSecretName(channel.Name, orderer.name), labels, annotations,
+				mspPublicSecretItems(net.Spec.Global.TLS)); err != nil {
 				return err
 			}
 		}
@@ -683,6 +687,7 @@ func (r *FabricNetworkReconciler) ensureAnchorPeerInputs(
 		channelOrdererTLSSecretName(channel.Name, orderer.name),
 		channelLabels(net, org, channel.Name),
 		resourceAnnotations(net, org),
+		tlsPublicSecretItems(),
 	)
 }
 
@@ -894,10 +899,22 @@ func (r *FabricNetworkReconciler) ensureCopiedSecret(
 	name string,
 	labels map[string]string,
 	annotations map[string]string,
+	items []corev1.KeyToPath,
 ) error {
+	if len(items) == 0 {
+		return fmt.Errorf("secret replication requires an explicit key allowlist")
+	}
 	var sourceSecret corev1.Secret
 	if err := r.Get(ctx, source, &sourceSecret); err != nil {
 		return err
+	}
+	data := make(map[string][]byte, len(items))
+	for _, item := range items {
+		value := sourceSecret.Data[item.Key]
+		if len(value) == 0 {
+			return fmt.Errorf("source Secret %s/%s is missing required key %s", source.Namespace, source.Name, item.Key)
+		}
+		data[item.Key] = append([]byte(nil), value...)
 	}
 
 	desired := &corev1.Secret{
@@ -908,7 +925,7 @@ func (r *FabricNetworkReconciler) ensureCopiedSecret(
 			Annotations: annotations,
 		},
 		Type: sourceSecret.Type,
-		Data: copySecretData(sourceSecret.Data),
+		Data: data,
 	}
 
 	return r.ensureReplicatedSecret(ctx, desired)
@@ -939,6 +956,9 @@ func (r *FabricNetworkReconciler) ensureReplicatedSecret(ctx context.Context, de
 			changed = true
 		}
 		if !reflect.DeepEqual(existing.Data, desired.Data) {
+			if err := r.ensureSecretKeyRemovalSafe(ctx, existing, desired.Data); err != nil {
+				return false, err
+			}
 			existing.Data = desired.Data
 			changed = true
 		}
@@ -1278,7 +1298,7 @@ func buildChannelBlockJob(
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName:  channelOrgMSPSecretName(channel.Name, org),
-					Items:       mspSecretItems(net.Spec.Global.TLS),
+					Items:       mspPublicSecretItems(net.Spec.Global.TLS),
 					DefaultMode: secretVolumeDefaultMode(),
 				},
 			},
@@ -1298,7 +1318,7 @@ func buildChannelBlockJob(
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
 						SecretName:  channelOrdererMSPSecretName(channel.Name, orderer.name),
-						Items:       mspSecretItems(net.Spec.Global.TLS),
+						Items:       mspPublicSecretItems(net.Spec.Global.TLS),
 						DefaultMode: secretVolumeDefaultMode(),
 					},
 				},
@@ -1318,7 +1338,7 @@ func buildChannelBlockJob(
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName:  channelOrdererTLSSecretName(channel.Name, orderer.name),
-					Items:       tlsSecretItems(),
+					Items:       tlsPublicSecretItems(),
 					DefaultMode: secretVolumeDefaultMode(),
 				},
 			},
@@ -1627,7 +1647,7 @@ func buildAnchorPeerUpdateJob(
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName:  channelOrdererTLSSecretName(channel.Name, orderer.name),
-					Items:       tlsSecretItems(),
+					Items:       tlsPublicSecretItems(),
 					DefaultMode: secretVolumeDefaultMode(),
 				},
 			},

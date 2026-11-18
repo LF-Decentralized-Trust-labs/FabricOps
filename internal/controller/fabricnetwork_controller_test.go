@@ -3263,7 +3263,9 @@ var _ = Describe("FabricNetwork Controller", func() {
 			}, &channelBankAdminMSP)).To(Succeed())
 			Expect(channelBankAdminMSP.Labels[labelAppComponent]).To(Equal(componentChannel))
 			Expect(channelBankAdminMSP.Labels[labelChannel]).To(Equal("settlement"))
-			Expect(channelBankAdminMSP.Data).To(Equal(sourceBankAdminMSP.Data))
+			expectedPublicMSP := copySecretData(sourceBankAdminMSP.Data)
+			delete(expectedPublicMSP, mspKeyStoreKey)
+			Expect(channelBankAdminMSP.Data).To(Equal(expectedPublicMSP))
 
 			var channelOrdererTLS corev1.Secret
 			Expect(k8sClient.Get(ctx, types.NamespacedName{
@@ -3272,6 +3274,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 			}, &channelOrdererTLS)).To(Succeed())
 			Expect(channelOrdererTLS.Labels[labelAppComponent]).To(Equal(componentChannel))
 			Expect(channelOrdererTLS.Data).To(HaveKey(tlsServerCertKey))
+			Expect(channelOrdererTLS.Data).NotTo(HaveKey(tlsServerKeyKey))
 
 			var channelOrdererAdminTLS corev1.Secret
 			Expect(k8sClient.Get(ctx, types.NamespacedName{

@@ -667,6 +667,18 @@ succeeds, and preserves the previous credential in
 
 Orderers mount identity Secrets at `/var/hyperledger/orderer/msp` and `/var/hyperledger/orderer/tls`. Peers mount them at `/etc/hyperledger/fabric/peer/msp` and `/etc/hyperledger/fabric/peer/tls`.
 
+Channel configuration replicas contain public MSP material and orderer TLS
+certificates, not MSP or TLS server private keys. Configuration-generation Jobs
+mount only that public material. Signing Jobs still use their admin MSP, and
+orderer administration retains the client TLS credentials needed for mTLS.
+Chaincode lifecycle TLS replicas also exclude server private keys. During an
+upgrade, pruning an older replica waits for unfinished Jobs or Pods that still
+request the removed keys; allow them to finish, or inspect and remove stalled
+consumers before retrying. Source identity Secrets are not modified.
+
+Signing identities currently remain Secret-backed. HSM/PKCS#11 signing is not
+yet supported; certificate-only replication does not enable external key custody.
+
 FabricOps inventories managed MSP/TLS certificates in status, starts Fabric CA
 renewal Jobs for admin, orderer, and peer leaf identities inside the renewal
 window, and rolls workloads when mounted identity material changes. See

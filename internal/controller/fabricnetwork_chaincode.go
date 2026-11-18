@@ -1105,6 +1105,7 @@ func (r *FabricNetworkReconciler) ensureChaincodeApproveInputs(
 		channelOrdererTLSSecretName(channel.Name, orderer.name),
 		channelLabels(net, org, channel.Name),
 		resourceAnnotations(net, org),
+		tlsPublicSecretItems(),
 	)
 }
 
@@ -1183,7 +1184,7 @@ func buildChaincodeApproveJob(
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
 						SecretName:  channelOrdererTLSSecretName(channel.Name, orderer.name),
-						Items:       tlsSecretItems(),
+						Items:       tlsPublicSecretItems(),
 						DefaultMode: secretVolumeDefaultMode(),
 					},
 				},
@@ -1392,6 +1393,7 @@ func (r *FabricNetworkReconciler) ensureChaincodeCommitInputs(
 		channelOrdererTLSSecretName(channel.Name, orderer.name),
 		labels,
 		annotations,
+		tlsPublicSecretItems(),
 	); err != nil {
 		return err
 	}
@@ -1425,6 +1427,7 @@ func (r *FabricNetworkReconciler) ensureChaincodeCommitInputs(
 			chaincodePeerTLSSecretName(chaincode, peer.org, peer.peerName),
 			labels,
 			annotations,
+			tlsPublicSecretItems(),
 		); err != nil {
 			return err
 		}
@@ -1578,7 +1581,7 @@ func buildChaincodeCommitJob(
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
 						SecretName:  channelOrdererTLSSecretName(channel.Name, orderer.name),
-						Items:       tlsSecretItems(),
+						Items:       tlsPublicSecretItems(),
 						DefaultMode: secretVolumeDefaultMode(),
 					},
 				},
@@ -2394,7 +2397,7 @@ func chaincodePeerTLSSecretItems(peer chaincodeLifecyclePeer) []corev1.KeyToPath
 			{Key: tlsCACertKey, Path: "ca.crt"},
 		}
 	}
-	return tlsSecretItems()
+	return tlsPublicSecretItems()
 }
 
 func firstChaincodePackageID(targets []fabricopsv1alpha1.ChaincodeTargetStatus) string {
