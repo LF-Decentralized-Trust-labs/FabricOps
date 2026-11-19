@@ -97,6 +97,14 @@ func validatePKCS11Runtime(org fabricopsv1alpha1.Org) []string {
 	if selector.Name == provider.PINSecretKeyRef.Name && selector.Key == provider.PINSecretKeyRef.Key {
 		problems = append(problems, "runtime configuration and PIN must select different Secret keys")
 	}
+	for _, identity := range softwareEnrollmentIdentities(org) {
+		for _, kind := range []string{secretKindMSP, secretKindTLS} {
+			output := identitySecretName(identity.name, kind)
+			if selector.Name == output || provider.PINSecretKeyRef.Name == output {
+				problems = append(problems, "runtime provider credentials must not alias software enrollment output Secrets")
+			}
+		}
+	}
 	if rt.ConfigEnv != "SOFTHSM2_CONF" {
 		problems = append(problems, "runtime.configEnv is not supported by the current provider proof")
 	}

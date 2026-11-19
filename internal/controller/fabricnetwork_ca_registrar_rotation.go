@@ -112,9 +112,6 @@ func (r *FabricNetworkReconciler) reconcileCARegistrarRotation(
 		return status, nil
 	}
 
-	if err := r.ensureEnrollmentRBAC(ctx, net, org, namespace); err != nil {
-		return status, err
-	}
 	if err := r.ensureJob(ctx, buildCARegistrarRotationJob(net, org, namespace, requestID)); err != nil {
 		return status, err
 	}
@@ -276,6 +273,7 @@ func buildCARegistrarRotationJob(
 	annotations := resourceAnnotations(net, org)
 	annotations[annotationCARegistrarRotationRequestID] = requestID
 	backoffLimit := int32(4)
+	automount := false
 
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -292,8 +290,8 @@ func buildCARegistrarRotationJob(
 					Annotations: annotations,
 				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: enrollmentServiceAccountName(org),
-					RestartPolicy:      corev1.RestartPolicyNever,
+					AutomountServiceAccountToken: &automount,
+					RestartPolicy:                corev1.RestartPolicyNever,
 					Containers: []corev1.Container{
 						{
 							Name:      identityKindCARegistrarRotate,

@@ -490,14 +490,14 @@ var _ = Describe("FabricNetwork Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			expectSecretNotFound(ctx, ordererNamespace, identitySecretName(adminIdentityName(network.Spec.Orgs[0]), secretKindMSP))
-			expectSecretNotFound(ctx, ordererNamespace, identitySecretName(adminIdentityName(network.Spec.Orgs[0]), secretKindTLS))
-			expectSecretNotFound(ctx, ordererNamespace, "orderer0-msp")
-			expectSecretNotFound(ctx, ordererNamespace, "orderer0-tls")
-			expectSecretNotFound(ctx, bankNamespace, identitySecretName(adminIdentityName(network.Spec.Orgs[1]), secretKindMSP))
-			expectSecretNotFound(ctx, bankNamespace, identitySecretName(adminIdentityName(network.Spec.Orgs[1]), secretKindTLS))
-			expectSecretNotFound(ctx, bankNamespace, "peer0-msp")
-			expectSecretNotFound(ctx, bankNamespace, "peer0-tls")
+			for _, org := range network.Spec.Orgs {
+				for _, output := range enrollmentOutputSecrets(&network, org, orgNamespaceName(&network, org)) {
+					var secret corev1.Secret
+					Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(output), &secret)).To(Succeed())
+					Expect(secret.Data).To(BeEmpty(), "A publication destination must not contain fallback identity material")
+					Expect(secret.Labels).NotTo(HaveKey(labelIdentitySource))
+				}
+			}
 			expectDeploymentNotFound(ctx, ordererNamespace, "orderer0")
 			expectDeploymentNotFound(ctx, bankNamespace, "peer0")
 
@@ -551,11 +551,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 				Name:      enrollmentServiceAccountName(bankOrg),
 			}, &role)).To(Succeed())
 			Expect(role.Annotations[annotationFabricNetwork]).To(Equal(resourceName))
-			Expect(role.Rules).To(ContainElement(rbacv1.PolicyRule{
-				APIGroups: []string{""},
-				Resources: []string{"secrets"},
-				Verbs:     []string{"get", "create", "update", "patch"},
-			}))
+			Expect(role.Rules).To(Equal(buildEnrollmentRole(&network, bankOrg, bankNamespace).Rules))
 
 			var roleBinding rbacv1.RoleBinding
 			Expect(k8sClient.Get(ctx, types.NamespacedName{
@@ -813,11 +809,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 			}, &role)).To(Succeed())
 			Expect(role.Labels[labelAppComponent]).To(Equal(componentAdmin))
 			Expect(role.Annotations[annotationOrg]).To(Equal("BankA"))
-			Expect(role.Rules).To(ContainElement(rbacv1.PolicyRule{
-				APIGroups: []string{""},
-				Resources: []string{"secrets"},
-				Verbs:     []string{"get", "create", "update", "patch"},
-			}))
+			Expect(role.Rules).To(Equal(buildEnrollmentRole(&network, bankOrg, bankNamespace).Rules))
 
 			Expect(k8sClient.Get(ctx, types.NamespacedName{
 				Namespace: bankNamespace,
@@ -1430,7 +1422,8 @@ var _ = Describe("FabricNetwork Controller", func() {
 			}, &rotationJob)).To(Succeed())
 			Expect(rotationJob.Labels[labelIdentityKind]).To(Equal(identityKindCARegistrarRotate))
 			Expect(rotationJob.Annotations[annotationSucceededJobCleanup]).To(Equal("true"))
-			Expect(rotationJob.Spec.Template.Spec.ServiceAccountName).To(Equal(enrollmentServiceAccountName(bankOrg)))
+			Expect(rotationJob.Spec.Template.Spec.ServiceAccountName).To(BeEmpty())
+			Expect(rotationJob.Spec.Template.Spec.AutomountServiceAccountToken).To(HaveValue(BeFalse()))
 			Expect(rotationJob.Spec.Template.Spec.Containers).To(HaveLen(1))
 
 			rotateContainer := rotationJob.Spec.Template.Spec.Containers[0]

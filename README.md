@@ -709,6 +709,18 @@ The chart and install bundle include Secret deletion and read-only Pod access
 for consumer checks. Installations with user-managed RBAC must grant those
 permissions before cleanup can complete.
 
+Enrollment publishers use controller-prepared output Secrets and a Role limited
+to `get` and `patch` on named destinations. They cannot create/list Secrets or
+read bootstrap, enrollment-password, or provider credentials through that Role.
+Software/admin publishers share an org-scoped output allowlist; PKCS11 peer
+outputs are excluded from it. Existing identity data is preserved, including
+older Fabric CA-labelled outputs in the owning network's org namespace;
+foreign-owned or immutable destinations require review rather than replacement.
+New enrollment Jobs disable automatic API-token mounting and project credentials
+only into the publisher, not the CA-facing init container. Registrar rotation
+Jobs do not receive an API token. Existing Job templates are not rewritten;
+their enrollment Role is narrowed when reconciled.
+
 Peer `mspSigning` is optional; omission or `provider: Secret` keeps the existing
 Secret-backed MSP signing path. `provider: PKCS11` is a reserved contract, not
 runtime support: both `FabricNetwork` and `FabricParticipant` report it as
@@ -732,8 +744,8 @@ allows only `get` and `patch` on that peer's controller-prepared MSP and optiona
 TLS output Secrets, not Secret creation, listing, or access to provider or
 enrollment credentials. PIN/config references cannot alias peer output Secrets.
 Existing foreign-owned destinations and software-key MSP material are refused,
-not replaced. Admin and software enrollment still use their existing broader
-RBAC; those paths need review before PKCS11 can be enabled.
+not replaced. Provider references also cannot alias software/admin/orderer
+enrollment outputs.
 
 For existing owned org namespaces, the controller records token claim names in
 the `fabricops.io/pkcs11-state-retention` namespace annotation, bound to the

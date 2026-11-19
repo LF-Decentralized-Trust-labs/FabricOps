@@ -59,7 +59,7 @@ func TestPKCS11PublisherAccessBoundaries(t *testing.T) {
 				continue
 			}
 			projected++
-			if volume.Name != pkcs11PublisherTokenVolume || len(volume.Projected.Sources) != 3 || volume.Projected.Sources[0].ServiceAccountToken == nil || *volume.Projected.Sources[0].ServiceAccountToken.ExpirationSeconds != 3600 {
+			if volume.Name != enrollmentPublisherTokenVolume || len(volume.Projected.Sources) != 3 || volume.Projected.Sources[0].ServiceAccountToken == nil || *volume.Projected.Sources[0].ServiceAccountToken.ExpirationSeconds != 3600 {
 				t.Fatal("publisher token is not an explicit bounded projection")
 			}
 		}
@@ -67,7 +67,7 @@ func TestPKCS11PublisherAccessBoundaries(t *testing.T) {
 			t.Fatal("publisher token projection is missing or duplicated")
 		}
 		for _, mount := range pod.InitContainers[0].VolumeMounts {
-			if mount.Name == pkcs11PublisherTokenVolume || strings.Contains(mount.MountPath, "serviceaccount") {
+			if mount.Name == enrollmentPublisherTokenVolume || strings.Contains(mount.MountPath, "serviceaccount") {
 				t.Fatal("key actor received Kubernetes API credentials")
 			}
 		}
@@ -246,7 +246,7 @@ var _ = Describe("PKCS11 publisher authorization", func() {
 		Expect(k8sClient.Create(ctx, pod)).To(Succeed())
 		Expect(pod.Spec.AutomountServiceAccountToken).To(HaveValue(BeFalse()))
 		for _, mount := range pod.Spec.InitContainers[0].VolumeMounts {
-			Expect(mount.Name).NotTo(Equal(pkcs11PublisherTokenVolume))
+			Expect(mount.Name).NotTo(Equal(enrollmentPublisherTokenVolume))
 			Expect(mount.MountPath).NotTo(ContainSubstring("serviceaccount"))
 		}
 	})

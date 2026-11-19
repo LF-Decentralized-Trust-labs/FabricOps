@@ -29,8 +29,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const pkcs11PublisherTokenVolume = "pkcs11-publisher-api"
-
 func pkcs11PublisherName(peer string) string {
 	return sanitizeName(peer + "-identity-publisher")
 }
@@ -54,18 +52,8 @@ func pkcs11PublisherRBAC(net *fabricopsv1alpha1.FabricNetwork, org fabricopsv1al
 }
 
 func applyPKCS11PublisherAccess(pod *corev1.PodSpec, peer string) {
-	automount, mode, expiration := false, int32(0440), int64(3600)
-	pod.AutomountServiceAccountToken = &automount
 	pod.ServiceAccountName = pkcs11PublisherName(peer)
-	pod.Volumes = append(pod.Volumes, corev1.Volume{Name: pkcs11PublisherTokenVolume, VolumeSource: corev1.VolumeSource{Projected: &corev1.ProjectedVolumeSource{
-		DefaultMode: &mode,
-		Sources: []corev1.VolumeProjection{
-			{ServiceAccountToken: &corev1.ServiceAccountTokenProjection{Path: "token", ExpirationSeconds: &expiration}},
-			{ConfigMap: &corev1.ConfigMapProjection{LocalObjectReference: corev1.LocalObjectReference{Name: "kube-root-ca.crt"}, Items: []corev1.KeyToPath{{Key: "ca.crt", Path: "ca.crt"}}}},
-			{DownwardAPI: &corev1.DownwardAPIProjection{Items: []corev1.DownwardAPIVolumeFile{{Path: "namespace", FieldRef: &corev1.ObjectFieldSelector{APIVersion: "v1", FieldPath: "metadata.namespace"}}}}},
-		},
-	}}})
-	pod.Containers[0].VolumeMounts = append(pod.Containers[0].VolumeMounts, corev1.VolumeMount{Name: pkcs11PublisherTokenVolume, MountPath: "/var/run/secrets/kubernetes.io/serviceaccount", ReadOnly: true})
+	applyEnrollmentPublisherToken(pod)
 }
 
 // This is staged behind the closed PKCS11 gate with the workload builders.
@@ -99,7 +87,7 @@ func (r *FabricNetworkReconciler) preparePKCS11Publisher(ctx context.Context, ne
 		if err != nil {
 			return err
 		}
-		if !pkcs11PublisherObjectOwned(&existing, desired) || existing.Type != corev1.SecretTypeOpaque ||
+		if !publisherObjectOwned(&existing, desired) || existing.Type != corev1.SecretTypeOpaque ||
 			(existing.Immutable != nil && *existing.Immutable) || (len(existing.Data) > 0 && identitySecretValidationError(existing, validationKind, net.Spec.Global.TLS) != "") {
 			return fmt.Errorf("PKCS11 publisher destination requires review; refusing to overwrite existing identity material")
 		}
@@ -121,7 +109,7 @@ func (r *FabricNetworkReconciler) ensurePKCS11PublisherObject(ctx context.Contex
 		return err
 	}
 	return r.updateObjectWithRetry(ctx, desired, func(existing client.Object) (bool, error) {
-		if existing.GetUID() != initial.GetUID() || !pkcs11PublisherObjectOwned(existing, desired) {
+		if existing.GetUID() != initial.GetUID() || !publisherObjectOwned(existing, desired) {
 			return false, fmt.Errorf("PKCS11 publisher RBAC ownership requires review")
 		}
 		before := existing.DeepCopyObject()
@@ -136,21 +124,4 @@ func (r *FabricNetworkReconciler) ensurePKCS11PublisherObject(ctx context.Contex
 		}
 		return !reflect.DeepEqual(before, existing), nil
 	})
-}
-
-func pkcs11PublisherObjectOwned(existing, desired client.Object) bool {
-	if !existing.GetDeletionTimestamp().IsZero() {
-		return false
-	}
-	for key, value := range desired.GetLabels() {
-		if existing.GetLabels()[key] != value {
-			return false
-		}
-	}
-	for key, value := range desired.GetAnnotations() {
-		if existing.GetAnnotations()[key] != value {
-			return false
-		}
-	}
-	return true
 }

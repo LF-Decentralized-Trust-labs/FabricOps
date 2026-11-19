@@ -163,10 +163,14 @@ func (r *FabricNetworkReconciler) ensureEnrollmentRBAC(
 	org fabricopsv1alpha1.Org,
 	namespace string,
 ) error {
-	if err := r.ensureServiceAccount(ctx, buildEnrollmentServiceAccount(net, org, namespace)); err != nil {
+	// Revoke the legacy broad grant even when destination preparation fails.
+	if err := r.ensureRole(ctx, buildEnrollmentRole(net, org, namespace)); err != nil {
 		return err
 	}
-	if err := r.ensureRole(ctx, buildEnrollmentRole(net, org, namespace)); err != nil {
+	if err := r.ensureEnrollmentOutputs(ctx, net, org, namespace); err != nil {
+		return err
+	}
+	if err := r.ensureServiceAccount(ctx, buildEnrollmentServiceAccount(net, org, namespace)); err != nil {
 		return err
 	}
 	return r.ensureRoleBinding(ctx, buildEnrollmentRoleBinding(net, org, namespace))
@@ -257,6 +261,10 @@ func buildEnrollmentRole(
 	org fabricopsv1alpha1.Org,
 	namespace string,
 ) *rbacv1.Role {
+	names := []string{}
+	for _, output := range enrollmentOutputSecrets(net, org, namespace) {
+		names = append(names, output.Name)
+	}
 	return &rbacv1.Role{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        enrollmentServiceAccountName(org),
@@ -266,9 +274,10 @@ func buildEnrollmentRole(
 		},
 		Rules: []rbacv1.PolicyRule{
 			{
-				APIGroups: []string{""},
-				Resources: []string{"secrets"},
-				Verbs:     []string{"get", "create", "update", "patch"},
+				APIGroups:     []string{""},
+				Resources:     []string{"secrets"},
+				ResourceNames: names,
+				Verbs:         []string{"get", "patch"},
 			},
 		},
 	}
@@ -315,7 +324,7 @@ func buildAdminEnrollmentJob(
 	annotations := resourceAnnotations(net, org)
 	backoffLimit := int32(4)
 
-	return &batchv1.Job{
+	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        adminEnrollmentJobName(org),
 			Namespace:   namespace,
@@ -374,6 +383,8 @@ func buildAdminEnrollmentJob(
 			},
 		},
 	}
+	applyEnrollmentPublisherToken(&job.Spec.Template.Spec)
+	return job
 }
 
 func buildWorkloadEnrollmentJob(
@@ -460,6 +471,8 @@ func buildWorkloadEnrollmentJob(
 			automount := false
 			job.Spec.Template.Spec.AutomountServiceAccountToken = &automount
 		}
+	} else {
+		applyEnrollmentPublisherToken(&job.Spec.Template.Spec)
 	}
 	return job
 }

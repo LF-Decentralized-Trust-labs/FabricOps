@@ -219,7 +219,7 @@ func TestPKCS11RuntimeMountsStayWithKeyActors(t *testing.T) {
 		}
 	}
 	for _, mount := range publisher.VolumeMounts {
-		if mount.Name == pkcs11PublisherTokenVolume && mount.ReadOnly && mount.MountPath == "/var/run/secrets/kubernetes.io/serviceaccount" {
+		if mount.Name == enrollmentPublisherTokenVolume && mount.ReadOnly && mount.MountPath == "/var/run/secrets/kubernetes.io/serviceaccount" {
 			continue
 		}
 		if mount.Name != enrollmentVolumeName || mount.SubPath != "output" || !mount.ReadOnly {
