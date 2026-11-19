@@ -10,12 +10,15 @@ RUN mkdir -p /src/fabric /src/fabric-ca /out \
     && curl -fsSL --retry 5 "https://codeload.github.com/hyperledger/fabric-ca/tar.gz/${FABRIC_CA_REVISION}" \
        | tar -xz --strip-components=1 -C /src/fabric-ca
 
+FROM source AS config-build
+WORKDIR /src/fabric
+COPY configure-provider.go /tmp/configure-provider.go
+RUN go build -mod=vendor -buildvcs=false -o /out/fabricops-pkcs11-config /tmp/configure-provider.go
+
 FROM source AS peer-build
 WORKDIR /src/fabric
-COPY configure-peer.go /tmp/configure-peer.go
 RUN CGO_ENABLED=1 go build -mod=vendor -tags pkcs11 -buildvcs=false -o /out/peer ./cmd/peer \
-    && go version -m /out/peer | grep 'tags=pkcs11' \
-    && go build -mod=vendor -buildvcs=false -o /out/fabricops-peer-config /tmp/configure-peer.go
+    && go version -m /out/peer | grep 'tags=pkcs11'
 
 FROM source AS ca-build
 WORKDIR /src/fabric-ca
@@ -38,12 +41,14 @@ LABEL org.opencontainers.image.source="https://github.com/LF-Decentralized-Trust
 
 FROM runtime AS enrollment
 COPY --from=ca-build /out/fabric-ca-client /usr/local/bin/fabric-ca-client
-ENTRYPOINT ["fabric-ca-client"]
+COPY --from=config-build /out/fabricops-pkcs11-config /usr/local/bin/fabricops-pkcs11-config
+COPY --chmod=0555 enroll-peer.sh /usr/local/bin/fabricops-enroll-peer
+ENTRYPOINT ["/usr/local/bin/fabricops-enroll-peer"]
 
 FROM runtime AS peer
 ENV FABRIC_CFG_PATH=/etc/hyperledger/fabric
 COPY --from=peer-build /out/peer /usr/local/bin/peer
-COPY --from=peer-build /out/fabricops-peer-config /usr/local/bin/fabricops-peer-config
+COPY --from=config-build /out/fabricops-pkcs11-config /usr/local/bin/fabricops-pkcs11-config
 COPY --from=peer-build /src/fabric/sampleconfig/core.yaml /etc/hyperledger/fabric/core.yaml
 COPY --from=ccaas-build /out/ccaas/ /opt/hyperledger/ccaas_builder/bin/
 ENTRYPOINT ["peer"]
@@ -53,5 +58,6 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl opensc openssl \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=ca-build /out/fabric-ca-client /out/fabric-ca-server /usr/local/bin/
+COPY --chmod=0555 enroll-peer.sh /usr/local/bin/fabricops-enroll-peer
 COPY smoke.sh /usr/local/lib/fabricops/pkcs11-smoke.sh
 ENTRYPOINT ["bash", "/usr/local/lib/fabricops/pkcs11-smoke.sh"]

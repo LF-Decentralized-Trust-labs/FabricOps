@@ -616,6 +616,12 @@ an empty peer MSP keystore, peer startup across new containers, and failures for
 an invalid PIN, missing module/token, or absent matching key. PIN-bearing peer
 configuration stays in a container tmpfs. Temporary containers, token storage,
 and the internal-only Docker network are removed when the test exits.
+The enrollment executable uses the token only for peer MSP signing; registrar
+and TLS enrollment remain software-backed. It requires memory-backed work and
+configuration directories and refuses existing output or already-registered
+peer identities. This is fresh enrollment only, not automatic reenrollment or
+recovery. The smoke also checks two distinct peer keys in one token, TLS-disabled
+enrollment, file permissions, and rejection before publishable output appears.
 The Test PKCS11 Images workflow runs this proof when its files change.
 The peer test uses warning-level logging and checks that generated PINs do not
 appear in logs; upstream provider debug logging must not be enabled with PINs.

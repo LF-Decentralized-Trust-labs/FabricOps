@@ -29,6 +29,6 @@ jobs:
         with:
           persist-credentials: false
       - name: Check shell scripts
-        run: shellcheck config/images/pkcs11/smoke.sh hack/test-pkcs11-images.sh
+        run: shellcheck config/images/pkcs11/*.sh hack/test-pkcs11-images.sh
       - name: Build and test PKCS11 images
         run: make test-pkcs11-images
