@@ -141,7 +141,7 @@ func (r *FabricNetworkReconciler) reconcileWorkloadEnrollment(
 	component string,
 	csrHosts []string,
 ) error {
-	enrolled, err := r.workloadIdentityEnrolled(ctx, net, namespace, workloadName)
+	enrolled, err := r.workloadIdentityEnrolled(ctx, net, org, namespace, workloadName, component)
 	if err != nil {
 		return err
 	}
@@ -181,10 +181,12 @@ func (r *FabricNetworkReconciler) adminIdentityEnrolled(
 func (r *FabricNetworkReconciler) workloadIdentityEnrolled(
 	ctx context.Context,
 	net *fabricopsv1alpha1.FabricNetwork,
+	org fabricopsv1alpha1.Org,
 	namespace string,
 	workloadName string,
+	component string,
 ) (bool, error) {
-	return r.fabricCAIdentityEnrolled(ctx, net, namespace, workloadName, secretKindMSP, secretKindTLS)
+	return r.fabricCAIdentityEnrolled(ctx, net, namespace, workloadName, workloadMSPSecretKind(org, component), secretKindTLS)
 }
 
 func (r *FabricNetworkReconciler) fabricCAIdentityEnrolled(
@@ -382,6 +384,11 @@ func buildWorkloadEnrollmentJob(
 	})
 	annotations := resourceAnnotations(net, org)
 	backoffLimit := int32(4)
+	enrollmentScript := workloadEnrollmentScript()
+	if workloadMSPSecretKind(org, component) == secretKindPeerPKCS11MSP {
+		// The artifact handoff is staged before provider-aware enrollment is enabled.
+		enrollmentScript = "echo 'PKCS11 peer enrollment wiring is unavailable; refusing software key generation' >&2\nexit 1\n"
+	}
 
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -412,7 +419,7 @@ func buildWorkloadEnrollmentJob(
 						{
 							Name:      enrollWorkloadContainerName,
 							Image:     caImage(),
-							Command:   []string{"sh", "-ec", workloadEnrollmentScript()},
+							Command:   []string{"sh", "-ec", enrollmentScript},
 							Env:       workloadEnrollmentEnv(net, org, namespace, workloadName, component, csrHosts),
 							Resources: componentResourceRequirements(componentCA),
 							VolumeMounts: []corev1.VolumeMount{
@@ -427,7 +434,7 @@ func buildWorkloadEnrollmentJob(
 						{
 							Name:      publishWorkloadContainerName,
 							Image:     kubectlImage(),
-							Command:   []string{"sh", "-ec", publishWorkloadIdentityScript()},
+							Command:   []string{"sh", "-ec", publishWorkloadIdentityScript(workloadMSPSecretKind(org, component) == secretKindMSP)},
 							Env:       publishWorkloadIdentityEnv(net, workloadName),
 							Resources: componentResourceRequirements(componentKubectl),
 							VolumeMounts: []corev1.VolumeMount{
@@ -723,26 +730,48 @@ chmod -R a+rX "$output_dir"
 `
 }
 
-func publishWorkloadIdentityScript() string {
+func publishWorkloadIdentityScript(includePrivateKey bool) string {
+	privateKeyOption := "    --from-file=keystore.pem=\"$output_dir/msp/keystore.pem\" \\\n"
+	guard := ""
+	if !includePrivateKey {
+		privateKeyOption = ""
+		guard = `
+if [ -e "$output_dir/msp/keystore.pem" ]; then
+  echo "Refusing software private key material for a PKCS11 peer MSP" >&2
+  exit 1
+fi
+for file in "$output_dir/msp/"*; do
+  if grep -Eq 'BEGIN [A-Z0-9 ]*PRIVATE KEY' "$file"; then
+    echo "Refusing private key PEM in PKCS11 peer MSP output" >&2
+    exit 1
+  fi
+done
+existing_keys="$(kubectl -n "$POD_NAMESPACE" get secret "$FABRICOPS_WORKLOAD_MSP_SECRET" --ignore-not-found=true -o 'go-template={{range $key, $value := .data}}{{printf "%s\n" $key}}{{end}}')"
+for key in $existing_keys; do
+  case "$key" in
+    config.yaml|cacert.pem|signcert.pem|tlscacert.pem) ;;
+    *) echo "Refusing to replace existing non-public peer MSP material" >&2; exit 1 ;;
+  esac
+done
+`
+	}
 	return `set -eu
 
 output_dir="` + enrollmentWorkDir + `/output"
-
+` + guard + `
 if [ "$FABRICOPS_TLS_ENABLED" = "true" ]; then
   kubectl -n "$POD_NAMESPACE" create secret generic "$FABRICOPS_WORKLOAD_MSP_SECRET" \
     --from-file=config.yaml="$output_dir/msp/config.yaml" \
     --from-file=cacert.pem="$output_dir/msp/cacert.pem" \
     --from-file=tlscacert.pem="$output_dir/msp/tlscacert.pem" \
     --from-file=signcert.pem="$output_dir/msp/signcert.pem" \
-    --from-file=keystore.pem="$output_dir/msp/keystore.pem" \
-    --dry-run=client -o yaml | kubectl -n "$POD_NAMESPACE" apply -f -
+` + privateKeyOption + `    --dry-run=client -o yaml | kubectl -n "$POD_NAMESPACE" apply -f -
 else
   kubectl -n "$POD_NAMESPACE" create secret generic "$FABRICOPS_WORKLOAD_MSP_SECRET" \
     --from-file=config.yaml="$output_dir/msp/config.yaml" \
     --from-file=cacert.pem="$output_dir/msp/cacert.pem" \
     --from-file=signcert.pem="$output_dir/msp/signcert.pem" \
-    --from-file=keystore.pem="$output_dir/msp/keystore.pem" \
-    --dry-run=client -o yaml | kubectl -n "$POD_NAMESPACE" apply -f -
+` + privateKeyOption + `    --dry-run=client -o yaml | kubectl -n "$POD_NAMESPACE" apply -f -
 fi
 
 kubectl -n "$POD_NAMESPACE" label secret "$FABRICOPS_WORKLOAD_MSP_SECRET" \

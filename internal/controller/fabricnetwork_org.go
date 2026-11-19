@@ -502,6 +502,10 @@ func mspSecretKeys(tlsEnabled bool) []string {
 	return keys
 }
 
+func mspPublicSecretKeys(tlsEnabled bool) []string {
+	return slices.DeleteFunc(mspSecretKeys(tlsEnabled), func(key string) bool { return key == mspKeyStoreKey })
+}
+
 func tlsSecretKeys() []string {
 	return []string{
 		tlsCACertKey,
@@ -597,6 +601,11 @@ func requiredIdentitySecrets(
 
 	for i := 0; i < org.Peer.Instances; i++ {
 		name := sanitizeName(fmt.Sprintf("%s%d", org.Peer.Prefix, i))
+		mspKind := workloadMSPSecretKind(org, componentPeer)
+		mspKeys := mspSecretKeys(tlsEnabled)
+		if mspKind == secretKindPeerPKCS11MSP {
+			mspKeys = mspPublicSecretKeys(tlsEnabled)
+		}
 		requirements = append(requirements, identitySecretRequirement{
 			namespace: namespace,
 			name:      identityEnrollmentSecretName(name),
@@ -606,8 +615,8 @@ func requiredIdentitySecrets(
 		requirements = append(requirements, identitySecretRequirement{
 			namespace: namespace,
 			name:      identitySecretName(name, secretKindMSP),
-			kind:      secretKindMSP,
-			keys:      mspSecretKeys(tlsEnabled),
+			kind:      mspKind,
+			keys:      mspKeys,
 		})
 
 		if tlsEnabled {
@@ -1688,6 +1697,10 @@ func buildPeerDeployment(
 	namespace string,
 ) *appsv1.Deployment {
 	name := sanitizeName(fmt.Sprintf("%s%d", org.Peer.Prefix, instance))
+	volumes := identityVolumes(name, net.Spec.Global.TLS)
+	if workloadMSPSecretKind(org, componentPeer) == secretKindPeerPKCS11MSP {
+		volumes[0].Secret.Items = mspPublicSecretItems(net.Spec.Global.TLS)
+	}
 	peer := peerInstance{org: org, name: name, namespace: namespace}
 	replicas := int32(1)
 	peerAddress := peerAddress(peer)
@@ -1755,7 +1768,7 @@ func buildPeerDeployment(
 					Annotations: resourceAnnotations(net, org),
 				},
 				Spec: corev1.PodSpec{
-					Volumes: append(identityVolumes(name, net.Spec.Global.TLS), dataVolume(name)),
+					Volumes: append(volumes, dataVolume(name)),
 					Containers: []corev1.Container{
 						{
 							Name:  containerPeer,

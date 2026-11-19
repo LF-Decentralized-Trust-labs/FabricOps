@@ -26,6 +26,14 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 )
 
+// This selects artifact shape only; it does not prove provider availability.
+func workloadMSPSecretKind(org fabricopsv1alpha1.Org, component string) string {
+	if component == componentPeer && org.Peer != nil && org.Peer.MSPSigning != nil && org.Peer.MSPSigning.Provider == "PKCS11" {
+		return secretKindPeerPKCS11MSP
+	}
+	return secretKindMSP
+}
+
 func validatePeerMSPSigning(org fabricopsv1alpha1.Org) []string {
 	if org.Peer == nil || org.Peer.MSPSigning == nil {
 		return nil
