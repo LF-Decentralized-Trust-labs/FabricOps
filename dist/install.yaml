@@ -3762,7 +3762,6 @@ rules:
   resources:
   - configmaps
   - persistentvolumeclaims
-  - secrets
   - serviceaccounts
   verbs:
   - create
@@ -3782,6 +3781,7 @@ rules:
   - ""
   resources:
   - namespaces
+  - secrets
   - services
   verbs:
   - create
@@ -3790,6 +3790,14 @@ rules:
   - list
   - patch
   - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
   - watch
 - apiGroups:
   - apps

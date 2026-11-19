@@ -671,6 +671,15 @@ Channel configuration replicas contain public MSP material and orderer TLS
 certificates, not MSP or TLS server private keys. Configuration-generation Jobs
 mount only that public material. Signing Jobs still use their admin MSP, and
 orderer administration retains the client TLS credentials needed for mTLS.
+Orderer admin mTLS replicas are created only for orderer-join Jobs in the
+channel bootstrap host namespace, not for public configuration generation or
+application-org admission. Matching legacy replicas in other managed org
+namespaces are retired only when their network UID and channel ownership agree.
+Source identities, identity-labelled Secrets, foreign-owned objects, and host
+replicas are preserved; unfinished consumers delay removal.
+The chart and install bundle include Secret deletion and read-only Pod access
+for consumer checks. Installations with user-managed RBAC must grant those
+permissions before cleanup can complete.
 Chaincode lifecycle TLS replicas also exclude server private keys. During an
 upgrade, pruning an older replica waits for unfinished Jobs or Pods that still
 request the removed keys; allow them to finish, or inspect and remove stalled

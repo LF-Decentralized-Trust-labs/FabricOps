@@ -99,6 +99,11 @@ func (r *FabricNetworkReconciler) reconcileChannels(
 	componentsReady := allOrgsReady(orgStatuses)
 
 	for _, channel := range net.Spec.Channels {
+		if len(ordererInstances) > 0 {
+			if err := r.cleanupUnusedOrdererAdminTLS(ctx, net, channel, ordererInstances[0].namespace); err != nil {
+				return statuses, err
+			}
+		}
 		status := fabricopsv1alpha1.ChannelStatus{
 			Name:               channel.Name,
 			ConfigMapName:      channelConfigMapName(channel.Name),
@@ -262,7 +267,7 @@ func (r *FabricNetworkReconciler) reconcileChannelBlockGeneration(
 	if err := r.ensureChannelRBAC(ctx, net, hostOrg, channel.Name, hostNamespace); err != nil {
 		return err
 	}
-	if err := r.ensureChannelCryptoSecrets(ctx, net, channel, hostOrg, hostNamespace); err != nil {
+	if err := r.ensureChannelPublicCryptoSecrets(ctx, net, channel, hostOrg, hostNamespace); err != nil {
 		return err
 	}
 
@@ -298,7 +303,7 @@ func (r *FabricNetworkReconciler) ensureChannelRBAC(
 	return r.ensureRoleBinding(ctx, buildChannelRoleBinding(net, hostOrg, channelName, namespace))
 }
 
-func (r *FabricNetworkReconciler) ensureChannelCryptoSecrets(
+func (r *FabricNetworkReconciler) ensureChannelPublicCryptoSecrets(
 	ctx context.Context,
 	net *fabricopsv1alpha1.FabricNetwork,
 	channel fabricopsv1alpha1.Channel,
@@ -315,24 +320,6 @@ func (r *FabricNetworkReconciler) ensureChannelCryptoSecrets(
 		}
 		if err := r.ensureCopiedSecret(ctx, source, namespace, channelOrgMSPSecretName(channel.Name, org), labels, annotations,
 			mspPublicSecretItems(net.Spec.Global.TLS)); err != nil {
-			return err
-		}
-	}
-
-	ordererOrgAdminTLSSecrets := map[string]struct{}{}
-	for _, orderer := range desiredOrdererInstances(net) {
-		orgName := orderer.org.Organization.Name
-		if _, ok := ordererOrgAdminTLSSecrets[orgName]; ok {
-			continue
-		}
-		ordererOrgAdminTLSSecrets[orgName] = struct{}{}
-
-		source := client.ObjectKey{
-			Namespace: orderer.namespace,
-			Name:      identitySecretName(adminIdentityName(orderer.org), secretKindTLS),
-		}
-		if err := r.ensureCopiedSecret(ctx, source, namespace, channelOrdererAdminTLSSecretName(channel.Name, orderer.org), labels, annotations,
-			adminTLSSecretItems()); err != nil {
 			return err
 		}
 	}
@@ -372,7 +359,11 @@ func (r *FabricNetworkReconciler) reconcileOrdererJoins(
 	namespace string,
 ) (int32, string, error) {
 	var ready int32
-	for _, orderer := range desiredOrdererInstances(net) {
+	orderers := desiredOrdererInstances(net)
+	if len(orderers) > 0 && namespace != orderers[0].namespace {
+		return 0, "", fmt.Errorf("orderer joins must run in channel host namespace %s", orderers[0].namespace)
+	}
+	for _, orderer := range orderers {
 		resultReady, _, err := r.ordererJoinResultReadiness(ctx, namespace, channel.Name, orderer)
 		if err != nil {
 			return ready, "", err
@@ -382,6 +373,12 @@ func (r *FabricNetworkReconciler) reconcileOrdererJoins(
 			continue
 		}
 
+		source := client.ObjectKey{Namespace: orderer.namespace,
+			Name: identitySecretName(adminIdentityName(orderer.org), secretKindTLS)}
+		if err := r.ensureCopiedSecret(ctx, source, namespace, channelOrdererAdminTLSSecretName(channel.Name, orderer.org),
+			channelLabels(net, hostOrg, channel.Name), resourceAnnotations(net, hostOrg), adminTLSSecretItems()); err != nil {
+			return ready, "", err
+		}
 		if err := r.ensureJob(ctx, buildOrdererJoinJob(net, channel, hostOrg, namespace, orderer)); err != nil {
 			return ready, "", err
 		}

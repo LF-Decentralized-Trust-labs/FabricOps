@@ -2588,7 +2588,7 @@ var _ = Describe("FabricNetwork Controller", func() {
 			writeEnrolledOrgIdentitySecrets(ctx, &network, ordererOrg, ordererNamespace)
 			writeEnrolledOrgIdentitySecrets(ctx, &network, bankOrg, bankNamespace)
 
-			Expect(controllerReconciler.ensureChannelCryptoSecrets(ctx, &network, channel, ordererOrg, ordererNamespace)).To(Succeed())
+			Expect(controllerReconciler.ensureChannelPublicCryptoSecrets(ctx, &network, channel, ordererOrg, ordererNamespace)).To(Succeed())
 
 			var sourceOrdererMSP corev1.Secret
 			Expect(k8sClient.Get(ctx, types.NamespacedName{
@@ -3277,14 +3277,10 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(channelOrdererTLS.Data).NotTo(HaveKey(tlsServerKeyKey))
 
 			var channelOrdererAdminTLS corev1.Secret
-			Expect(k8sClient.Get(ctx, types.NamespacedName{
+			Expect(errors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{
 				Namespace: ordererNamespace,
 				Name:      "settlement-orderer-admin-tls",
-			}, &channelOrdererAdminTLS)).To(Succeed())
-			Expect(channelOrdererAdminTLS.Labels[labelAppComponent]).To(Equal(componentChannel))
-			Expect(channelOrdererAdminTLS.Labels[labelChannel]).To(Equal("settlement"))
-			Expect(channelOrdererAdminTLS.Data).To(HaveKey(tlsClientCertKey))
-			Expect(channelOrdererAdminTLS.Data).To(HaveKey(tlsClientKeyKey))
+			}, &channelOrdererAdminTLS))).To(BeTrue())
 
 			var serviceAccount corev1.ServiceAccount
 			Expect(k8sClient.Get(ctx, types.NamespacedName{
@@ -3369,6 +3365,13 @@ var _ = Describe("FabricNetwork Controller", func() {
 			Expect(network.Status.ChannelStatus[0].Ready).To(BeFalse())
 			Expect(network.Status.ChannelStatus[0].Orderers.Ready).To(Equal(int32(0)))
 			Expect(network.Status.ChannelStatus[0].Message).To(Equal("Waiting for orderer join Jobs"))
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Namespace: ordererNamespace, Name: "settlement-orderer-admin-tls",
+			}, &channelOrdererAdminTLS)).To(Succeed())
+			Expect(channelOrdererAdminTLS.Labels[labelAppComponent]).To(Equal(componentChannel))
+			Expect(channelOrdererAdminTLS.Labels[labelChannel]).To(Equal("settlement"))
+			Expect(channelOrdererAdminTLS.Data).To(HaveKey(tlsClientCertKey))
+			Expect(channelOrdererAdminTLS.Data).To(HaveKey(tlsClientKeyKey))
 
 			var ordererJoinJob batchv1.Job
 			Expect(k8sClient.Get(ctx, types.NamespacedName{

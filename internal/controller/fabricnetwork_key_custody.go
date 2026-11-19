@@ -20,10 +20,53 @@ import (
 	"context"
 	"fmt"
 
+	fabricopsv1alpha1 "github.com/LF-Decentralized-Trust-labs/FabricOps/api/v1alpha1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
+
+func (r *FabricNetworkReconciler) cleanupUnusedOrdererAdminTLS(
+	ctx context.Context, net *fabricopsv1alpha1.FabricNetwork, channel fabricopsv1alpha1.Channel, hostNamespace string,
+) error {
+	if net.UID == "" {
+		return nil
+	}
+	names := map[string]bool{}
+	for _, orderer := range desiredOrdererInstances(net) {
+		names[channelOrdererAdminTLSSecretName(channel.Name, orderer.org)] = true
+	}
+	for _, org := range net.Spec.Orgs {
+		namespace := orgNamespaceName(net, org)
+		if namespace == hostNamespace {
+			continue
+		}
+		var secrets corev1.SecretList
+		if err := r.List(ctx, &secrets, client.InNamespace(namespace),
+			client.MatchingLabels(channelLabels(net, org, channel.Name))); err != nil {
+			return err
+		}
+		for i := range secrets.Items {
+			secret := &secrets.Items[i]
+			annotations := secret.Annotations
+			if !names[secret.Name] || secret.Labels[labelIdentityKind] != "" || annotations[annotationFabricNetwork] != net.Name ||
+				annotations[annotationFabricNetworkNamespace] != net.Namespace ||
+				annotations[annotationFabricNetworkUID] != string(net.UID) {
+				continue
+			}
+			if err := r.ensureSecretKeyRemovalSafe(ctx, secret, nil); err != nil {
+				return err
+			}
+			logf.FromContext(ctx).Info("Deleting unused orderer admin TLS Secret", "namespace", namespace, "name", secret.Name)
+			if err := client.IgnoreNotFound(r.Delete(ctx, secret,
+				client.Preconditions{UID: &secret.UID, ResourceVersion: &secret.ResourceVersion})); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
 // Old Job templates are immutable and may still require key files that newer
 // certificate-only templates omit. Let these consumers finish before pruning.

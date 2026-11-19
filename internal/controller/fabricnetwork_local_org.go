@@ -113,7 +113,7 @@ func (r *FabricNetworkReconciler) reconcileLocalOrgAdd(
 	if err := r.ensureChannelRBAC(ctx, net, adminOrg, channel.Name, namespace); err != nil {
 		return false, "", err
 	}
-	if err := r.ensureChannelCryptoSecrets(ctx, net, channel, adminOrg, namespace); err != nil {
+	if err := r.ensureChannelPublicCryptoSecrets(ctx, net, channel, adminOrg, namespace); err != nil {
 		return false, "", err
 	}
 	configMap, err := buildChannelConfigMap(net, channel, adminOrg, namespace)
