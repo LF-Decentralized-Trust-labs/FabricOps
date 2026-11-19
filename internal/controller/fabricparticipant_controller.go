@@ -75,6 +75,10 @@ func (r *FabricParticipantReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
+	networkReconciler := &FabricNetworkReconciler{Client: r.Client, Scheme: r.Scheme}
+	if err := networkReconciler.recordPKCS11StateRetention(ctx, participantLocalFabricNetwork(&participant)); err != nil {
+		return ctrl.Result{}, err
+	}
 	status, reconcileErr := r.fabricParticipantStatus(ctx, &participant)
 	result := participantReconcileResult(status, reconcileErr)
 	if reflect.DeepEqual(participant.Status, status) {

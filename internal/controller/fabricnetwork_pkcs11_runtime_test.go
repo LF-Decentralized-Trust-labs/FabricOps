@@ -52,7 +52,7 @@ func TestPKCS11ClaimReferencesBlockNamespaceDeletion(t *testing.T) {
 			t.Fatal("cleanup deleted a namespace before checking token retention")
 		}
 	}
-	// This guard covers declared references, not removal of references or manual namespace deletion.
+	// Without a recorded hold, only the declared-reference fallback applies.
 	net.Spec.Orgs[1].Peer.MSPSigning.PKCS11.Runtime.StateClaims = nil
 	if err := r.cleanupFabricNetwork(t.Context(), net); err != nil {
 		t.Fatal(err)

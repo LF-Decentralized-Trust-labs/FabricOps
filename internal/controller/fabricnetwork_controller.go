@@ -350,6 +350,9 @@ func (r *FabricNetworkReconciler) reconcileOrg(
 	if err := r.ensureNamespace(ctx, buildOrgNamespace(net, org)); err != nil {
 		return status, err
 	}
+	if err := r.recordOrgPKCS11StateRetention(ctx, net, org); err != nil {
+		return status, err
+	}
 	external, err := r.reconcileExternalExposure(ctx, net, org, namespace)
 	status.ExternalEndpoints = external
 	if err != nil {
@@ -806,6 +809,9 @@ func (r *FabricNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}
 
+	if err := r.recordPKCS11StateRetention(ctx, &network); err != nil {
+		return ctrl.Result{}, err
+	}
 	if problems := validateFabricNetworkTopology(&network); len(problems) > 0 {
 		message := "Invalid Fabric topology: " + strings.Join(problems, "; ")
 		log.Info("FabricNetwork topology is invalid", "problems", problems)

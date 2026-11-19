@@ -30,9 +30,19 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Declared references are a minimum staging safeguard, not a durable retention
-// record after spec edits. Full retention is required before enabling PKCS11.
 func (r *FabricNetworkReconciler) guardPKCS11NamespaceCleanup(ctx context.Context, net *fabricopsv1alpha1.FabricNetwork) error {
+	var namespaces corev1.NamespaceList
+	selector := fabricNetworkSelector(net)
+	selector[labelAppManagedBy] = managedByValue
+	if err := r.List(ctx, &namespaces, selector); err != nil {
+		return err
+	}
+	// Check marker presence, not validity: damaged or stale records need review too.
+	for _, namespace := range namespaces.Items {
+		if _, retained := namespace.Annotations[annotationPKCS11StateRetention]; retained {
+			return fmt.Errorf("PKCS11 token state prevents namespace cleanup; review the retained state in Namespace %s before explicitly releasing its hold", namespace.Name)
+		}
+	}
 	for _, org := range net.Spec.Orgs {
 		if org.Peer == nil || org.Peer.MSPSigning == nil || org.Peer.MSPSigning.PKCS11 == nil || org.Peer.MSPSigning.PKCS11.Runtime == nil || len(org.Peer.MSPSigning.PKCS11.Runtime.StateClaims) == 0 {
 			continue

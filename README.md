@@ -725,10 +725,19 @@ References resolve in the org namespace; token state is separate from ledger,
 database, and CA claims. Provider config is mounted read-only and PIN references
 are delivered only to key actors, not mounted into the publisher. These are
 staged templates, not enabled reconciliation or a hardware-HSM compatibility claim.
-Network cleanup refuses declared token-state references before deleting org
-namespaces. Removing references or manually deleting a namespace bypasses that
-limited guard; preserve token state before either action. Use matching CRDs and
-controller builds, never the staged custody schema with an older released controller.
+For existing owned org namespaces, the controller records token claim names in
+the `fabricops.io/pkcs11-state-retention` namespace annotation, bound to the
+network and namespace UIDs. Claim changes accumulate; removing an org, provider,
+or claim reference does not release the hold. Network cleanup checks retained
+namespaces before deleting any org namespace, including orgs removed from the
+manifest. Malformed or mismatched records require manual review and are not
+overwritten. Declared references also block cleanup before a hold is recorded.
+After preserving or recovering token state, explicitly remove both its runtime
+claim references and the namespace annotation to release the hold. This guards
+FabricOps cleanup only, not manual namespace deletion, and does not verify PVC
+contents, storage retention policy, or recoverability. PKCS11 remains unavailable.
+Use matching CRDs and controller builds, never the staged custody schema with an
+older released controller.
 
 Chaincode lifecycle TLS replicas also exclude server private keys. During an
 upgrade, pruning an older replica waits for unfinished Jobs or Pods that still
