@@ -651,6 +651,15 @@ verified against the exact published MSP certificate, and the key must be marked
 sensitive and never extractable. The test CA uses local HTTP; peer transport uses
 TLS. The Test PKCS11 Images workflow also runs this Kind proof.
 
+The harness pauses the healthy peer and runs serialized startup faults for an
+incorrect PIN, missing module/token/key, and a valid certificate whose key is
+absent from the selected token. It watches each fault Pod from its creation
+resource version, rejects observed readiness, and requires a nonzero exit with
+the expected provider error. Unrelated failures do not count as a pass. The
+original peer must then recover without reenrollment, with its identity/PIN
+Secrets and durable handoff unchanged. This tests startup rejection and recovery,
+not provider loss while an already-running peer is serving traffic.
+
 The fixture is a single peer on Kind's local storage, not channel endorsement,
 multi-node CSI attachment validation, hardware isolation, vendor qualification,
 or production image certification. PKCS11 remains unavailable to users.
