@@ -602,6 +602,28 @@ The Tests workflow runs this check on pushes and pull requests. Set
 The staging check uses real Fabric protobuf tools with stubbed peer transport;
 it does not replace a live network authorization or consensus test.
 
+### Experimental PKCS#11 Image Validation
+
+Run the isolated SoftHSM capability proof with Docker:
+
+```bash
+make test-pkcs11-images
+```
+
+This builds pinned-source Fabric 3.1.0 peer and Fabric CA 1.5.15 client binaries
+with PKCS#11 support. It checks token-backed enrollment, private-key attributes,
+an empty peer MSP keystore, peer startup across new containers, and failures for
+an invalid PIN, missing module/token, or absent matching key. PIN-bearing peer
+configuration stays in a container tmpfs. Temporary containers, token storage,
+and the internal-only Docker network are removed when the test exits.
+The Test PKCS11 Images workflow runs this proof when its files change.
+The peer test uses warning-level logging and checks that generated PINs do not
+appear in logs; upstream provider debug logging must not be enabled with PINs.
+
+This is not operator integration, endorsement validation, hardware isolation,
+or a production-ready HSM image. The fixture uses a local HTTP CA and disables
+peer TLS; it does not change a Kubernetes cluster or enable `provider: PKCS11`.
+
 ### E2E Validation
 
 Run the repeatable kind-based e2e proof with:
