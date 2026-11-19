@@ -113,6 +113,12 @@ func validatePKCS11Runtime(org fabricopsv1alpha1.Org) []string {
 	for i := 0; i < org.Peer.Instances; i++ {
 		name := sanitizeName(fmt.Sprintf("%s%d", org.Peer.Prefix, i))
 		expected[name], reserved[name], reserved[couchDBName(name)] = true, true, true
+		for _, kind := range []string{secretKindMSP, secretKindTLS} {
+			output := identitySecretName(name, kind)
+			if pin.Name == output || selector.Name == output {
+				problems = append(problems, "runtime provider credentials must not alias peer identity output Secrets")
+			}
+		}
 	}
 	if len(rt.StateClaims) != len(expected) {
 		problems = append(problems, "runtime.stateClaims must assign exactly one claim to every peer")
@@ -179,6 +185,7 @@ func applyPKCS11Runtime(pod *corev1.PodSpec, org fabricopsv1alpha1.Org, peer str
 		noPrivilege := false
 		pod.Containers[0].SecurityContext = &corev1.SecurityContext{RunAsUser: &publisherUID, RunAsGroup: &group, RunAsNonRoot: &nonRoot, AllowPrivilegeEscalation: &noPrivilege, Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}}}
 		actor.Env = append(actor.Env, corev1.EnvVar{Name: "FABRICOPS_ENROLLMENT_DIR", Value: enrollmentWorkDir})
+		applyPKCS11PublisherAccess(pod, peer)
 	} else {
 		actor = &pod.Containers[0]
 		actor.Image = rt.PeerImage

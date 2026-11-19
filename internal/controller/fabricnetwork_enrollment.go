@@ -141,6 +141,11 @@ func (r *FabricNetworkReconciler) reconcileWorkloadEnrollment(
 	component string,
 	csrHosts []string,
 ) error {
+	if workloadMSPSecretKind(org, component) == secretKindPeerPKCS11MSP {
+		if err := r.preparePKCS11Publisher(ctx, net, org, namespace, workloadName); err != nil {
+			return err
+		}
+	}
 	enrolled, err := r.workloadIdentityEnrolled(ctx, net, org, namespace, workloadName, component)
 	if err != nil {
 		return err
@@ -452,6 +457,8 @@ func buildWorkloadEnrollmentJob(
 	if workloadMSPSecretKind(org, component) == secretKindPeerPKCS11MSP {
 		if err := applyPKCS11Runtime(&job.Spec.Template.Spec, org, workloadName, true); err != nil {
 			job.Spec.Template.Spec.InitContainers[0].Command = []string{"sh", "-ec", enrollmentScript}
+			automount := false
+			job.Spec.Template.Spec.AutomountServiceAccountToken = &automount
 		}
 	}
 	return job

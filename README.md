@@ -725,6 +725,16 @@ References resolve in the org namespace; token state is separate from ledger,
 database, and CA claims. Provider config is mounted read-only and PIN references
 are delivered only to key actors, not mounted into the publisher. These are
 staged templates, not enabled reconciliation or a hardware-HSM compatibility claim.
+The staged PKCS11 publisher uses a peer-specific ServiceAccount with automatic
+token mounting disabled. Only the publisher receives an explicit, short-lived
+API token projection; the enroller and peer runtime do not. Its generated Role
+allows only `get` and `patch` on that peer's controller-prepared MSP and optional
+TLS output Secrets, not Secret creation, listing, or access to provider or
+enrollment credentials. PIN/config references cannot alias peer output Secrets.
+Existing foreign-owned destinations and software-key MSP material are refused,
+not replaced. Admin and software enrollment still use their existing broader
+RBAC; those paths need review before PKCS11 can be enabled.
+
 For existing owned org namespaces, the controller records token claim names in
 the `fabricops.io/pkcs11-state-retention` namespace annotation, bound to the
 network and namespace UIDs. Claim changes accumulate; removing an org, provider,

@@ -196,6 +196,9 @@ func TestPKCS11RuntimeMountsStayWithKeyActors(t *testing.T) {
 	job := buildWorkloadEnrollmentJob(net, org, "org", "peer1", componentPeer, nil)
 	pod := job.Spec.Template.Spec
 	enroller, publisher := pod.InitContainers[0], pod.Containers[0]
+	if pod.AutomountServiceAccountToken == nil || *pod.AutomountServiceAccountToken || pod.ServiceAccountName == enrollmentServiceAccountName(org) {
+		t.Fatal("PKCS11 enrollment still shares the broad enrollment API identity")
+	}
 	if enroller.Image != "enrollment:development" || !strings.Contains(strings.Join(enroller.Command, " "), "fabricops-enroll-peer") {
 		t.Error("provider-aware enrollment executable/image was not selected")
 	}
@@ -216,6 +219,9 @@ func TestPKCS11RuntimeMountsStayWithKeyActors(t *testing.T) {
 		}
 	}
 	for _, mount := range publisher.VolumeMounts {
+		if mount.Name == pkcs11PublisherTokenVolume && mount.ReadOnly && mount.MountPath == "/var/run/secrets/kubernetes.io/serviceaccount" {
+			continue
+		}
 		if mount.Name != enrollmentVolumeName || mount.SubPath != "output" || !mount.ReadOnly {
 			t.Error("publisher can access private working/provider material")
 		}
