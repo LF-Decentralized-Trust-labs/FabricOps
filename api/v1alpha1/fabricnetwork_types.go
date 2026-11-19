@@ -237,6 +237,11 @@ type OrdererGroup struct {
 }
 
 type PeerConfig struct {
+	// MSPSigning selects custody for peer MSP signing only, never TLS or admin keys.
+	// Omission retains Secret-backed signing. PKCS11 is reserved and currently
+	// blocks reconciliation until enrollment and runtime support are available.
+	// +optional
+	MSPSigning *PeerMSPSigningConfig `json:"mspSigning,omitempty"`
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=50
 	Instances int `json:"instances"`
@@ -253,6 +258,37 @@ type PeerConfig struct {
 	// in-cluster Service DNS name.
 	// +optional
 	ExternalEndpoints []ExternalEndpoint `json:"externalEndpoints,omitempty"`
+}
+
+// PeerMSPSigningConfig deliberately does not configure CA, orderer, or admin signing.
+// +kubebuilder:validation:XValidation:rule="self.provider == 'PKCS11' ? has(self.pkcs11) : !has(self.pkcs11)",message="pkcs11 must be set only for provider PKCS11"
+type PeerMSPSigningConfig struct {
+	// +kubebuilder:validation:Enum=Secret;PKCS11
+	Provider string `json:"provider"`
+	// +optional
+	PKCS11 *PeerPKCS11Config `json:"pkcs11,omitempty"`
+}
+
+// PeerPKCS11Config identifies a token, not an exported private key. Each peer's
+// certificate SKI must bind its own key; token slots are not stable identifiers.
+// PINSecretKeyRef is resolved in the generated org namespace, never the CR namespace.
+// +kubebuilder:validation:XValidation:rule="has(self.pinSecretKeyRef.name) && size(self.pinSecretKeyRef.name) > 0",message="pinSecretKeyRef.name is required"
+// +kubebuilder:validation:XValidation:rule="size(self.pinSecretKeyRef.key) > 0",message="pinSecretKeyRef.key is required"
+// +kubebuilder:validation:XValidation:rule="!has(self.pinSecretKeyRef.optional) || !self.pinSecretKeyRef.optional",message="PIN Secret references must not be optional"
+type PeerPKCS11Config struct {
+	// Library is an absolute module path shared by enrollment and peer containers.
+	// +kubebuilder:validation:MinLength=2
+	// +kubebuilder:validation:MaxLength=1024
+	// +kubebuilder:validation:Pattern="^/[^[:cntrl:]]+$"
+	Library string `json:"library"`
+	// TokenLabel selects the token by label, not by slot number. Multiple peers
+	// may use the same token, but must have distinct certificate-bound keys.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=32
+	// +kubebuilder:validation:Pattern="^[^[:cntrl:]]+$"
+	TokenLabel string `json:"tokenLabel"`
+	// PINSecretKeyRef references a required PIN; literal PINs are not accepted.
+	PINSecretKeyRef corev1.SecretKeySelector `json:"pinSecretKeyRef"`
 }
 
 type ExternalEndpoint struct {

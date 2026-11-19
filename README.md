@@ -680,6 +680,16 @@ replicas are preserved; unfinished consumers delay removal.
 The chart and install bundle include Secret deletion and read-only Pod access
 for consumer checks. Installations with user-managed RBAC must grant those
 permissions before cleanup can complete.
+
+Peer `mspSigning` is optional; omission or `provider: Secret` keeps the existing
+Secret-backed MSP signing path. `provider: PKCS11` is a reserved contract, not
+runtime support: both `FabricNetwork` and `FabricParticipant` report it as
+unavailable before provisioning and do not fall back to software signing.
+Its `pkcs11` fields identify a module path, token label, and required
+`pinSecretKeyRef` in the generated org namespace. Literal PINs and exported
+private keys are not configuration fields. This setting does not change TLS,
+admin, orderer, or CA signing. Do not select PKCS11 for a running network.
+
 Chaincode lifecycle TLS replicas also exclude server private keys. During an
 upgrade, pruning an older replica waits for unfinished Jobs or Pods that still
 request the removed keys; allow them to finish, or inspect and remove stalled

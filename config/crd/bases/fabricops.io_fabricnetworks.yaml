@@ -1332,6 +1332,83 @@ spec:
                           maximum: 50
                           minimum: 1
                           type: integer
+                        mspSigning:
+                          description: |-
+                            MSPSigning selects custody for peer MSP signing only, never TLS or admin keys.
+                            Omission retains Secret-backed signing. PKCS11 is reserved and currently
+                            blocks reconciliation until enrollment and runtime support are available.
+                          properties:
+                            pkcs11:
+                              description: |-
+                                PeerPKCS11Config identifies a token, not an exported private key. Each peer's
+                                certificate SKI must bind its own key; token slots are not stable identifiers.
+                                PINSecretKeyRef is resolved in the generated org namespace, never the CR namespace.
+                              properties:
+                                library:
+                                  description: Library is an absolute module path
+                                    shared by enrollment and peer containers.
+                                  maxLength: 1024
+                                  minLength: 2
+                                  pattern: ^/[^[:cntrl:]]+$
+                                  type: string
+                                pinSecretKeyRef:
+                                  description: PINSecretKeyRef references a required
+                                    PIN; literal PINs are not accepted.
+                                  properties:
+                                    key:
+                                      description: The key of the secret to select
+                                        from.  Must be a valid secret key.
+                                      type: string
+                                    name:
+                                      default: ""
+                                      description: |-
+                                        Name of the referent.
+                                        This field is effectively required, but due to backwards compatibility is
+                                        allowed to be empty. Instances of this type with an empty value here are
+                                        almost certainly wrong.
+                                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                      type: string
+                                    optional:
+                                      description: Specify whether the Secret or its
+                                        key must be defined
+                                      type: boolean
+                                  required:
+                                  - key
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                tokenLabel:
+                                  description: |-
+                                    TokenLabel selects the token by label, not by slot number. Multiple peers
+                                    may use the same token, but must have distinct certificate-bound keys.
+                                  maxLength: 32
+                                  minLength: 1
+                                  pattern: ^[^[:cntrl:]]+$
+                                  type: string
+                              required:
+                              - library
+                              - pinSecretKeyRef
+                              - tokenLabel
+                              type: object
+                              x-kubernetes-validations:
+                              - message: pinSecretKeyRef.name is required
+                                rule: has(self.pinSecretKeyRef.name) && size(self.pinSecretKeyRef.name)
+                                  > 0
+                              - message: pinSecretKeyRef.key is required
+                                rule: size(self.pinSecretKeyRef.key) > 0
+                              - message: PIN Secret references must not be optional
+                                rule: '!has(self.pinSecretKeyRef.optional) || !self.pinSecretKeyRef.optional'
+                            provider:
+                              enum:
+                              - Secret
+                              - PKCS11
+                              type: string
+                          required:
+                          - provider
+                          type: object
+                          x-kubernetes-validations:
+                          - message: pkcs11 must be set only for provider PKCS11
+                            rule: 'self.provider == ''PKCS11'' ? has(self.pkcs11)
+                              : !has(self.pkcs11)'
                         prefix:
                           maxLength: 50
                           minLength: 1

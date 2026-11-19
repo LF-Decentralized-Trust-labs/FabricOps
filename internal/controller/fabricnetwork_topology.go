@@ -52,6 +52,7 @@ func validateFabricNetworkTopology(net *fabricopsv1alpha1.FabricNetwork) []strin
 		}
 		problems = append(problems, validateOrgOrdererConsensus(net, org)...)
 		problems = append(problems, validateOrgPeerDatabase(org)...)
+		problems = append(problems, validatePeerMSPSigning(org)...)
 		problems = append(problems, validateOrgExternalEndpoints(org)...)
 		if !net.Spec.Global.TLS && len(orgExposureTargets(net, org, "")) > 0 {
 			problems = append(problems, "external exposure requires spec.global.tls=true")
