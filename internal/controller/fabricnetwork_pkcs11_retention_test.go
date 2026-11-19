@@ -163,6 +163,15 @@ func TestPKCS11RetentionRejectsUnsafeRecordsAndOwnership(t *testing.T) {
 		{"invalid recorded claim", func(_ *fabricopsv1alpha1.FabricNetwork, n *corev1.Namespace) {
 			n.Annotations[annotationPKCS11StateRetention] = `{"version":1,"networkUID":"network-uid","namespaceUID":"namespace-uid","claims":["INVALID"]}`
 		}},
+		{"missing bound UID", func(_ *fabricopsv1alpha1.FabricNetwork, n *corev1.Namespace) {
+			n.Annotations[annotationPKCS11StateRetention] = `{"version":1,"networkUID":"network-uid","namespaceUID":"namespace-uid","claims":["token-peer0"],"claimBindings":{"token-peer0":{"peer":"peer0"}}}`
+		}},
+		{"unretained binding", func(_ *fabricopsv1alpha1.FabricNetwork, n *corev1.Namespace) {
+			n.Annotations[annotationPKCS11StateRetention] = `{"version":1,"networkUID":"network-uid","namespaceUID":"namespace-uid","claims":["other"],"claimBindings":{"token-peer0":{"peer":"peer0","uid":"claim-uid"}}}`
+		}},
+		{"invalid bound peer", func(_ *fabricopsv1alpha1.FabricNetwork, n *corev1.Namespace) {
+			n.Annotations[annotationPKCS11StateRetention] = `{"version":1,"networkUID":"network-uid","namespaceUID":"namespace-uid","claims":["token-peer0"],"claimBindings":{"token-peer0":{"peer":"INVALID","uid":"claim-uid"}}}`
+		}},
 		{"foreign UID annotation", func(_ *fabricopsv1alpha1.FabricNetwork, n *corev1.Namespace) {
 			n.Annotations[annotationFabricNetworkUID] = "someone-else"
 		}},

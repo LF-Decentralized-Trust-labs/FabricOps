@@ -747,10 +747,25 @@ Existing foreign-owned destinations and software-key MSP material are refused,
 not replaced. Provider references also cannot alias software/admin/orderer
 enrollment outputs.
 
+Staged storage validation requires an existing, non-deleting, already `Bound`
+filesystem PVC for each peer, with a volume name and exactly one access mode:
+`ReadWriteOnce` or `ReadWriteOncePod`. Each user-prepared claim must have
+`fabricops.io/fabricnetwork-uid` set to the owning resource UID and
+`fabricops.io/pkcs11-peer` set to its declared peer name, without a controller
+owner reference. FabricOps does not create, relabel, initialize, or repair token
+claims. Prepare delayed-binding storage externally before enrollment; pending,
+lost, raw-block, read-only, and shared-access claims are refused by this staged
+path. These checks do not attest filesystem permissions, token/key contents,
+CSI behavior, or recoverability. `ReadWriteOnce` is not a single-Pod lock; see
+[Kubernetes access modes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes).
+
 For existing owned org namespaces, the controller records token claim names in
 the `fabricops.io/pkcs11-state-retention` namespace annotation, bound to the
 network and namespace UIDs. Claim changes accumulate; removing an org, provider,
-or claim reference does not release the hold. Network cleanup checks retained
+or claim reference does not release the hold. Validated claims also bind their
+PVC UIDs and peer assignments into that record. Recreating a PVC with the same
+name or reassigning it to another peer requires explicit recovery review, not
+automatic adoption. Network cleanup checks retained
 namespaces before deleting any org namespace, including orgs removed from the
 manifest. Malformed or mismatched records require manual review and are not
 overwritten. Declared references also block cleanup before a hold is recorded.

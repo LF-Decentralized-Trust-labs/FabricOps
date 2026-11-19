@@ -1980,6 +1980,11 @@ func (r *FabricNetworkReconciler) reconcilePeers(
 
 	for i := 0; i < org.Peer.Instances; i++ {
 		deploy := buildPeerDeployment(net, org, i, namespace)
+		if workloadMSPSecretKind(org, componentPeer) == secretKindPeerPKCS11MSP {
+			if err := r.validateAndBindPKCS11StateClaim(ctx, net, org, namespace, deploy.Name); err != nil {
+				return status, err
+			}
+		}
 		if err := r.setDeploymentIdentityRevision(ctx, deploy, net, deploy.Name); err != nil {
 			return status, err
 		}

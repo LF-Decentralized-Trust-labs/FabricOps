@@ -36,10 +36,16 @@ const annotationPKCS11StateRetention = "fabricops.io/pkcs11-state-retention"
 // Only public references belong here. Token contents and provider credentials
 // must never enter namespace metadata or controller logs.
 type pkcs11StateRetention struct {
-	Version      int       `json:"version"`
-	NetworkUID   types.UID `json:"networkUID"`
-	NamespaceUID types.UID `json:"namespaceUID"`
-	Claims       []string  `json:"claims"`
+	Version       int                           `json:"version"`
+	NetworkUID    types.UID                     `json:"networkUID"`
+	NamespaceUID  types.UID                     `json:"namespaceUID"`
+	Claims        []string                      `json:"claims"`
+	ClaimBindings map[string]pkcs11ClaimBinding `json:"claimBindings,omitempty"`
+}
+
+type pkcs11ClaimBinding struct {
+	UID  types.UID `json:"uid"`
+	Peer string    `json:"peer"`
 }
 
 func (r *FabricNetworkReconciler) recordPKCS11StateRetention(ctx context.Context, net *fabricopsv1alpha1.FabricNetwork) error {
@@ -52,6 +58,10 @@ func (r *FabricNetworkReconciler) recordPKCS11StateRetention(ctx context.Context
 }
 
 func (r *FabricNetworkReconciler) recordOrgPKCS11StateRetention(ctx context.Context, net *fabricopsv1alpha1.FabricNetwork, org fabricopsv1alpha1.Org) error {
+	return r.updateOrgPKCS11StateRetention(ctx, net, org, nil)
+}
+
+func (r *FabricNetworkReconciler) updateOrgPKCS11StateRetention(ctx context.Context, net *fabricopsv1alpha1.FabricNetwork, org fabricopsv1alpha1.Org, bindings map[string]pkcs11ClaimBinding) error {
 	if org.Peer == nil || org.Peer.MSPSigning == nil || org.Peer.MSPSigning.PKCS11 == nil || org.Peer.MSPSigning.PKCS11.Runtime == nil {
 		return nil
 	}
@@ -61,6 +71,9 @@ func (r *FabricNetworkReconciler) recordOrgPKCS11StateRetention(ctx context.Cont
 	}
 	var namespace corev1.Namespace
 	if err := r.Get(ctx, client.ObjectKey{Name: orgNamespaceName(net, org)}, &namespace); err != nil {
+		if len(bindings) > 0 {
+			return err
+		}
 		return client.IgnoreNotFound(err)
 	}
 	return r.updateObjectWithRetry(ctx, &namespace, func(object client.Object) (bool, error) {
@@ -81,6 +94,11 @@ func (r *FabricNetworkReconciler) recordOrgPKCS11StateRetention(ctx context.Cont
 				return false, fmt.Errorf("PKCS11 state retention record requires manual review; refusing to overwrite it")
 			}
 		}
+		for name, binding := range record.ClaimBindings {
+			if !slices.Contains(record.Claims, name) || binding.UID == "" || len(validation.IsDNS1123Label(binding.Peer)) != 0 {
+				return false, fmt.Errorf("PKCS11 claim retention binding requires manual review; refusing to overwrite it")
+			}
+		}
 		for _, state := range states {
 			record.Claims = append(record.Claims, state.ClaimName)
 		}
@@ -88,6 +106,15 @@ func (r *FabricNetworkReconciler) recordOrgPKCS11StateRetention(ctx context.Cont
 			if len(validation.IsDNS1123Subdomain(claim)) != 0 {
 				return false, fmt.Errorf("PKCS11 state retention requires valid claim names; refusing to change the record")
 			}
+		}
+		for name, binding := range bindings {
+			if previous, exists := record.ClaimBindings[name]; exists && previous != binding {
+				return false, fmt.Errorf("PKCS11 token claim UID or peer assignment changed; explicit recovery review is required")
+			}
+			if record.ClaimBindings == nil {
+				record.ClaimBindings = map[string]pkcs11ClaimBinding{}
+			}
+			record.ClaimBindings[name] = binding
 		}
 		slices.Sort(record.Claims)
 		record.Claims = slices.Compact(record.Claims)

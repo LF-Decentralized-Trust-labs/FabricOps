@@ -142,6 +142,9 @@ func (r *FabricNetworkReconciler) reconcileWorkloadEnrollment(
 	csrHosts []string,
 ) error {
 	if workloadMSPSecretKind(org, component) == secretKindPeerPKCS11MSP {
+		if err := r.validateAndBindPKCS11StateClaim(ctx, net, org, namespace, workloadName); err != nil {
+			return err
+		}
 		if err := r.preparePKCS11Publisher(ctx, net, org, namespace, workloadName); err != nil {
 			return err
 		}
