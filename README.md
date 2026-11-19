@@ -747,6 +747,23 @@ Existing foreign-owned destinations and software-key MSP material are refused,
 not replaced. Provider references also cannot alias software/admin/orderer
 enrollment outputs.
 
+The staged enrollment-to-peer handoff requires an owned, matching enrollment
+Job reporting `Complete=True` and `active: 0`, plus valid published identities.
+It records the Job UID, enrollment-plan digest, and public MSP UID/content digest
+in namespace retention metadata before retiring that Job with background
+cleanup. The first peer deployment waits until the Job and every Pod referencing
+its token claim have disappeared from the API, including terminal or unrelated
+Pods. FabricOps does not directly delete unrelated Pods. Marked PKCS11 enrollment
+Jobs bypass general successful-history TTL cleanup; the handoff retires them
+after recording evidence. Failed Jobs remain available for inspection.
+The durable receipt survives Job cleanup, so later reconciliation does not
+repeat enrollment. Changed plans, replaced Jobs/MSPs, and lost identity material
+require recovery review. Secret existence alone is not enrollment proof.
+This is publication and API-level sequencing evidence, not token key-binding,
+filesystem-unmount, or CSI-detach attestation. See
+[Kubernetes Job lifecycle](https://kubernetes.io/docs/concepts/workloads/controllers/job/)
+and [garbage collection](https://kubernetes.io/docs/concepts/architecture/garbage-collection/).
+
 Staged storage validation requires an existing, non-deleting, already `Bound`
 filesystem PVC for each peer, with a volume name and exactly one access mode:
 `ReadWriteOnce` or `ReadWriteOncePod`. Each user-prepared claim must have

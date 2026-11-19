@@ -1167,6 +1167,7 @@ func (r *FabricNetworkReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&corev1.PersistentVolumeClaim{}, enqueueOwningFabricNetwork).
 		Watches(&networkingv1.NetworkPolicy{}, enqueueOwningFabricNetwork).
 		Watches(&batchv1.Job{}, enqueueOwningFabricNetwork).
+		Watches(&corev1.Pod{}, enqueueOwningFabricNetwork).
 		Watches(&rbacv1.Role{}, enqueueOwningFabricNetwork).
 		Watches(&rbacv1.RoleBinding{}, enqueueOwningFabricNetwork).
 		Named("fabricnetwork").

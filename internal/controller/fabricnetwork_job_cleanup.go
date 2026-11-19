@@ -101,7 +101,7 @@ func (r *FabricNetworkReconciler) cleanupSucceededJobs(
 }
 
 func succeededJobCleanupEligible(job *batchv1.Job) bool {
-	return job.Annotations[annotationSucceededJobCleanup] == "true"
+	return job.Annotations[annotationSucceededJobCleanup] == "true" && job.Annotations[annotationPKCS11EnrollmentPlan] == ""
 }
 
 func fabricNetworkSelector(net *fabricopsv1alpha1.FabricNetwork) client.MatchingLabels {

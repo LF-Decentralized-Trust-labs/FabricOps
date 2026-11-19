@@ -44,8 +44,9 @@ type pkcs11StateRetention struct {
 }
 
 type pkcs11ClaimBinding struct {
-	UID  types.UID `json:"uid"`
-	Peer string    `json:"peer"`
+	UID        types.UID                `json:"uid"`
+	Peer       string                   `json:"peer"`
+	Enrollment *pkcs11EnrollmentHandoff `json:"enrollment,omitempty"`
 }
 
 func (r *FabricNetworkReconciler) recordPKCS11StateRetention(ctx context.Context, net *fabricopsv1alpha1.FabricNetwork) error {
@@ -98,6 +99,9 @@ func (r *FabricNetworkReconciler) updateOrgPKCS11StateRetention(ctx context.Cont
 			if !slices.Contains(record.Claims, name) || binding.UID == "" || len(validation.IsDNS1123Label(binding.Peer)) != 0 {
 				return false, fmt.Errorf("PKCS11 claim retention binding requires manual review; refusing to overwrite it")
 			}
+			if binding.Enrollment != nil && !validPKCS11Handoff(*binding.Enrollment) {
+				return false, fmt.Errorf("PKCS11 enrollment handoff requires manual review")
+			}
 		}
 		for _, state := range states {
 			record.Claims = append(record.Claims, state.ClaimName)
@@ -108,8 +112,25 @@ func (r *FabricNetworkReconciler) updateOrgPKCS11StateRetention(ctx context.Cont
 			}
 		}
 		for name, binding := range bindings {
-			if previous, exists := record.ClaimBindings[name]; exists && previous != binding {
-				return false, fmt.Errorf("PKCS11 token claim UID or peer assignment changed; explicit recovery review is required")
+			if previous, exists := record.ClaimBindings[name]; exists {
+				if previous.UID != binding.UID || previous.Peer != binding.Peer {
+					return false, fmt.Errorf("PKCS11 token claim UID or peer assignment changed; explicit recovery review is required")
+				}
+				if binding.Enrollment == nil {
+					binding.Enrollment = previous.Enrollment
+				} else if previous.Enrollment != nil {
+					old, next := *previous.Enrollment, *binding.Enrollment
+					if old.Drained && !next.Drained {
+						return false, fmt.Errorf("PKCS11 enrollment handoff cannot be reset")
+					}
+					old.Drained, next.Drained = false, false
+					if old != next {
+						return false, fmt.Errorf("PKCS11 enrollment handoff changed; explicit recovery review is required")
+					}
+				}
+			}
+			if binding.Enrollment != nil && !validPKCS11Handoff(*binding.Enrollment) {
+				return false, fmt.Errorf("PKCS11 enrollment handoff is invalid")
 			}
 			if record.ClaimBindings == nil {
 				record.ClaimBindings = map[string]pkcs11ClaimBinding{}

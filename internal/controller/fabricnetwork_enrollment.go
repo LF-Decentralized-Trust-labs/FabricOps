@@ -157,6 +157,15 @@ func (r *FabricNetworkReconciler) reconcileWorkloadEnrollment(
 		return nil
 	}
 
+	if workloadMSPSecretKind(org, component) == secretKindPeerPKCS11MSP {
+		_, binding, err := r.pkcs11PeerBinding(ctx, net, org, namespace, workloadName)
+		if err != nil {
+			return err
+		}
+		if binding.Enrollment != nil {
+			return fmt.Errorf("PKCS11 identity material is missing or invalid after handoff; automatic reenrollment is disabled")
+		}
+	}
 	return r.ensureJob(ctx, buildWorkloadEnrollmentJob(net, org, namespace, workloadName, component, csrHosts))
 }
 
@@ -469,10 +478,16 @@ func buildWorkloadEnrollmentJob(
 		},
 	}
 	if workloadMSPSecretKind(org, component) == secretKindPeerPKCS11MSP {
+		job.Annotations[annotationSucceededJobCleanup] = "false"
 		if err := applyPKCS11Runtime(&job.Spec.Template.Spec, org, workloadName, true); err != nil {
 			job.Spec.Template.Spec.InitContainers[0].Command = []string{"sh", "-ec", enrollmentScript}
 			automount := false
 			job.Spec.Template.Spec.AutomountServiceAccountToken = &automount
+		} else {
+			digest, err := pkcs11HandoffDigest(job.Spec.Template.Spec)
+			if err == nil {
+				job.Annotations[annotationPKCS11EnrollmentPlan] = digest
+			}
 		}
 	} else {
 		applyEnrollmentPublisherToken(&job.Spec.Template.Spec)
