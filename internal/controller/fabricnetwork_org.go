@@ -1747,7 +1747,7 @@ func buildPeerDeployment(
 		env = append(env, couchDBPeerEnv(name, namespace)...)
 	}
 
-	return &appsv1.Deployment{
+	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
 			Namespace:   namespace,
@@ -1792,6 +1792,12 @@ func buildPeerDeployment(
 			},
 		},
 	}
+	if workloadMSPSecretKind(org, componentPeer) == secretKindPeerPKCS11MSP {
+		if err := applyPKCS11Runtime(&deployment.Spec.Template.Spec, org, name, false); err != nil {
+			deployment.Spec.Template.Spec.Containers[0].Command = []string{"sh", "-ec", "echo 'PKCS11 runtime access is incomplete; refusing software fallback' >&2\nexit 1"}
+		}
+	}
+	return deployment
 }
 
 func ccaasBuilderConfig(peerName string) string {

@@ -289,6 +289,55 @@ type PeerPKCS11Config struct {
 	TokenLabel string `json:"tokenLabel"`
 	// PINSecretKeyRef references a required PIN; literal PINs are not accepted.
 	PINSecretKeyRef corev1.SecretKeySelector `json:"pinSecretKeyRef"`
+	// Runtime describes reserved pod-level provider access. It does not enable
+	// PKCS11 reconciliation or assert image/provider capability.
+	// +optional
+	Runtime *PeerPKCS11Runtime `json:"runtime,omitempty"`
+}
+
+// PeerPKCS11Runtime references user-prepared, org-local resources. FabricOps
+// does not initialize tokens, import keys, or provision token-storage claims.
+// The first access layout is bounded to the SoftHSM capability proof.
+// +kubebuilder:validation:XValidation:rule="has(self.configSecretKeyRef.name) && size(self.configSecretKeyRef.name) > 0 && size(self.configSecretKeyRef.key) > 0",message="provider configuration requires a Secret name and key"
+// +kubebuilder:validation:XValidation:rule="!has(self.configSecretKeyRef.optional) || !self.configSecretKeyRef.optional",message="provider configuration must not be optional"
+type PeerPKCS11Runtime struct {
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	EnrollmentImage string `json:"enrollmentImage"`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	PeerImage string `json:"peerImage"`
+	// ConfigSecretKeyRef selects only the provider's configuration file, not PIN data.
+	ConfigSecretKeyRef corev1.SecretKeySelector `json:"configSecretKeyRef"`
+	// ConfigEnv is the provider variable pointing to the mounted config file.
+	// +kubebuilder:validation:Enum=SOFTHSM2_CONF
+	ConfigEnv string `json:"configEnv"`
+	// RunAsUser and FSGroup must match the prepared token storage permissions.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=2147483647
+	RunAsUser int64 `json:"runAsUser"`
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=2147483647
+	FSGroup int64 `json:"fsGroup"`
+	// StateClaims assigns a distinct existing claim to each peer. Token state
+	// mounts at /var/lib/fabricops-hsm/tokens; provider config is read-only.
+	// +optional
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=50
+	// +listType=map
+	// +listMapKey=peer
+	StateClaims []PeerPKCS11StateClaim `json:"stateClaims,omitempty"`
+}
+
+type PeerPKCS11StateClaim struct {
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+	Peer string `json:"peer"`
+	// ClaimName is resolved in the generated org namespace, never the CR namespace.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	ClaimName string `json:"claimName"`
 }
 
 type ExternalEndpoint struct {

@@ -390,7 +390,7 @@ func buildWorkloadEnrollmentJob(
 		enrollmentScript = "echo 'PKCS11 peer enrollment wiring is unavailable; refusing software key generation' >&2\nexit 1\n"
 	}
 
-	return &batchv1.Job{
+	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        workloadEnrollmentJobName(workloadName),
 			Namespace:   namespace,
@@ -449,6 +449,12 @@ func buildWorkloadEnrollmentJob(
 			},
 		},
 	}
+	if workloadMSPSecretKind(org, component) == secretKindPeerPKCS11MSP {
+		if err := applyPKCS11Runtime(&job.Spec.Template.Spec, org, workloadName, true); err != nil {
+			job.Spec.Template.Spec.InitContainers[0].Command = []string{"sh", "-ec", enrollmentScript}
+		}
+	}
+	return job
 }
 
 func adminEnrollmentEnv(org fabricopsv1alpha1.Org, namespace string) []corev1.EnvVar {

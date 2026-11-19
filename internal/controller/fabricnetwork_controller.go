@@ -123,6 +123,9 @@ func (r *FabricNetworkReconciler) cleanupFabricNetwork(
 	net *fabricopsv1alpha1.FabricNetwork,
 ) error {
 	log := logf.FromContext(ctx)
+	if err := r.guardPKCS11NamespaceCleanup(ctx, net); err != nil {
+		return err
+	}
 
 	for _, org := range net.Spec.Orgs {
 		namespaceName := orgNamespaceName(net, org)

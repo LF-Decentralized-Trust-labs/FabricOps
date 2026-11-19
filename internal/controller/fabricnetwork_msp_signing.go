@@ -69,5 +69,8 @@ func validatePeerMSPSigning(org fabricopsv1alpha1.Org) []string {
 		(selector.Optional != nil && *selector.Optional) {
 		problems = append(problems, prefix+".pkcs11.pinSecretKeyRef must name a required org-local Secret key")
 	}
+	for _, problem := range validatePKCS11Runtime(org) {
+		problems = append(problems, prefix+".pkcs11 "+problem)
+	}
 	return problems
 }

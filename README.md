@@ -718,6 +718,18 @@ Its `pkcs11` fields identify a module path, token label, and required
 private keys are not configuration fields. This setting does not change TLS,
 admin, orderer, or CA signing. Do not select PKCS11 for a running network.
 
+The reserved `pkcs11.runtime` layout names enrollment/peer images, a provider
+config Secret key, explicit non-root UID/group, and a separate existing token
+claim per peer. Its current config binding is limited to `SOFTHSM2_CONF`.
+References resolve in the org namespace; token state is separate from ledger,
+database, and CA claims. Provider config is mounted read-only and PIN references
+are delivered only to key actors, not mounted into the publisher. These are
+staged templates, not enabled reconciliation or a hardware-HSM compatibility claim.
+Network cleanup refuses declared token-state references before deleting org
+namespaces. Removing references or manually deleting a namespace bypasses that
+limited guard; preserve token state before either action. Use matching CRDs and
+controller builds, never the staged custody schema with an older released controller.
+
 Chaincode lifecycle TLS replicas also exclude server private keys. During an
 upgrade, pruning an older replica waits for unfinished Jobs or Pods that still
 request the removed keys; allow them to finish, or inspect and remove stalled
