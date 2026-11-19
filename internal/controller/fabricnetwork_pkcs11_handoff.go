@@ -69,6 +69,7 @@ func validPKCS11Handoff(h pkcs11EnrollmentHandoff) bool {
 
 func validatePKCS11EnrollmentJob(job, expected *batchv1.Job) (bool, error) {
 	if job.UID == "" || !publisherObjectOwned(job, expected) || !apiequality.Semantic.DeepDerivative(expected.Spec.Template.Spec, job.Spec.Template.Spec) ||
+		job.Spec.BackoffLimit == nil || *job.Spec.BackoffLimit != 0 ||
 		job.Spec.Template.Spec.HostNetwork || job.Spec.Template.Spec.HostPID || job.Spec.Template.Spec.HostIPC ||
 		(job.Spec.Completions != nil && *job.Spec.Completions != 1) || (job.Spec.Parallelism != nil && *job.Spec.Parallelism != 1) {
 		return false, fmt.Errorf("PKCS11 enrollment Job ownership or plan requires review")

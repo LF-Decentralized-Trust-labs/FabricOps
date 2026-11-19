@@ -101,7 +101,15 @@ fi
 if grep -Eq 'PRIVATE KEY-----' "$work/staged/msp/"*; then fail 'private key PEM found in public MSP output'; fi
 # A future publisher shares only output through the pod's explicit group, not
 # registrar keys or provider configuration. No world-readable key material.
-chmod g+rx "$work"
+# Kubernetes owns an EmptyDir mount root even with fsGroup configured. Do not
+# chmod that root as a non-root actor; require its existing group traversal.
+if [ "$(stat -c %u "$work")" = "$(id -u)" ]; then
+  chmod g+rx "$work"
+else
+  [ "$(stat -c %g "$work")" = "$(id -g)" ] \
+    && [ "$((0$(stat -c %a "$work") & 0010))" -ne 0 ] \
+    || fail 'working mount does not permit publisher group traversal'
+fi
 chmod -R g+rX "$work/staged"
 mv "$work/staged" "$work/output"
 echo 'PKCS11 peer enrollment output is ready; MSP signing key remains in the token'

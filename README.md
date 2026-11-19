@@ -630,6 +630,31 @@ This is not operator integration, endorsement validation, hardware isolation,
 or a production-ready HSM image. The fixture uses a local HTTP CA and disables
 peer TLS; it does not change a Kubernetes cluster or enable `provider: PKCS11`.
 
+To exercise the staged Kubernetes templates, install Docker, Kind, kubectl, and
+Go, then run:
+
+```bash
+make test-pkcs11-kind
+```
+
+The harness builds the experimental images and creates a uniquely named,
+disposable Kind cluster with a separate kubeconfig. It never reuses an existing
+cluster. Cleanup removes the proof cluster, test keys, and temporary kubeconfig
+on success or failure; no images are pushed.
+
+This proof uses the actual staged enrollment Job, scoped publisher RBAC, storage
+guards, handoff, and peer Deployment builders without enabling the public
+backend or deploying an operator. It checks non-root enrollment/publication,
+key-free public MSP output, credential-safe Pod logs, Job/Pod cleanup, TLS peer
+startup, and restart using the persisted token. A fresh token signature is
+verified against the exact published MSP certificate, and the key must be marked
+sensitive and never extractable. The test CA uses local HTTP; peer transport uses
+TLS. The Test PKCS11 Images workflow also runs this Kind proof.
+
+The fixture is a single peer on Kind's local storage, not channel endorsement,
+multi-node CSI attachment validation, hardware isolation, vendor qualification,
+or production image certification. PKCS11 remains unavailable to users.
+
 ### E2E Validation
 
 Run the repeatable kind-based e2e proof with:
@@ -749,6 +774,8 @@ enrollment outputs.
 
 The staged enrollment-to-peer handoff requires an owned, matching enrollment
 Job reporting `Complete=True` and `active: 0`, plus valid published identities.
+PKCS11 enrollment Jobs are single-attempt: failed or partial enrollment requires
+explicit recovery review, and automatic retries are disabled.
 It records the Job UID, enrollment-plan digest, and public MSP UID/content digest
 in namespace retention metadata before retiring that Job with background
 cleanup. The first peer deployment waits until the Job and every Pod referencing

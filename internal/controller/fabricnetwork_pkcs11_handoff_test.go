@@ -183,6 +183,7 @@ func TestPKCS11HandoffRequiresStrictOwnedCompletion(t *testing.T) {
 		wantError bool
 	}{
 		{"counter only", func(j *batchv1.Job) { j.Status.Conditions = nil }, false},
+		{"automatic retries", func(j *batchv1.Job) { retries := int32(4); j.Spec.BackoffLimit = &retries }, true},
 		{"still active", func(j *batchv1.Job) { j.Status.Active = 1 }, false},
 		{"failed", func(j *batchv1.Job) {
 			j.Status.Conditions = append(j.Status.Conditions, batchv1.JobCondition{Type: batchv1.JobFailed, Status: corev1.ConditionTrue})

@@ -196,6 +196,9 @@ func TestPKCS11RuntimeMountsStayWithKeyActors(t *testing.T) {
 	job := buildWorkloadEnrollmentJob(net, org, "org", "peer1", componentPeer, nil)
 	pod := job.Spec.Template.Spec
 	enroller, publisher := pod.InitContainers[0], pod.Containers[0]
+	if job.Spec.BackoffLimit == nil || *job.Spec.BackoffLimit != 0 {
+		t.Fatal("PKCS11 enrollment must not retry a partially registered identity")
+	}
 	if pod.AutomountServiceAccountToken == nil || *pod.AutomountServiceAccountToken || pod.ServiceAccountName == enrollmentServiceAccountName(org) {
 		t.Fatal("PKCS11 enrollment still shares the broad enrollment API identity")
 	}

@@ -479,6 +479,8 @@ func buildWorkloadEnrollmentJob(
 	}
 	if workloadMSPSecretKind(org, component) == secretKindPeerPKCS11MSP {
 		job.Annotations[annotationSucceededJobCleanup] = "false"
+		noRetries := int32(0)
+		job.Spec.BackoffLimit = &noRetries
 		if err := applyPKCS11Runtime(&job.Spec.Template.Spec, org, workloadName, true); err != nil {
 			job.Spec.Template.Spec.InitContainers[0].Command = []string{"sh", "-ec", enrollmentScript}
 			automount := false
