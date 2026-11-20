@@ -676,9 +676,20 @@ does not simulate a physical HSM outage or attest the running peer's cached
 signing session; a successful probe proves that a fresh session can use the key
 matching the mounted certificate, not that every endorsement will succeed.
 
-The fixture is a single peer on Kind's local storage, not channel endorsement,
-multi-node CSI attachment validation, hardware isolation, vendor qualification,
-or production image certification. PKCS11 remains unavailable to users.
+The harness also enrolls a software admin and joins the peer to an isolated
+channel using the existing config generator. A separate TLS client sends two
+fresh QSCC channel-info proposals and verifies each endorsement against the
+exact published peer certificate and MSP ID. The signed proposal hash, response,
+and genesis ledger hash must match. This client has no token PVC, provider
+configuration, PIN or Kubernetes API token; its software admin key only signs
+requests. The verifier rejects replayed or altered responses.
+
+This is a single-peer query-endorsement proof on Kind's local storage. The
+offline genesis has a placeholder consenter using test TLS material, not a
+running ordering service. It does not prove application-chaincode endorsement,
+ordering or commit validation, multi-node CSI attachment, hardware isolation,
+vendor qualification, or production image certification. PKCS11 remains
+unavailable to users.
 
 ### E2E Validation
 

@@ -201,7 +201,7 @@ func TestPKCS11KindRuntimeProof(t *testing.T) {
 	if err := r.reconcileIdentityMaterial(ctx, net, org, ns.Name); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{caBootstrapSecretName(org), identityEnrollmentSecretName("peer0")} {
+	for _, name := range []string{caBootstrapSecretName(org), identityEnrollmentSecretName("peer0"), adminEnrollmentSecretName(org)} {
 		var secret corev1.Secret
 		if err := c.Get(ctx, client.ObjectKey{Namespace: ns.Name, Name: name}, &secret); err != nil {
 			t.Fatal(err)
@@ -393,6 +393,7 @@ base64 /run/fabricops/signature`, base64.StdEncoding.EncodeToString(challenge), 
 		return false, nil
 	})
 	scanPKCS11KindLogs(t, ctx, kube, ns.Name, sensitive, false)
+	testPKCS11KindEndorsement(t, ctx, c, kube, r, net, org, ns.Name, sensitive)
 	testPKCS11KindFailures(t, ctx, c, kube, net, org, ns.Name, sensitive)
 	testPKCS11KindReadiness(t, ctx, c, kube, ns.Name)
 	scanPKCS11KindLogs(t, ctx, kube, ns.Name, sensitive, false)
