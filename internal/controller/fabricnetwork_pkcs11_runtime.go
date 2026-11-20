@@ -197,6 +197,10 @@ func applyPKCS11Runtime(pod *corev1.PodSpec, org fabricopsv1alpha1.Org, peer str
 	} else {
 		actor = &pod.Containers[0]
 		actor.Image = rt.PeerImage
+		actor.ReadinessProbe = &corev1.Probe{
+			ProbeHandler:        corev1.ProbeHandler{Exec: &corev1.ExecAction{Command: []string{"/usr/local/bin/fabricops-pkcs11-ready"}}},
+			InitialDelaySeconds: 5, PeriodSeconds: 10, TimeoutSeconds: 5, FailureThreshold: 1,
+		}
 		actor.Command = []string{"sh", "-ec", "umask 077\nfabricops-pkcs11-config peer /etc/hyperledger/fabric/core.yaml /run/fabricops/core.yaml\nexec peer node start"}
 		actor.Env = append(actor.Env, corev1.EnvVar{Name: "FABRIC_CFG_PATH", Value: pkcs11MemoryPath})
 		automount := false

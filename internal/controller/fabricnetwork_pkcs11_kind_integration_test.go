@@ -394,5 +394,7 @@ base64 /run/fabricops/signature`, base64.StdEncoding.EncodeToString(challenge), 
 	})
 	scanPKCS11KindLogs(t, ctx, kube, ns.Name, sensitive, false)
 	testPKCS11KindFailures(t, ctx, c, kube, net, org, ns.Name, sensitive)
+	testPKCS11KindReadiness(t, ctx, c, kube, ns.Name)
+	scanPKCS11KindLogs(t, ctx, kube, ns.Name, sensitive, false)
 	t.Log("PASS: staged Kubernetes templates work; the public PKCS11 backend remains disabled")
 }

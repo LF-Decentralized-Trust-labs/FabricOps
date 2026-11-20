@@ -15,6 +15,12 @@ WORKDIR /src/fabric
 COPY configure-provider.go /tmp/configure-provider.go
 RUN go build -mod=vendor -buildvcs=false -o /out/fabricops-pkcs11-config /tmp/configure-provider.go
 
+FROM source AS readiness-build
+WORKDIR /src/fabric
+COPY readiness.go readiness_test.go /tmp/
+RUN go test -mod=vendor -tags pkcs11 /tmp/readiness.go /tmp/readiness_test.go \
+    && CGO_ENABLED=1 go build -mod=vendor -tags pkcs11 -buildvcs=false -o /out/fabricops-pkcs11-ready /tmp/readiness.go
+
 FROM source AS peer-build
 WORKDIR /src/fabric
 RUN CGO_ENABLED=1 go build -mod=vendor -tags pkcs11 -buildvcs=false -o /out/peer ./cmd/peer \
@@ -48,6 +54,7 @@ ENTRYPOINT ["/usr/local/bin/fabricops-enroll-peer"]
 FROM runtime AS peer
 ENV FABRIC_CFG_PATH=/etc/hyperledger/fabric
 COPY --from=peer-build /out/peer /usr/local/bin/peer
+COPY --from=readiness-build /out/fabricops-pkcs11-ready /usr/local/bin/fabricops-pkcs11-ready
 COPY --from=config-build /out/fabricops-pkcs11-config /usr/local/bin/fabricops-pkcs11-config
 COPY --from=peer-build /src/fabric/sampleconfig/core.yaml /etc/hyperledger/fabric/core.yaml
 COPY --from=ccaas-build /out/ccaas/ /opt/hyperledger/ccaas_builder/bin/

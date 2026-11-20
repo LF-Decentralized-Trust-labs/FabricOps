@@ -657,8 +657,24 @@ absent from the selected token. It watches each fault Pod from its creation
 resource version, rejects observed readiness, and requires a nonzero exit with
 the expected provider error. Unrelated failures do not count as a pass. The
 original peer must then recover without reenrollment, with its identity/PIN
-Secrets and durable handoff unchanged. This tests startup rejection and recovery,
-not provider loss while an already-running peer is serving traffic.
+Secrets and durable handoff unchanged.
+
+Staged PKCS11 peers use an exec readiness check that opens a fresh provider
+session, selects the key by the mounted MSP certificate's Fabric SKI, signs a
+random challenge, and verifies it against that certificate. The check also
+requires the local peer listener, a time-valid P-256 certificate, and an
+empty or absent software MSP keystore. It uses a dummy software keystore and
+emits only a generic refusal; provider diagnostics and PINs are not forwarded to
+probe events. TCP liveness is unchanged so provider failure alone does not cause
+a restart loop. Kubernetes bounds each check to five seconds.
+
+The live test changes only projected provider configuration to hide the token
+from fresh sessions, observes readiness loss while the same peer container keeps
+serving its operations endpoint, and restores readiness without restart or
+reenrollment. Identity/PIN Secrets and the handoff must remain unchanged. This
+does not simulate a physical HSM outage or attest the running peer's cached
+signing session; a successful probe proves that a fresh session can use the key
+matching the mounted certificate, not that every endorsement will succeed.
 
 The fixture is a single peer on Kind's local storage, not channel endorsement,
 multi-node CSI attachment validation, hardware isolation, vendor qualification,

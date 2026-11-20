@@ -193,6 +193,19 @@ var _ = Describe("Reserved PKCS11 provider access", func() {
 func TestPKCS11RuntimeMountsStayWithKeyActors(t *testing.T) {
 	net, _, _, _, _ := channelConfigOperationFixture()
 	org := pkcs11RuntimeOrgFixture(t)
+	peer := buildPeerDeployment(net, org, 1, "org").Spec.Template.Spec.Containers[0]
+	if peer.ReadinessProbe == nil || peer.ReadinessProbe.Exec == nil || strings.Join(peer.ReadinessProbe.Exec.Command, " ") != "/usr/local/bin/fabricops-pkcs11-ready" {
+		t.Fatal("PKCS11 readiness does not verify the provider key against the MSP certificate")
+	}
+	if peer.LivenessProbe == nil || peer.LivenessProbe.TCPSocket == nil {
+		t.Fatal("provider outages must not change TCP liveness into a restart loop")
+	}
+	softwareOrg := org.DeepCopy()
+	softwareOrg.Peer.MSPSigning = nil
+	software := buildPeerDeployment(net, *softwareOrg, 1, "org").Spec.Template.Spec.Containers[0]
+	if software.ReadinessProbe == nil || software.ReadinessProbe.TCPSocket == nil {
+		t.Fatal("software peer readiness was changed")
+	}
 	job := buildWorkloadEnrollmentJob(net, org, "org", "peer1", componentPeer, nil)
 	pod := job.Spec.Template.Spec
 	enroller, publisher := pod.InitContainers[0], pod.Containers[0]

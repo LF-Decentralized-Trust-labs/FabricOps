@@ -170,6 +170,12 @@ case "${1:-}" in
     no_msp_key "$CORE_PEER_MSPCONFIGPATH"
     if [ "$1" = peer ] || [ "$1" = peer-second ]; then
       test "$ready" = true || fail "PKCS11 peer failed readiness"
+      FABRIC_LOGGING_SPEC=debug fabricops-pkcs11-ready > "$state/readiness.log" 2>&1 || fail 'provider-aware readiness failed'
+      if FABRICOPS_PKCS11_TOKEN_LABEL=nonexistent-token fabricops-pkcs11-ready > "$state/readiness-failure.log" 2>&1; then
+        fail 'readiness accepted a missing token while the peer was running'
+      fi
+      grep -qx 'PKCS11 peer is not ready' "$state/readiness-failure.log" || fail 'readiness exposed provider diagnostics'
+      fabricops-pkcs11-ready || fail 'readiness did not recover'
       echo 'PASS: peer starts with certificate-bound token key and no MSP key file'
     else
       test "$ready" = false || fail "$1 silently reached readiness"
