@@ -39,10 +39,12 @@ RUN mkdir -p /out/ccaas \
 
 FROM source AS proof-build
 WORKDIR /src/fabric
-COPY endorsement-proof.go endorsement-proof_test.go /tmp/
-RUN go test -mod=vendor /tmp/endorsement-proof.go /tmp/endorsement-proof_test.go \
-    && go build -mod=vendor -buildvcs=false -o /out/fabricops-pkcs11-endorsement-proof /tmp/endorsement-proof.go \
-    && go build -mod=vendor -buildvcs=false -o /out/configtxgen ./cmd/configtxgen
+COPY endorsement-proof.go endorsement-proof_test.go application-proof.go application-proof_test.go /tmp/
+RUN go test -mod=vendor /tmp/endorsement-proof.go /tmp/application-proof.go /tmp/endorsement-proof_test.go /tmp/application-proof_test.go \
+    && go build -mod=vendor -buildvcs=false -o /out/fabricops-pkcs11-endorsement-proof /tmp/endorsement-proof.go /tmp/application-proof.go \
+    && go build -mod=vendor -buildvcs=false -o /out/configtxgen ./cmd/configtxgen \
+    && go build -mod=vendor -buildvcs=false -o /out/orderer ./cmd/orderer \
+    && go build -mod=vendor -buildvcs=false -o /out/osnadmin ./cmd/osnadmin
 
 FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS runtime
 RUN apt-get update \
@@ -69,10 +71,11 @@ ENTRYPOINT ["peer"]
 
 FROM peer AS smoke
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl opensc openssl \
+    && apt-get install -y --no-install-recommends curl opensc openssl jq \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=ca-build /out/fabric-ca-client /out/fabric-ca-server /usr/local/bin/
-COPY --from=proof-build /out/fabricops-pkcs11-endorsement-proof /out/configtxgen /usr/local/bin/
+COPY --from=proof-build /out/fabricops-pkcs11-endorsement-proof /out/configtxgen /out/orderer /out/osnadmin /usr/local/bin/
+COPY --from=proof-build /src/fabric/sampleconfig/orderer.yaml /etc/hyperledger/fabric/orderer.yaml
 COPY --chmod=0555 enroll-peer.sh /usr/local/bin/fabricops-enroll-peer
 COPY smoke.sh /usr/local/lib/fabricops/pkcs11-smoke.sh
 ENTRYPOINT ["bash", "/usr/local/lib/fabricops/pkcs11-smoke.sh"]

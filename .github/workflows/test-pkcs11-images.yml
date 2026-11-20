@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/test-pkcs11-images.yml
       - config/images/pkcs11/**
+      - config/samples/chaincodes/go_settlement/**
       - hack/test-pkcs11-images.sh
       - hack/test-pkcs11-kind.sh
       - api/v1alpha1/**
@@ -22,6 +23,7 @@ on:
     paths:
       - .github/workflows/test-pkcs11-images.yml
       - config/images/pkcs11/**
+      - config/samples/chaincodes/go_settlement/**
       - hack/test-pkcs11-images.sh
       - hack/test-pkcs11-kind.sh
       - api/v1alpha1/**

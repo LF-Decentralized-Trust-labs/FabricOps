@@ -684,12 +684,24 @@ and genesis ledger hash must match. This client has no token PVC, provider
 configuration, PIN or Kubernetes API token; its software admin key only signs
 requests. The verifier rejects replayed or altered responses.
 
-This is a single-peer query-endorsement proof on Kind's local storage. The
-offline genesis has a placeholder consenter using test TLS material, not a
-running ordering service. It does not prove application-chaincode endorsement,
-ordering or commit validation, multi-node CSI attachment, hardware isolation,
-vendor qualification, or production image certification. PKCS11 remains
-unavailable to users.
+That first channel has an offline genesis with a placeholder consenter. A
+second channel uses a real single-node TLS Raft orderer and the locally built Go
+settlement CCaaS sample. The harness reuses the package/install/approve/commit
+helpers, checks the installed package ID, and waits for the orderer to serve
+channel config before lifecycle writes. Admin and orderer signing remain
+software-backed; only peer MSP signing uses the token.
+
+The independent client verifies the settlement write endorsement before
+broadcasting its signed transaction. Orderer acceptance is not enough: a fresh,
+signed QSCC transaction query must report VALID for the exact submitted envelope,
+transaction ID and channel, followed by an endorsed read of the expected state.
+A public transaction receipt lets another client repeat those checks after the
+peer is replaced, without writing or reenrolling again.
+
+These are single-org SoftHSM proofs on Kind's local storage, not multi-orderer
+quorum testing, multi-node CSI attachment, hardware isolation, vendor
+qualification, or production image certification. PKCS11 remains unavailable to
+users.
 
 ### E2E Validation
 

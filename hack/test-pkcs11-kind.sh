@@ -15,10 +15,11 @@ export KUBECONFIG="$work/kubeconfig"
 for target in smoke enrollment peer; do
   docker build --target "$target" --tag "fabricops-pkcs11-kind:$target" "$root/config/images/pkcs11"
 done
+docker build --tag fabricops-pkcs11-kind:chaincode "$root/config/samples/chaincodes/go_settlement"
 if kind get clusters | grep -Fxq "$cluster"; then echo 'Refusing an existing cluster' >&2; exit 1; fi
 created=true
 kind create cluster --name "$cluster" --kubeconfig "$KUBECONFIG" --wait 120s
-kind load docker-image --name "$cluster" fabricops-pkcs11-kind:smoke fabricops-pkcs11-kind:enrollment fabricops-pkcs11-kind:peer
+kind load docker-image --name "$cluster" fabricops-pkcs11-kind:smoke fabricops-pkcs11-kind:enrollment fabricops-pkcs11-kind:peer fabricops-pkcs11-kind:chaincode
 kubectl --context "kind-$cluster" apply -f "$root/config/crd/bases"
 kubectl --context "kind-$cluster" wait --for=condition=Established --timeout=60s -f "$root/config/crd/bases"
 cd "$root"

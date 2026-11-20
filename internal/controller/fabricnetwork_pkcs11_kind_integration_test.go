@@ -170,6 +170,7 @@ func TestPKCS11KindRuntimeProof(t *testing.T) {
 	net := &fabricopsv1alpha1.FabricNetwork{ObjectMeta: metav1.ObjectMeta{Name: "pkcs-kind", Namespace: "default"}}
 	org := pkcs11RuntimeOrgFixture(t)
 	org.CA.DB, org.Peer.Instances, org.Peer.DB = "sqlite", 1, "LevelDB"
+	org.Orderers = []fabricopsv1alpha1.OrdererGroup{{GroupName: "proof", Type: "raft", Instances: 1, Prefix: "orderer"}}
 	rt := org.Peer.MSPSigning.PKCS11.Runtime
 	rt.StateClaims = rt.StateClaims[:1]
 	rt.EnrollmentImage, rt.PeerImage = "fabricops-pkcs11-kind:enrollment", "fabricops-pkcs11-kind:peer"
@@ -201,7 +202,7 @@ func TestPKCS11KindRuntimeProof(t *testing.T) {
 	if err := r.reconcileIdentityMaterial(ctx, net, org, ns.Name); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{caBootstrapSecretName(org), identityEnrollmentSecretName("peer0"), adminEnrollmentSecretName(org)} {
+	for _, name := range []string{caBootstrapSecretName(org), identityEnrollmentSecretName("peer0"), identityEnrollmentSecretName("orderer0"), adminEnrollmentSecretName(org)} {
 		var secret corev1.Secret
 		if err := c.Get(ctx, client.ObjectKey{Namespace: ns.Name, Name: name}, &secret); err != nil {
 			t.Fatal(err)
@@ -394,7 +395,9 @@ base64 /run/fabricops/signature`, base64.StdEncoding.EncodeToString(challenge), 
 	})
 	scanPKCS11KindLogs(t, ctx, kube, ns.Name, sensitive, false)
 	testPKCS11KindEndorsement(t, ctx, c, kube, r, net, org, ns.Name, sensitive)
+	receipt := testPKCS11KindApplication(t, ctx, c, kube, r, net, org, ns.Name, sensitive)
 	testPKCS11KindFailures(t, ctx, c, kube, net, org, ns.Name, sensitive)
+	testPKCS11KindApplicationRestart(t, ctx, c, kube, net, org, ns.Name, receipt, sensitive)
 	testPKCS11KindReadiness(t, ctx, c, kube, ns.Name)
 	scanPKCS11KindLogs(t, ctx, kube, ns.Name, sensitive, false)
 	t.Log("PASS: staged Kubernetes templates work; the public PKCS11 backend remains disabled")
