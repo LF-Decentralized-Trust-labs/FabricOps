@@ -626,6 +626,23 @@ The Test PKCS11 Images workflow runs this proof when its files change.
 The peer test uses warning-level logging and checks that generated PINs do not
 appear in logs; upstream provider debug logging must not be enabled with PINs.
 
+The experimental images require runtime-helper ABI `1`, Fabric `3.1.0`, and the
+pinned Fabric CA client `1.5.15` sources. Staged Pod commands require
+`fabricops-pkcs11-check` before calling the enrollment helper or generating peer
+configuration. The enrollment entrypoint also checks direct invocations. Missing
+checkers, unsupported ABI/version requests, or mismatched artifacts stop the
+operation without software fallback. Version requests are not silently upgraded.
+
+The check binds component and helper bytes to their image build, requires native
+PKCS11/CGO build settings, and checks the component's reported version (including
+the peer revision). Version subprocesses have a bounded timeout/output and do not
+inherit provider credentials or debug settings. Docker tests cover replaced
+artifacts and a legacy helper without a checker. These are compatibility checks
+for trusted images, not image authentication or HSM/vendor attestation. Native
+module compatibility still depends on actual enrollment and certificate-bound
+signing; this does not inspect a remote CA server's version. Public capability
+gates remain closed.
+
 This is not operator integration, endorsement validation, hardware isolation,
 or a production-ready HSM image. The fixture uses a local HTTP CA and disables
 peer TLS; it does not change a Kubernetes cluster or enable `provider: PKCS11`.

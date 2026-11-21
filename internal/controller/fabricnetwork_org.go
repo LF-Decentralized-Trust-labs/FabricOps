@@ -1793,7 +1793,7 @@ func buildPeerDeployment(
 		},
 	}
 	if workloadMSPSecretKind(org, componentPeer) == secretKindPeerPKCS11MSP {
-		if err := applyPKCS11Runtime(&deployment.Spec.Template.Spec, org, name, false); err != nil {
+		if err := applyPKCS11Runtime(&deployment.Spec.Template.Spec, org, name, false, net.Spec.Global.FabricVersion); err != nil {
 			deployment.Spec.Template.Spec.Containers[0].Command = []string{"sh", "-ec", "echo 'PKCS11 runtime access is incomplete; refusing software fallback' >&2\nexit 1"}
 		}
 	}

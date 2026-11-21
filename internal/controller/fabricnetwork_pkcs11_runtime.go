@@ -147,7 +147,7 @@ func validatePKCS11Runtime(org fabricopsv1alpha1.Org) []string {
 
 // This stages pod templates only. Normal reconciliation is still blocked by
 // the capability gate until lifecycle, permissions, and live proofs are complete.
-func applyPKCS11Runtime(pod *corev1.PodSpec, org fabricopsv1alpha1.Org, peer string, enrollment bool) error {
+func applyPKCS11Runtime(pod *corev1.PodSpec, org fabricopsv1alpha1.Org, peer string, enrollment bool, fabricVersion string) error {
 	if problems := validatePKCS11Runtime(org); len(problems) > 0 {
 		return fmt.Errorf("invalid PKCS11 runtime access: %s", strings.Join(problems, "; "))
 	}
@@ -177,7 +177,7 @@ func applyPKCS11Runtime(pod *corev1.PodSpec, org fabricopsv1alpha1.Org, peer str
 	var actor *corev1.Container
 	if enrollment {
 		actor = &pod.InitContainers[0]
-		actor.Image, actor.Command = rt.EnrollmentImage, []string{"/usr/local/bin/fabricops-enroll-peer"}
+		actor.Image, actor.Command = rt.EnrollmentImage, []string{"sh", "-ec", "fabricops-pkcs11-check enrollment\nexec /usr/local/bin/fabricops-enroll-peer"}
 		for i := range pod.Volumes {
 			if pod.Volumes[i].Name == enrollmentVolumeName {
 				pod.Volumes[i].EmptyDir = &corev1.EmptyDirVolumeSource{Medium: corev1.StorageMediumMemory, SizeLimit: &memory}
@@ -201,12 +201,14 @@ func applyPKCS11Runtime(pod *corev1.PodSpec, org fabricopsv1alpha1.Org, peer str
 			ProbeHandler:        corev1.ProbeHandler{Exec: &corev1.ExecAction{Command: []string{"/usr/local/bin/fabricops-pkcs11-ready"}}},
 			InitialDelaySeconds: 5, PeriodSeconds: 10, TimeoutSeconds: 5, FailureThreshold: 1,
 		}
-		actor.Command = []string{"sh", "-ec", "umask 077\nfabricops-pkcs11-config peer /etc/hyperledger/fabric/core.yaml /run/fabricops/core.yaml\nexec peer node start"}
+		actor.Command = []string{"sh", "-ec", "umask 077\nfabricops-pkcs11-check peer\nfabricops-pkcs11-config peer /etc/hyperledger/fabric/core.yaml /run/fabricops/core.yaml\nexec peer node start"}
 		actor.Env = append(actor.Env, corev1.EnvVar{Name: "FABRIC_CFG_PATH", Value: pkcs11MemoryPath})
 		automount := false
 		pod.AutomountServiceAccountToken = &automount
 	}
 	actor.Env = append(actor.Env,
+		corev1.EnvVar{Name: "FABRICOPS_PKCS11_RUNTIME_ABI", Value: "1"},
+		corev1.EnvVar{Name: "FABRICOPS_PKCS11_FABRIC_VERSION", Value: fabricVersion},
 		corev1.EnvVar{Name: "FABRICOPS_PKCS11_LIBRARY", Value: provider.Library},
 		corev1.EnvVar{Name: "FABRICOPS_PKCS11_TOKEN_LABEL", Value: provider.TokenLabel},
 		corev1.EnvVar{Name: "FABRICOPS_PKCS11_PIN", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: provider.PINSecretKeyRef.DeepCopy()}},

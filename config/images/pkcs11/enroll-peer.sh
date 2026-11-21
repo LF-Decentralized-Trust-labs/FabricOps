@@ -3,6 +3,8 @@ set +x
 set -eu
 umask 077
 
+fabricops-pkcs11-check enrollment
+
 fail() { echo "PKCS11 peer enrollment: $1" >&2; exit 1; }
 : "${FABRICOPS_CA_ADDRESS:?CA address is required}"
 : "${FABRICOPS_CA_BOOTSTRAP_USER_PASS:?registrar credentials are required}"

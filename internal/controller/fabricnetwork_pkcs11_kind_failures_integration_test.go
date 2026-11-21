@@ -166,6 +166,8 @@ func testPKCS11KindFailures(t *testing.T, ctx context.Context, c client.Client, 
 		name, env, value, msp, pattern string
 		secret                         bool
 	}{
+		{name: "runtime-abi", env: "FABRICOPS_PKCS11_RUNTIME_ABI", value: "2", pattern: "PKCS11 runtime capability check failed"},
+		{name: "runtime-version", env: "FABRICOPS_PKCS11_FABRIC_VERSION", value: "2.5.14", pattern: "PKCS11 runtime capability check failed"},
 		{name: "wrong-pin", env: "FABRICOPS_PKCS11_PIN", value: "proof-wrong-pin", secret: true, pattern: "CKR_PIN_INCORRECT|CKR_PIN_LOCKED"},
 		{name: "missing-module", env: "FABRICOPS_PKCS11_LIBRARY", value: "/nonexistent/provider.so", pattern: "/nonexistent/provider\\.so"},
 		{name: "missing-token", env: "FABRICOPS_PKCS11_TOKEN_LABEL", value: "proof-nonexistent-token", pattern: "could not find token with label"},

@@ -18,7 +18,7 @@ volume=$(docker volume create --label fabricops.io/test=pkcs11)
 container="fabricops-pkcs11-$volume"
 network="$container"
 docker network create --internal --label fabricops.io/test=pkcs11 "$network" > /dev/null
-for scenario in enroll peer peer peer-second wrong-pin missing-module missing-token missing-key; do
+for scenario in capability enroll peer peer peer-second wrong-pin missing-module missing-token missing-key; do
   docker run --rm --name "$container" --network "$network" --tmpfs /run/fabricops:rw,noexec,nosuid,size=1m,mode=0700 \
     --mount "type=volume,source=$volume,target=/var/lib/fabricops-hsm" \
     "$image" "$scenario"

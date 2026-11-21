@@ -51,7 +51,8 @@ func validatePeerMSPSigning(org fabricopsv1alpha1.Org) []string {
 		return problems
 	}
 	// No image tag or user assertion proves provider capability. Keep this gate
-	// closed until enrollment and runtime wiring have passed integration tests.
+	// closed until runtime compatibility, recovery, and cross-path custody
+	// safeguards are complete; passing a staged runtime proof does not enable it.
 	problems = append(problems, prefix+".provider PKCS11 is unavailable: PKCS#11 enrollment and peer runtime support are not enabled; software fallback is disabled")
 	provider := config.PKCS11
 	if provider == nil {

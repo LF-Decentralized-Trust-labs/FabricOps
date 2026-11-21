@@ -481,7 +481,7 @@ func buildWorkloadEnrollmentJob(
 		job.Annotations[annotationSucceededJobCleanup] = "false"
 		noRetries := int32(0)
 		job.Spec.BackoffLimit = &noRetries
-		if err := applyPKCS11Runtime(&job.Spec.Template.Spec, org, workloadName, true); err != nil {
+		if err := applyPKCS11Runtime(&job.Spec.Template.Spec, org, workloadName, true, net.Spec.Global.FabricVersion); err != nil {
 			job.Spec.Template.Spec.InitContainers[0].Command = []string{"sh", "-ec", enrollmentScript}
 			automount := false
 			job.Spec.Template.Spec.AutomountServiceAccountToken = &automount

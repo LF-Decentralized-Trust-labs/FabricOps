@@ -23,7 +23,8 @@ RUN go test -mod=vendor -tags pkcs11 /tmp/readiness.go /tmp/readiness_test.go \
 
 FROM source AS peer-build
 WORKDIR /src/fabric
-RUN CGO_ENABLED=1 go build -mod=vendor -tags pkcs11 -buildvcs=false -o /out/peer ./cmd/peer \
+RUN CGO_ENABLED=1 go build -mod=vendor -tags pkcs11 -buildvcs=false \
+    -ldflags "-X github.com/hyperledger/fabric/common/metadata.Version=3.1.0 -X github.com/hyperledger/fabric/common/metadata.CommitSHA=${FABRIC_REVISION}" -o /out/peer ./cmd/peer \
     && go version -m /out/peer | grep 'tags=pkcs11'
 
 FROM source AS ca-build
@@ -46,6 +47,22 @@ RUN go test -mod=vendor /tmp/endorsement-proof.go /tmp/application-proof.go /tmp
     && go build -mod=vendor -buildvcs=false -o /out/orderer ./cmd/orderer \
     && go build -mod=vendor -buildvcs=false -o /out/osnadmin ./cmd/osnadmin
 
+FROM source AS capability-build
+WORKDIR /src/fabric
+COPY capability.go capability_test.go enroll-peer.sh /tmp/
+COPY --from=peer-build /out/peer /out/peer
+COPY --from=ca-build /out/fabric-ca-client /out/fabric-ca-client
+COPY --from=config-build /out/fabricops-pkcs11-config /out/fabricops-pkcs11-config
+COPY --from=readiness-build /out/fabricops-pkcs11-ready /out/fabricops-pkcs11-ready
+RUN go test /tmp/capability.go /tmp/capability_test.go \
+    && go build -buildvcs=false -ldflags "-X main.builtFabricRevision=${FABRIC_REVISION} -X main.builtCARevision=${FABRIC_CA_REVISION} \
+       -X main.peerDigest=$(sha256sum /out/peer | cut -d' ' -f1) \
+       -X main.caDigest=$(sha256sum /out/fabric-ca-client | cut -d' ' -f1) \
+       -X main.rendererDigest=$(sha256sum /out/fabricops-pkcs11-config | cut -d' ' -f1) \
+       -X main.readinessDigest=$(sha256sum /out/fabricops-pkcs11-ready | cut -d' ' -f1) \
+       -X main.enrollerDigest=$(sha256sum /tmp/enroll-peer.sh | cut -d' ' -f1)" \
+       -o /out/fabricops-pkcs11-check /tmp/capability.go
+
 FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS runtime
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates softhsm2 \
@@ -55,6 +72,7 @@ LABEL org.opencontainers.image.source="https://github.com/LF-Decentralized-Trust
       org.opencontainers.image.description="Experimental PKCS11 capability proof, not an enabled FabricOps backend"
 
 FROM runtime AS enrollment
+COPY --from=capability-build /out/fabricops-pkcs11-check /usr/local/bin/fabricops-pkcs11-check
 COPY --from=ca-build /out/fabric-ca-client /usr/local/bin/fabric-ca-client
 COPY --from=config-build /out/fabricops-pkcs11-config /usr/local/bin/fabricops-pkcs11-config
 COPY --chmod=0555 enroll-peer.sh /usr/local/bin/fabricops-enroll-peer
@@ -62,6 +80,7 @@ ENTRYPOINT ["/usr/local/bin/fabricops-enroll-peer"]
 
 FROM runtime AS peer
 ENV FABRIC_CFG_PATH=/etc/hyperledger/fabric
+COPY --from=capability-build /out/fabricops-pkcs11-check /usr/local/bin/fabricops-pkcs11-check
 COPY --from=peer-build /out/peer /usr/local/bin/peer
 COPY --from=readiness-build /out/fabricops-pkcs11-ready /usr/local/bin/fabricops-pkcs11-ready
 COPY --from=config-build /out/fabricops-pkcs11-config /usr/local/bin/fabricops-pkcs11-config

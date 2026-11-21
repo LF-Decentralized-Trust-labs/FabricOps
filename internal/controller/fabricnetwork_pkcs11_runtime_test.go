@@ -106,7 +106,7 @@ func TestPKCS11RuntimeInvalidAccessFailsBeforeMounts(t *testing.T) {
 			test.mutate(org.Peer.MSPSigning.PKCS11)
 			pod := corev1.PodSpec{}
 			before := pod.DeepCopy()
-			err := applyPKCS11Runtime(&pod, org, "peer0", true)
+			err := applyPKCS11Runtime(&pod, org, "peer0", true, "3.1.0")
 			if err == nil || strings.Contains(err.Error(), "sensitive") || !reflect.DeepEqual(*before, pod) {
 				t.Fatal("invalid access was accepted, leaked values, or mutated the pod")
 			}
@@ -259,5 +259,42 @@ func TestPKCS11RuntimeMountsStayWithKeyActors(t *testing.T) {
 	}
 	if pod.SecurityContext == nil || pod.SecurityContext.SeccompProfile == nil || pod.SecurityContext.SeccompProfile.Type != corev1.SeccompProfileTypeRuntimeDefault {
 		t.Error("runtime-default seccomp profile is missing")
+	}
+}
+
+func TestPKCS11RuntimeCapabilityContract(t *testing.T) {
+	net, _, _, _, _ := channelConfigOperationFixture()
+	net.Spec.Global.FabricVersion = "3.1.0"
+	org := pkcs11RuntimeOrgFixture(t)
+	peer := buildPeerDeployment(net, org, 0, "org").Spec.Template.Spec.Containers[0]
+	command := strings.Join(peer.Command, " ")
+	check, configure := strings.Index(command, "fabricops-pkcs11-check peer"), strings.Index(command, "fabricops-pkcs11-config peer")
+	if check < 0 || configure < 0 || check > configure {
+		t.Fatal("peer can start without checking its runtime ABI and build")
+	}
+	enroller := buildWorkloadEnrollmentJob(net, org, "org", "peer0", componentPeer, nil).Spec.Template.Spec.InitContainers[0]
+	enrollCommand := strings.Join(enroller.Command, " ")
+	enrollCheck, enrollExec := strings.Index(enrollCommand, "fabricops-pkcs11-check enrollment"), strings.Index(enrollCommand, "exec /usr/local/bin/fabricops-enroll-peer")
+	if enrollCheck < 0 || enrollExec < 0 || enrollCheck > enrollExec {
+		t.Fatal("legacy enrollment images can bypass the required checker")
+	}
+	for _, actor := range []corev1.Container{peer, enroller} {
+		found := map[string]string{}
+		for _, env := range actor.Env {
+			found[env.Name] = env.Value
+		}
+		if found["FABRICOPS_PKCS11_RUNTIME_ABI"] != "1" || found["FABRICOPS_PKCS11_FABRIC_VERSION"] != "3.1.0" {
+			t.Fatal("runtime expectation is not explicit")
+		}
+	}
+	net.Spec.Global.FabricVersion = "2.5.14"
+	versionFound := false
+	for _, env := range buildPeerDeployment(net, org, 0, "org").Spec.Template.Spec.Containers[0].Env {
+		if env.Name == "FABRICOPS_PKCS11_FABRIC_VERSION" {
+			versionFound = env.Value == "2.5.14"
+		}
+	}
+	if !versionFound {
+		t.Fatal("requested version skew was omitted or silently normalized")
 	}
 }

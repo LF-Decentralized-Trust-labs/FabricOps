@@ -2,6 +2,7 @@
 set -euo pipefail
 shopt -s nullglob
 umask 077
+export FABRICOPS_PKCS11_RUNTIME_ABI=1 FABRICOPS_PKCS11_FABRIC_VERSION=3.1.0
 
 state=/var/lib/fabricops-hsm
 module=/usr/lib/softhsm/libsofthsm2.so
@@ -41,6 +42,39 @@ no_msp_key() {
 }
 
 case "${1:-}" in
+  capability)
+    for role in peer enrollment; do
+      FABRICOPS_PKCS11_PIN=capability-secret FABRIC_LOGGING_SPEC=debug fabricops-pkcs11-check "$role" > "$state/capability-valid-$role.log" 2>&1 || fail "valid $role capability contract rejected"
+      test ! -s "$state/capability-valid-$role.log" || fail 'valid capability inspection emitted diagnostics'
+      if FABRICOPS_PKCS11_RUNTIME_ABI=2 fabricops-pkcs11-check "$role" > "$state/capability-$role-abi.log" 2>&1; then fail 'unsupported runtime ABI accepted'; fi
+      if FABRICOPS_PKCS11_FABRIC_VERSION=2.5.14 fabricops-pkcs11-check "$role" > "$state/capability-$role-version.log" 2>&1; then fail 'unsupported Fabric version accepted'; fi
+      grep -qx 'PKCS11 runtime capability check failed' "$state/capability-$role-abi.log" || fail 'capability refusal exposed diagnostics'
+      grep -qx 'PKCS11 runtime capability check failed' "$state/capability-$role-version.log" || fail 'version refusal exposed diagnostics'
+    done
+    if FABRICOPS_PKCS11_RUNTIME_ABI=2 FABRICOPS_PKCS11_PIN=capability-secret \
+      FABRICOPS_ENROLLMENT_DIR=/run/fabricops/rejected-enrollment fabricops-enroll-peer > "$state/capability-enroll.log" 2>&1; then fail 'enrollment accepted an unsupported ABI'; fi
+    grep -qx 'PKCS11 runtime capability check failed' "$state/capability-enroll.log" || fail 'enrollment ran before capability rejection'
+    test ! -e /run/fabricops/rejected-enrollment || fail 'capability rejection created enrollment material'
+    test ! -e "$state/tokens" || fail 'capability rejection touched token state'
+    for artifact in peer fabric-ca-client fabricops-pkcs11-config fabricops-pkcs11-ready fabricops-enroll-peer; do
+      role=peer
+      case "$artifact" in fabric-ca-client|fabricops-enroll-peer) role=enrollment ;; esac
+      cp "/usr/local/bin/$artifact" /tmp/capability-original
+      printf '\n' >> "/usr/local/bin/$artifact"
+      if fabricops-pkcs11-check "$role" > "$state/capability-replaced-$artifact.log" 2>&1; then fail "replaced $artifact accepted"; fi
+      grep -qx 'PKCS11 runtime capability check failed' "$state/capability-replaced-$artifact.log" || fail 'artifact refusal exposed diagnostics'
+      cp /tmp/capability-original "/usr/local/bin/$artifact"
+      fabricops-pkcs11-check "$role" || fail 'restored image artifact rejected'
+    done
+    mv /usr/local/bin/fabricops-pkcs11-check /tmp/capability-checker
+    cp /usr/local/bin/fabricops-enroll-peer /tmp/capability-enroller
+    printf '#!/bin/sh\ntouch /tmp/legacy-enroller-ran\n' > /usr/local/bin/fabricops-enroll-peer
+    if sh -ec 'fabricops-pkcs11-check enrollment; exec /usr/local/bin/fabricops-enroll-peer' > "$state/capability-legacy.log" 2>&1; then fail 'legacy image without checker was accepted'; fi
+    test ! -e /tmp/legacy-enroller-ran || fail 'legacy helper ran before capability inspection'
+    mv /tmp/capability-checker /usr/local/bin/fabricops-pkcs11-check
+    cp /tmp/capability-enroller /usr/local/bin/fabricops-enroll-peer
+    echo 'PASS: runtime ABI/version skew and replaced artifacts fail before enrollment or peer startup'
+    ;;
   enroll)
     mkdir -p "$state/tokens" "$state/peer/msp/keystore"
     printf 'directories.tokendir = %s/tokens\nobjectstore.backend = file\nlog.level = ERROR\n' "$state" > "$SOFTHSM2_CONF"
@@ -157,6 +191,7 @@ case "${1:-}" in
     export CORE_OPERATIONS_TLS_ENABLED=false CORE_VM_ENDPOINT=
     # Upstream provider debug logging includes the PIN; never enable it here.
     export FABRIC_LOGGING_SPEC=warning
+    fabricops-pkcs11-check peer
     fabricops-pkcs11-config peer /etc/hyperledger/fabric/core.yaml /run/fabricops/core.yaml
     export FABRIC_CFG_PATH=/run/fabricops
     peer node start > "$state/$1.log" 2>&1 &
@@ -186,9 +221,14 @@ case "${1:-}" in
       echo "PASS: $1 fails closed without an MSP key file"
     fi
     ;;
-  *) fail 'expected enroll, peer, peer-second, wrong-pin, missing-module, missing-token, or missing-key' ;;
+  *) fail 'expected capability, enroll, peer, peer-second, wrong-pin, missing-module, missing-token, or missing-key' ;;
 esac
 logs=("$state"/*.log /run/fabricops/*/*.log)
-if grep -Fq -f "$state/pin" -f "$state/so-pin" "${logs[@]}"; then
-  fail 'provider PIN appeared in diagnostic logs'
+if [ "${1:-}" = capability ]; then
+  if grep -Fq 'capability-secret' "${logs[@]}"; then fail 'capability check exposed inherited credentials'; fi
+else
+  test -s "$state/pin" && test -s "$state/so-pin" || fail 'PIN log-scan inputs are missing'
+  if grep -Fq -f "$state/pin" -f "$state/so-pin" "${logs[@]}"; then
+    fail 'provider PIN appeared in diagnostic logs'
+  fi
 fi
