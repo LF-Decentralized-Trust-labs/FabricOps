@@ -834,6 +834,16 @@ Its `pkcs11` fields identify a module path, token label, and required
 private keys are not configuration fields. This setting does not change TLS,
 admin, orderer, or CA signing. Do not select PKCS11 for a running network.
 
+`fabricopsctl status` table output and `wait` failure diagnostics show requested
+peer custody as `Gated` for PKCS11 or `Blocked` for an invalid provider combination,
+even before org status exists. The guidance omits provider paths, token labels,
+credential references and claim names, and performs no extra resource reads.
+It describes the requested configuration, not observed provider health: an old
+Ready condition or a running Pod does not attest a token or signing key. Preserve
+local credentials/state; do not delete token claims or switch providers to bypass
+the gate. JSON/YAML status output remains the controller's unmodified status,
+without this CLI-derived guidance.
+
 The reserved `pkcs11.runtime` layout names enrollment/peer images, a provider
 config Secret key, explicit non-root UID/group, and a separate existing token
 claim per peer. Its current config binding is limited to `SOFTHSM2_CONF`.

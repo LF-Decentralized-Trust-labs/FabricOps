@@ -372,6 +372,7 @@ func printStatus(out io.Writer, network *fabricopsv1alpha1.FabricNetwork) {
 		printf(out, "Message: %s\n", network.Status.Message)
 	}
 
+	printPeerMSPCustody(out, network.Spec.Orgs)
 	printOrgStatuses(out, network.Status.OrgStatus)
 	printChannelStatuses(out, network.Status.ChannelStatus)
 	printChaincodeStatuses(out, network.Status.ChaincodeStatus)
@@ -391,6 +392,7 @@ func printParticipantStatus(out io.Writer, participant *fabricopsv1alpha1.Fabric
 	printf(out, "ChannelsReady: %t\n", participant.Status.ChannelsReady)
 	printf(out, "ChaincodeLifecycleReady: %t\n", participant.Status.ChaincodeLifecycleReady)
 
+	printPeerMSPCustody(out, []fabricopsv1alpha1.Org{participant.Spec.Org})
 	if participant.Status.LocalOrgStatus.Name != "" || participant.Status.LocalOrgStatus.Namespace != "" {
 		printOrgStatuses(out, []fabricopsv1alpha1.OrgStatus{participant.Status.LocalOrgStatus})
 	}
