@@ -215,6 +215,20 @@ resource is a `FabricParticipant`.
 
 ### Federated Channel Joins
 
+Join bundles carry public membership artifacts, not signing identities or
+provider configuration. Peer custody choices, PIN/config Secret references and
+token storage are not transferred. Each recipient must provision its own local
+identity and any future supported provider credentials/state; importing a bundle
+does not enable PKCS11, which remains gated in both public APIs. Channel admin
+signing and TLS still use software-backed identities.
+
+Exports reject custody-marked Secrets used as admin/TLS sources. MSP config must
+be a single public `NodeOUs` YAML document, without local `BCCSP` or other runtime
+settings; private-key PEM in public artifact fields is refused on export,
+validation and rendering. These checks do not authenticate a bundle or attest a
+provider. Review public roots, endpoint references and membership policies before
+using artifacts from another organization.
+
 Founder/coordinator networks can admit a participant-owned organization by
 referencing the rendered Application org JSON from a join bundle:
 
@@ -602,6 +616,124 @@ The Tests workflow runs this check on pushes and pull requests. Set
 The staging check uses real Fabric protobuf tools with stubbed peer transport;
 it does not replace a live network authorization or consensus test.
 
+### Experimental PKCS#11 Image Validation
+
+Run the isolated SoftHSM capability proof with Docker:
+
+```bash
+make test-pkcs11-images
+```
+
+This builds pinned-source Fabric 3.1.0 peer and Fabric CA 1.5.15 client binaries
+with PKCS#11 support. It checks token-backed enrollment, private-key attributes,
+an empty peer MSP keystore, peer startup across new containers, and failures for
+an invalid PIN, missing module/token, or absent matching key. PIN-bearing peer
+configuration stays in a container tmpfs. Temporary containers, token storage,
+and the internal-only Docker network are removed when the test exits.
+The enrollment executable uses the token only for peer MSP signing; registrar
+and TLS enrollment remain software-backed. It requires memory-backed work and
+configuration directories and refuses existing output or already-registered
+peer identities. This is fresh enrollment only, not automatic reenrollment or
+recovery. The smoke also checks two distinct peer keys in one token, TLS-disabled
+enrollment, file permissions, and rejection before publishable output appears.
+The Test PKCS11 Images workflow runs this proof when its files change.
+The peer test uses warning-level logging and checks that generated PINs do not
+appear in logs; upstream provider debug logging must not be enabled with PINs.
+
+The experimental images require runtime-helper ABI `1`, Fabric `3.1.0`, and the
+pinned Fabric CA client `1.5.15` sources. Staged Pod commands require
+`fabricops-pkcs11-check` before calling the enrollment helper or generating peer
+configuration. The enrollment entrypoint also checks direct invocations. Missing
+checkers, unsupported ABI/version requests, or mismatched artifacts stop the
+operation without software fallback. Version requests are not silently upgraded.
+
+The check binds component and helper bytes to their image build, requires native
+PKCS11/CGO build settings, and checks the component's reported version (including
+the peer revision). Version subprocesses have a bounded timeout/output and do not
+inherit provider credentials or debug settings. Docker tests cover replaced
+artifacts and a legacy helper without a checker. These are compatibility checks
+for trusted images, not image authentication or HSM/vendor attestation. Native
+module compatibility still depends on actual enrollment and certificate-bound
+signing; this does not inspect a remote CA server's version. Public capability
+gates remain closed.
+
+This is not operator integration, endorsement validation, hardware isolation,
+or a production-ready HSM image. The fixture uses a local HTTP CA and disables
+peer TLS; it does not change a Kubernetes cluster or enable `provider: PKCS11`.
+
+To exercise the staged Kubernetes templates, install Docker, Kind, kubectl, and
+Go, then run:
+
+```bash
+make test-pkcs11-kind
+```
+
+The harness builds the experimental images and creates a uniquely named,
+disposable Kind cluster with a separate kubeconfig. It never reuses an existing
+cluster. Cleanup removes the proof cluster, test keys, and temporary kubeconfig
+on success or failure; no images are pushed.
+
+This proof uses the actual staged enrollment Job, scoped publisher RBAC, storage
+guards, handoff, and peer Deployment builders without enabling the public
+backend or deploying an operator. It checks non-root enrollment/publication,
+key-free public MSP output, credential-safe Pod logs, Job/Pod cleanup, TLS peer
+startup, and restart using the persisted token. A fresh token signature is
+verified against the exact published MSP certificate, and the key must be marked
+sensitive and never extractable. The test CA uses local HTTP; peer transport uses
+TLS. The Test PKCS11 Images workflow also runs this Kind proof.
+
+The harness pauses the healthy peer and runs serialized startup faults for an
+incorrect PIN, missing module/token/key, and a valid certificate whose key is
+absent from the selected token. It watches each fault Pod from its creation
+resource version, rejects observed readiness, and requires a nonzero exit with
+the expected provider error. Unrelated failures do not count as a pass. The
+original peer must then recover without reenrollment, with its identity/PIN
+Secrets and durable handoff unchanged.
+
+Staged PKCS11 peers use an exec readiness check that opens a fresh provider
+session, selects the key by the mounted MSP certificate's Fabric SKI, signs a
+random challenge, and verifies it against that certificate. The check also
+requires the local peer listener, a time-valid P-256 certificate, and an
+empty or absent software MSP keystore. It uses a dummy software keystore and
+emits only a generic refusal; provider diagnostics and PINs are not forwarded to
+probe events. TCP liveness is unchanged so provider failure alone does not cause
+a restart loop. Kubernetes bounds each check to five seconds.
+
+The live test changes only projected provider configuration to hide the token
+from fresh sessions, observes readiness loss while the same peer container keeps
+serving its operations endpoint, and restores readiness without restart or
+reenrollment. Identity/PIN Secrets and the handoff must remain unchanged. This
+does not simulate a physical HSM outage or attest the running peer's cached
+signing session; a successful probe proves that a fresh session can use the key
+matching the mounted certificate, not that every endorsement will succeed.
+
+The harness also enrolls a software admin and joins the peer to an isolated
+channel using the existing config generator. A separate TLS client sends two
+fresh QSCC channel-info proposals and verifies each endorsement against the
+exact published peer certificate and MSP ID. The signed proposal hash, response,
+and genesis ledger hash must match. This client has no token PVC, provider
+configuration, PIN or Kubernetes API token; its software admin key only signs
+requests. The verifier rejects replayed or altered responses.
+
+That first channel has an offline genesis with a placeholder consenter. A
+second channel uses a real single-node TLS Raft orderer and the locally built Go
+settlement CCaaS sample. The harness reuses the package/install/approve/commit
+helpers, checks the installed package ID, and waits for the orderer to serve
+channel config before lifecycle writes. Admin and orderer signing remain
+software-backed; only peer MSP signing uses the token.
+
+The independent client verifies the settlement write endorsement before
+broadcasting its signed transaction. Orderer acceptance is not enough: a fresh,
+signed QSCC transaction query must report VALID for the exact submitted envelope,
+transaction ID and channel, followed by an endorsed read of the expected state.
+A public transaction receipt lets another client repeat those checks after the
+peer is replaced, without writing or reenrolling again.
+
+These are single-org SoftHSM proofs on Kind's local storage, not multi-orderer
+quorum testing, multi-node CSI attachment, hardware isolation, vendor
+qualification, or production image certification. PKCS11 remains unavailable to
+users.
+
 ### E2E Validation
 
 Run the repeatable kind-based e2e proof with:
@@ -667,6 +799,147 @@ succeeds, and preserves the previous credential in
 
 Orderers mount identity Secrets at `/var/hyperledger/orderer/msp` and `/var/hyperledger/orderer/tls`. Peers mount them at `/etc/hyperledger/fabric/peer/msp` and `/etc/hyperledger/fabric/peer/tls`.
 
+Channel configuration replicas contain public MSP material and orderer TLS
+certificates, not MSP or TLS server private keys. Configuration-generation Jobs
+mount only that public material. Signing Jobs still use their admin MSP, and
+orderer administration retains the client TLS credentials needed for mTLS.
+Orderer admin mTLS replicas are created only for orderer-join Jobs in the
+channel bootstrap host namespace, not for public configuration generation or
+application-org admission. Matching legacy replicas in other managed org
+namespaces are retired only when their network UID and channel ownership agree.
+Source identities, identity-labelled Secrets, foreign-owned objects, and host
+replicas are preserved; unfinished consumers delay removal.
+The chart and install bundle include Secret deletion and read-only Pod access
+for consumer checks. Installations with user-managed RBAC must grant those
+permissions before cleanup can complete.
+
+Enrollment publishers use controller-prepared output Secrets and a Role limited
+to `get` and `patch` on named destinations. They cannot create/list Secrets or
+read bootstrap, enrollment-password, or provider credentials through that Role.
+Software/admin publishers share an org-scoped output allowlist; PKCS11 peer
+outputs are excluded from it. Existing identity data is preserved, including
+older Fabric CA-labelled outputs in the owning network's org namespace;
+foreign-owned or immutable destinations require review rather than replacement.
+New enrollment Jobs disable automatic API-token mounting and project credentials
+only into the publisher, not the CA-facing init container. Registrar rotation
+Jobs do not receive an API token. Existing Job templates are not rewritten;
+their enrollment Role is narrowed when reconciled.
+
+Peer `mspSigning` is optional; omission or `provider: Secret` keeps the existing
+Secret-backed MSP signing path. `provider: PKCS11` is a reserved contract, not
+runtime support: both `FabricNetwork` and `FabricParticipant` report it as
+unavailable before provisioning and do not fall back to software signing.
+Its `pkcs11` fields identify a module path, token label, and required
+`pinSecretKeyRef` in the generated org namespace. Literal PINs and exported
+private keys are not configuration fields. This setting does not change TLS,
+admin, orderer, or CA signing. Do not select PKCS11 for a running network.
+
+The custody boundary is the signer, not the certificate store. A peer's public
+MSP certificate and trust roots can live in a Secret even when its signing key
+never leaves a token. The staged peer path enrolls through a PKCS11-capable
+Fabric CA client, configures the peer's BCCSP provider, and checks that the
+token can sign for the published certificate. It does not import an existing
+software key. Other signers have distinct requirements:
+
+| Signer | Current boundary |
+| --- | --- |
+| Fabric CA | The CA server still owns a software signing key. External CA signing would require a provider-capable server, CA signing configuration and a tested bootstrap and recovery procedure. A provider-capable enrollment client does not change the CA server. |
+| Orderer | Cluster TLS and local MSP signing remain software-backed. External MSP signing needs separate orderer BCCSP configuration and restart/quorum tests; peer results do not qualify an orderer. |
+| Admin and helper Jobs | Channel and lifecycle commands use their own software admin identities. A future external admin signer needs a compatible client, scoped authorization and signing tests. Helpers must not borrow a peer's PIN or token volume. |
+| TLS | Certificate renewal and TLS private keys retain their existing lifecycle. Enabling an MSP provider would not change the TLS signer. |
+
+Vault KV or a CSI mount can deliver credentials, but delivering a private key
+to a Pod is not non-exportable signing. Vault Transit and cloud KMS could fit
+behind a compatible signing adapter or PKCS11 bridge; none is supported by
+selecting a vendor name in the manifest. Qualification requires enrollment and
+endorsement against the same certificate, restart with the same key, refusal
+on provider loss or mismatch without software fallback, and reviewed recovery.
+The SoftHSM proofs exercise that first peer integration, not vendor hardware,
+managed recovery, or production availability.
+
+`fabricopsctl status` table output and `wait` failure diagnostics show requested
+peer custody as `Gated` for PKCS11 or `Blocked` for an invalid provider combination,
+even before org status exists. The guidance omits provider paths, token labels,
+credential references and claim names, and performs no extra resource reads.
+It describes the requested configuration, not observed provider health: an old
+Ready condition or a running Pod does not attest a token or signing key. Preserve
+local credentials/state; do not delete token claims or switch providers to bypass
+the gate. JSON/YAML status output remains the controller's unmodified status,
+without this CLI-derived guidance.
+
+The reserved `pkcs11.runtime` layout names enrollment/peer images, a provider
+config Secret key, explicit non-root UID/group, and a separate existing token
+claim per peer. Its current config binding is limited to `SOFTHSM2_CONF`.
+References resolve in the org namespace; token state is separate from ledger,
+database, and CA claims. Provider config is mounted read-only and PIN references
+are delivered only to key actors, not mounted into the publisher. These are
+staged templates, not enabled reconciliation or a hardware-HSM compatibility claim.
+The staged PKCS11 publisher uses a peer-specific ServiceAccount with automatic
+token mounting disabled. Only the publisher receives an explicit, short-lived
+API token projection; the enroller and peer runtime do not. Its generated Role
+allows only `get` and `patch` on that peer's controller-prepared MSP and optional
+TLS output Secrets, not Secret creation, listing, or access to provider or
+enrollment credentials. PIN/config references cannot alias peer output Secrets.
+Existing foreign-owned destinations and software-key MSP material are refused,
+not replaced. Provider references also cannot alias software/admin/orderer
+enrollment outputs.
+
+The staged enrollment-to-peer handoff requires an owned, matching enrollment
+Job reporting `Complete=True` and `active: 0`, plus valid published identities.
+PKCS11 enrollment Jobs are single-attempt: failed or partial enrollment requires
+explicit recovery review, and automatic retries are disabled.
+It records the Job UID, enrollment-plan digest, and public MSP UID/content digest
+in namespace retention metadata before retiring that Job with background
+cleanup. The first peer deployment waits until the Job and every Pod referencing
+its token claim have disappeared from the API, including terminal or unrelated
+Pods. FabricOps does not directly delete unrelated Pods. Marked PKCS11 enrollment
+Jobs bypass general successful-history TTL cleanup; the handoff retires them
+after recording evidence. Failed Jobs remain available for inspection.
+The durable receipt survives Job cleanup, so later reconciliation does not
+repeat enrollment. Changed plans, replaced Jobs/MSPs, and lost identity material
+require recovery review. Secret existence alone is not enrollment proof.
+This is publication and API-level sequencing evidence, not token key-binding,
+filesystem-unmount, or CSI-detach attestation. See
+[Kubernetes Job lifecycle](https://kubernetes.io/docs/concepts/workloads/controllers/job/)
+and [garbage collection](https://kubernetes.io/docs/concepts/architecture/garbage-collection/).
+
+Staged storage validation requires an existing, non-deleting, already `Bound`
+filesystem PVC for each peer, with a volume name and exactly one access mode:
+`ReadWriteOnce` or `ReadWriteOncePod`. Each user-prepared claim must have
+`fabricops.io/fabricnetwork-uid` set to the owning resource UID and
+`fabricops.io/pkcs11-peer` set to its declared peer name, without a controller
+owner reference. FabricOps does not create, relabel, initialize, or repair token
+claims. Prepare delayed-binding storage externally before enrollment; pending,
+lost, raw-block, read-only, and shared-access claims are refused by this staged
+path. These checks do not attest filesystem permissions, token/key contents,
+CSI behavior, or recoverability. `ReadWriteOnce` is not a single-Pod lock; see
+[Kubernetes access modes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes).
+
+For existing owned org namespaces, the controller records token claim names in
+the `fabricops.io/pkcs11-state-retention` namespace annotation, bound to the
+network and namespace UIDs. Claim changes accumulate; removing an org, provider,
+or claim reference does not release the hold. Validated claims also bind their
+PVC UIDs and peer assignments into that record. Recreating a PVC with the same
+name or reassigning it to another peer requires explicit recovery review, not
+automatic adoption. Network cleanup checks retained
+namespaces before deleting any org namespace, including orgs removed from the
+manifest. Malformed or mismatched records require manual review and are not
+overwritten. Declared references also block cleanup before a hold is recorded.
+After preserving or recovering token state, explicitly remove both its runtime
+claim references and the namespace annotation to release the hold. This guards
+FabricOps cleanup only, not manual namespace deletion, and does not verify PVC
+contents, storage retention policy, or recoverability. PKCS11 remains unavailable.
+Use matching CRDs and controller builds, never the staged custody schema with an
+older released controller.
+
+Chaincode lifecycle TLS replicas also exclude server private keys. During an
+upgrade, pruning an older replica waits for unfinished Jobs or Pods that still
+request the removed keys; allow them to finish, or inspect and remove stalled
+consumers before retrying. Source identity Secrets are not modified.
+
+Signing identities currently remain Secret-backed. HSM/PKCS#11 signing is not
+yet supported; certificate-only replication does not enable external key custody.
+
 FabricOps inventories managed MSP/TLS certificates in status, starts Fabric CA
 renewal Jobs for admin, orderer, and peer leaf identities inside the renewal
 window, and rolls workloads when mounted identity material changes. See
@@ -682,7 +955,9 @@ Export a `FabricNetwork` spec, owned ConfigMaps, and PVC inventory:
 fabricopsctl backup export -n default --out network-metadata.json fabricnetwork-sample
 ```
 
-Add `--include-secrets` to include identity private keys and credentials.
+For software-key networks, add `--include-secrets` to include identity private
+keys and credentials. Secret-inclusive export is refused when external custody
+is declared or custody evidence is found in selected metadata or identity artifacts.
 The output file must not exist and is created with mode `0600`. Archives are
 not encrypted; protect them outside Git, including exports without Secrets,
 which can still contain sensitive configuration.
@@ -693,6 +968,16 @@ outputs are included only inside UID-verified org namespaces and listed under
 needs namespace discovery and ConfigMap/PVC read access; exporting Secrets also
 requires Secret read access. Collection failures abort the command; discard any
 incomplete file after a write failure.
+
+External-custody exports preserve public provider references in the network spec
+and add a versioned `externalCustody` inventory. Retained namespace names are
+recorded, but retention receipts are not copied or rebound to new UIDs. Default
+exports do not read Secrets or copy token storage; preserve provider credentials,
+token state and verified recovery procedures separately. All automated restores
+of archives with custody evidence are blocked, including `--metadata-only`.
+This also applies to older archives whose specs or artifacts identify external
+custody. An older archive without those markers is not proof that custody was
+software-only.
 
 **This is metadata export, not a full or consistent point-in-time backup.**
 Volume contents are not copied. Separately preserve CA databases/signing state,

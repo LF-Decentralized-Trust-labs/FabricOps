@@ -19,12 +19,15 @@ limitations under the License.
 package e2e
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -35,6 +38,41 @@ import (
 
 	fabricopsv1alpha1 "github.com/LF-Decentralized-Trust-labs/FabricOps/api/v1alpha1"
 )
+
+func admissionAdminCommand(command string) string {
+	// CRI does not preserve ordering between stdout and stderr records.
+	return "exec 2>&1\n" + command
+}
+
+func TestAdmissionAdminCommandPreservesArtifactOrdering(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	command := admissionAdminCommand(`printf 'Fabric diagnostic\n' >&2
+printf 'FABRICOPS_SIGNED_ENVELOPE\n'
+printf 'c2lnbmVkLWVudmVsb3Bl\n'`)
+	cmd := exec.Command("sh", "-ec", command)
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatal("separate stderr can be reordered after the artifact marker by container logging")
+	}
+	if !strings.HasPrefix(stdout.String(), "Fabric diagnostic\nFABRICOPS_SIGNED_ENVELOPE\n") {
+		t.Fatalf("unexpected diagnostic/artifact ordering: %q", stdout.String())
+	}
+	_, encoded, found := strings.Cut(stdout.String(), "FABRICOPS_SIGNED_ENVELOPE\n")
+	if !found {
+		t.Fatal("missing artifact marker")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(encoded))
+	if err != nil || string(decoded) != "signed-envelope" {
+		t.Fatalf("invalid artifact: %v", err)
+	}
+	failed := exec.Command("sh", "-ec", admissionAdminCommand("echo failure >&2\nexit 17"))
+	if err := failed.Run(); err == nil || failed.ProcessState.ExitCode() != 17 {
+		t.Fatal("command failure was hidden")
+	}
+}
 
 func testLocalOrgAdmission(existingSettlement string) {
 	GinkgoHelper()
@@ -233,7 +271,7 @@ func runAdmissionAdminJob(dir, channel, org, purpose string, input []byte, comma
 					{Name: "CORE_PEER_LOCALMSPID", Value: mspID},
 					{Name: "CORE_PEER_MSPCONFIGPATH", Value: "/msp"},
 				},
-				Command: []string{"sh", "-ec", command},
+				Command: []string{"sh", "-ec", admissionAdminCommand(command)},
 				VolumeMounts: []corev1.VolumeMount{
 					{Name: "proposal", MountPath: "/proposal", ReadOnly: true},
 					{Name: "admin", MountPath: "/msp", ReadOnly: true},

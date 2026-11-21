@@ -22,6 +22,7 @@ import (
 	"hash/fnv"
 	"maps"
 	"reflect"
+	"slices"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -313,11 +314,15 @@ func resourceRequirements(requestCPU, requestMemory, limitCPU, limitMemory strin
 }
 
 func mspSecretItems(tlsEnabled bool) []corev1.KeyToPath {
+	items := mspPublicSecretItems(tlsEnabled)
+	return slices.Insert(items, 3, corev1.KeyToPath{Key: mspKeyStoreKey, Path: "keystore/key.pem"})
+}
+
+func mspPublicSecretItems(tlsEnabled bool) []corev1.KeyToPath {
 	items := []corev1.KeyToPath{
 		{Key: mspConfigKey, Path: "config.yaml"},
 		{Key: mspCACertKey, Path: "cacerts/ca.pem"},
 		{Key: mspSignCertKey, Path: "signcerts/cert.pem"},
-		{Key: mspKeyStoreKey, Path: "keystore/key.pem"},
 	}
 
 	if tlsEnabled {
@@ -331,10 +336,13 @@ func mspSecretItems(tlsEnabled bool) []corev1.KeyToPath {
 }
 
 func tlsSecretItems() []corev1.KeyToPath {
+	return append(tlsPublicSecretItems(), corev1.KeyToPath{Key: tlsServerKeyKey, Path: "server.key"})
+}
+
+func tlsPublicSecretItems() []corev1.KeyToPath {
 	return []corev1.KeyToPath{
 		{Key: tlsCACertKey, Path: "ca.crt"},
 		{Key: tlsServerCertKey, Path: "server.crt"},
-		{Key: tlsServerKeyKey, Path: "server.key"},
 	}
 }
 
@@ -494,6 +502,10 @@ func mspSecretKeys(tlsEnabled bool) []string {
 	return keys
 }
 
+func mspPublicSecretKeys(tlsEnabled bool) []string {
+	return slices.DeleteFunc(mspSecretKeys(tlsEnabled), func(key string) bool { return key == mspKeyStoreKey })
+}
+
 func tlsSecretKeys() []string {
 	return []string{
 		tlsCACertKey,
@@ -589,6 +601,11 @@ func requiredIdentitySecrets(
 
 	for i := 0; i < org.Peer.Instances; i++ {
 		name := sanitizeName(fmt.Sprintf("%s%d", org.Peer.Prefix, i))
+		mspKind := workloadMSPSecretKind(org, componentPeer)
+		mspKeys := mspSecretKeys(tlsEnabled)
+		if mspKind == secretKindPeerPKCS11MSP {
+			mspKeys = mspPublicSecretKeys(tlsEnabled)
+		}
 		requirements = append(requirements, identitySecretRequirement{
 			namespace: namespace,
 			name:      identityEnrollmentSecretName(name),
@@ -598,8 +615,8 @@ func requiredIdentitySecrets(
 		requirements = append(requirements, identitySecretRequirement{
 			namespace: namespace,
 			name:      identitySecretName(name, secretKindMSP),
-			kind:      secretKindMSP,
-			keys:      mspSecretKeys(tlsEnabled),
+			kind:      mspKind,
+			keys:      mspKeys,
 		})
 
 		if tlsEnabled {
@@ -1680,6 +1697,10 @@ func buildPeerDeployment(
 	namespace string,
 ) *appsv1.Deployment {
 	name := sanitizeName(fmt.Sprintf("%s%d", org.Peer.Prefix, instance))
+	volumes := identityVolumes(name, net.Spec.Global.TLS)
+	if workloadMSPSecretKind(org, componentPeer) == secretKindPeerPKCS11MSP {
+		volumes[0].Secret.Items = mspPublicSecretItems(net.Spec.Global.TLS)
+	}
 	peer := peerInstance{org: org, name: name, namespace: namespace}
 	replicas := int32(1)
 	peerAddress := peerAddress(peer)
@@ -1726,7 +1747,7 @@ func buildPeerDeployment(
 		env = append(env, couchDBPeerEnv(name, namespace)...)
 	}
 
-	return &appsv1.Deployment{
+	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
 			Namespace:   namespace,
@@ -1747,7 +1768,7 @@ func buildPeerDeployment(
 					Annotations: resourceAnnotations(net, org),
 				},
 				Spec: corev1.PodSpec{
-					Volumes: append(identityVolumes(name, net.Spec.Global.TLS), dataVolume(name)),
+					Volumes: append(volumes, dataVolume(name)),
 					Containers: []corev1.Container{
 						{
 							Name:  containerPeer,
@@ -1771,6 +1792,12 @@ func buildPeerDeployment(
 			},
 		},
 	}
+	if workloadMSPSecretKind(org, componentPeer) == secretKindPeerPKCS11MSP {
+		if err := applyPKCS11Runtime(&deployment.Spec.Template.Spec, org, name, false, net.Spec.Global.FabricVersion); err != nil {
+			deployment.Spec.Template.Spec.Containers[0].Command = []string{"sh", "-ec", "echo 'PKCS11 runtime access is incomplete; refusing software fallback' >&2\nexit 1"}
+		}
+	}
+	return deployment
 }
 
 func ccaasBuilderConfig(peerName string) string {
@@ -1953,6 +1980,16 @@ func (r *FabricNetworkReconciler) reconcilePeers(
 
 	for i := 0; i < org.Peer.Instances; i++ {
 		deploy := buildPeerDeployment(net, org, i, namespace)
+		if workloadMSPSecretKind(org, componentPeer) == secretKindPeerPKCS11MSP {
+			ready, err := r.pkcs11PeerEnrollmentReady(ctx, net, org, namespace, deploy.Name)
+			if err != nil {
+				return status, err
+			}
+			if !ready {
+				status.Desired++
+				continue
+			}
+		}
 		if err := r.setDeploymentIdentityRevision(ctx, deploy, net, deploy.Name); err != nil {
 			return status, err
 		}

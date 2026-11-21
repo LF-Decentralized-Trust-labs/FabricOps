@@ -113,7 +113,7 @@ func (r *FabricNetworkReconciler) reconcileLocalOrgAdd(
 	if err := r.ensureChannelRBAC(ctx, net, adminOrg, channel.Name, namespace); err != nil {
 		return false, "", err
 	}
-	if err := r.ensureChannelCryptoSecrets(ctx, net, channel, adminOrg, namespace); err != nil {
+	if err := r.ensureChannelPublicCryptoSecrets(ctx, net, channel, adminOrg, namespace); err != nil {
 		return false, "", err
 	}
 	configMap, err := buildChannelConfigMap(net, channel, adminOrg, namespace)
@@ -327,7 +327,7 @@ func buildLocalOrgAddJob(
 			Name: ordererTLSVolumeName,
 			VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
 				SecretName:  channelOrdererTLSSecretName(channel.Name, orderer.name),
-				Items:       tlsSecretItems(),
+				Items:       tlsPublicSecretItems(),
 				DefaultMode: secretVolumeDefaultMode(),
 			}},
 		},
@@ -348,7 +348,7 @@ func buildLocalOrgAddJob(
 			Name: volumeName,
 			VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
 				SecretName:  channelOrgMSPSecretName(channel.Name, org),
-				Items:       mspSecretItems(net.Spec.Global.TLS),
+				Items:       mspPublicSecretItems(net.Spec.Global.TLS),
 				DefaultMode: secretVolumeDefaultMode(),
 			}},
 		})
@@ -363,7 +363,7 @@ func buildLocalOrgAddJob(
 				Name: volumeName,
 				VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
 					SecretName:  channelOrdererMSPSecretName(channel.Name, ordererInstance.name),
-					Items:       mspSecretItems(net.Spec.Global.TLS),
+					Items:       mspPublicSecretItems(net.Spec.Global.TLS),
 					DefaultMode: secretVolumeDefaultMode(),
 				}},
 			})

@@ -225,6 +225,14 @@ docker-build-release: ## Build the manager image with the canonical release tag.
 docker-push-release: ## Push the manager image with the canonical release tag.
 	$(MAKE) docker-push IMG=$(RELEASE_IMG)
 
+.PHONY: test-pkcs11-images
+test-pkcs11-images: ## Build experimental PKCS11 binaries and test isolated SoftHSM enrollment/peer startup.
+	bash hack/test-pkcs11-images.sh
+
+.PHONY: test-pkcs11-kind
+test-pkcs11-kind: ## Prove staged PKCS11 enrollment/publication and peer startup in a disposable Kind cluster.
+	bash hack/test-pkcs11-kind.sh
+
 .PHONY: docker-build-fabric-tools
 docker-build-fabric-tools: ## Build the FabricOps Fabric tools helper image.
 	IMAGE="$(FABRIC_TOOLS_IMAGE)" FABRIC_VERSION="$(FABRIC_TOOLS_FABRIC_VERSION)" PLATFORM="$(FABRIC_TOOLS_PLATFORM)" config/images/fabric-tools/build_and_push.sh

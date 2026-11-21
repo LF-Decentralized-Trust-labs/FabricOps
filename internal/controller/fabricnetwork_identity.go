@@ -17,6 +17,7 @@ limitations under the License.
 package controller
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/x509"
@@ -42,6 +43,7 @@ const (
 	secretKindWorkloadEnroll = "workload-enrollment"
 	secretKindAdminMSP       = "admin-msp"
 	secretKindAdminTLS       = "admin-tls"
+	secretKindPeerPKCS11MSP  = "peer-pkcs11-msp"
 
 	caBootstrapUsername     = "admin"
 	bootstrapPasswordLength = 32
@@ -315,6 +317,8 @@ func identitySecretValidationError(secret corev1.Secret, kind string, tlsEnabled
 		return enrollmentCredentialSecretValidationError(secret)
 	case secretKindMSP:
 		return mspIdentitySecretValidationError(secret, tlsEnabled)
+	case secretKindPeerPKCS11MSP:
+		return pkcs11MSPIdentitySecretValidationError(secret, tlsEnabled)
 	case secretKindTLS:
 		return tlsIdentitySecretValidationError(secret)
 	case secretKindAdminMSP:
@@ -357,6 +361,33 @@ func mspIdentitySecretValidationError(secret corev1.Secret, tlsEnabled bool) str
 	if len(missing) > 0 {
 		return "missing keys: " + strings.Join(missing, ",")
 	}
+	if problem := mspPublicIdentitySecretValidationError(secret, tlsEnabled); problem != "" {
+		return problem
+	}
+	if err := parsePEMPrivateKey(secret.Data[mspKeyStoreKey]); err != nil {
+		return "invalid private key"
+	}
+	return ""
+}
+
+func pkcs11MSPIdentitySecretValidationError(secret corev1.Secret, tlsEnabled bool) string {
+	allowed := mspPublicSecretKeys(tlsEnabled)
+	for key, data := range secret.Data {
+		if !slices.Contains(allowed, key) {
+			return "unexpected data in PKCS11 peer MSP Secret; software keys and provider credentials are forbidden"
+		}
+		// Reject PEM markers even when YAML indentation prevents PEM decoding.
+		if bytes.Contains(data, []byte("PRIVATE KEY-----")) {
+			return "private key PEM is forbidden in PKCS11 peer MSP material"
+		}
+	}
+	return mspPublicIdentitySecretValidationError(secret, tlsEnabled)
+}
+
+func mspPublicIdentitySecretValidationError(secret corev1.Secret, tlsEnabled bool) string {
+	if missing := missingSecretKeys(secret, mspPublicSecretKeys(tlsEnabled)); len(missing) > 0 {
+		return "missing keys: " + strings.Join(missing, ",")
+	}
 
 	if strings.TrimSpace(string(secret.Data[mspConfigKey])) == "" {
 		return "empty MSP config"
@@ -376,10 +407,6 @@ func mspIdentitySecretValidationError(secret corev1.Secret, tlsEnabled bool) str
 	if len(signCert.ExtKeyUsage) > 0 {
 		return "signing certificate has incompatible extended key usage"
 	}
-	if err := parsePEMPrivateKey(secret.Data[mspKeyStoreKey]); err != nil {
-		return "invalid private key"
-	}
-
 	return ""
 }
 

@@ -123,6 +123,9 @@ func (r *FabricNetworkReconciler) cleanupFabricNetwork(
 	net *fabricopsv1alpha1.FabricNetwork,
 ) error {
 	log := logf.FromContext(ctx)
+	if err := r.guardPKCS11NamespaceCleanup(ctx, net); err != nil {
+		return err
+	}
 
 	for _, org := range net.Spec.Orgs {
 		namespaceName := orgNamespaceName(net, org)
@@ -345,6 +348,9 @@ func (r *FabricNetworkReconciler) reconcileOrg(
 	status.CAEndpoint, status.OrdererEndpoints, status.PeerEndpoints = orgEndpointStatus(org, namespace)
 
 	if err := r.ensureNamespace(ctx, buildOrgNamespace(net, org)); err != nil {
+		return status, err
+	}
+	if err := r.recordOrgPKCS11StateRetention(ctx, net, org); err != nil {
 		return status, err
 	}
 	external, err := r.reconcileExternalExposure(ctx, net, org, namespace)
@@ -755,7 +761,8 @@ func (r *FabricNetworkReconciler) updateStatus(
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
@@ -802,6 +809,9 @@ func (r *FabricNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}
 
+	if err := r.recordPKCS11StateRetention(ctx, &network); err != nil {
+		return ctrl.Result{}, err
+	}
 	if problems := validateFabricNetworkTopology(&network); len(problems) > 0 {
 		message := "Invalid Fabric topology: " + strings.Join(problems, "; ")
 		log.Info("FabricNetwork topology is invalid", "problems", problems)
@@ -1157,6 +1167,7 @@ func (r *FabricNetworkReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&corev1.PersistentVolumeClaim{}, enqueueOwningFabricNetwork).
 		Watches(&networkingv1.NetworkPolicy{}, enqueueOwningFabricNetwork).
 		Watches(&batchv1.Job{}, enqueueOwningFabricNetwork).
+		Watches(&corev1.Pod{}, enqueueOwningFabricNetwork).
 		Watches(&rbacv1.Role{}, enqueueOwningFabricNetwork).
 		Watches(&rbacv1.RoleBinding{}, enqueueOwningFabricNetwork).
 		Named("fabricnetwork").

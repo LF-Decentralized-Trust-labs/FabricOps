@@ -383,6 +383,7 @@ func (r *FabricNetworkReconciler) ensureExternalOrgUpdateInputs(
 		channelOrdererTLSSecretName(channel.Name, orderer.name),
 		labels,
 		annotations,
+		tlsPublicSecretItems(),
 	); err != nil {
 		return err
 	}
@@ -711,7 +712,7 @@ func buildExternalOrgUpdateJob(
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
 					SecretName:  channelOrdererTLSSecretName(channel.Name, orderer.name),
-					Items:       tlsSecretItems(),
+					Items:       tlsPublicSecretItems(),
 					DefaultMode: secretVolumeDefaultMode(),
 				},
 			},

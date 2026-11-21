@@ -1,0 +1,83 @@
+name: Test PKCS11 Images
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/test-pkcs11-images.yml
+      - config/images/pkcs11/**
+      - config/samples/chaincodes/go_settlement/**
+      - hack/test-pkcs11-images.sh
+      - hack/test-pkcs11-kind.sh
+      - api/v1alpha1/**
+      - config/crd/bases/**
+      - internal/controller/fabricnetwork_msp_signing.go
+      - internal/controller/fabricnetwork_identity.go
+      - internal/controller/fabricnetwork_pkcs11*.go
+      - internal/controller/fabricnetwork_enrollment*.go
+      - internal/controller/fabricnetwork_org.go
+      - internal/controller/fabricnetwork_job_cleanup.go
+      - internal/controller/fabricparticipant_controller.go
+      - Makefile
+  pull_request:
+    paths:
+      - .github/workflows/test-pkcs11-images.yml
+      - config/images/pkcs11/**
+      - config/samples/chaincodes/go_settlement/**
+      - hack/test-pkcs11-images.sh
+      - hack/test-pkcs11-kind.sh
+      - api/v1alpha1/**
+      - config/crd/bases/**
+      - internal/controller/fabricnetwork_msp_signing.go
+      - internal/controller/fabricnetwork_identity.go
+      - internal/controller/fabricnetwork_pkcs11*.go
+      - internal/controller/fabricnetwork_enrollment*.go
+      - internal/controller/fabricnetwork_org.go
+      - internal/controller/fabricnetwork_job_cleanup.go
+      - internal/controller/fabricparticipant_controller.go
+      - Makefile
+
+permissions:
+  contents: read
+
+jobs:
+  softhsm:
+    name: SoftHSM enrollment and peer startup
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Check shell scripts
+        run: shellcheck config/images/pkcs11/*.sh hack/test-pkcs11-images.sh hack/test-pkcs11-kind.sh
+      - name: Build and test PKCS11 images
+        run: make test-pkcs11-images
+
+  kind:
+    name: Staged PKCS11 runtime on Kind
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      KIND_VERSION: v0.31.0
+    steps:
+      - name: Check out code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+      - name: Install Kind
+        run: |
+          curl -Lo ./kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-$(go env GOARCH)"
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+      - name: Prove staged enrollment, token signing, and peer restart
+        run: make test-pkcs11-kind
+      - name: Lint opt-in integration tests
+        run: |
+          make golangci-lint
+          bin/golangci-lint run --build-tags=integration

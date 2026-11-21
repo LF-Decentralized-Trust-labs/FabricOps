@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apiMeta "k8s.io/apimachinery/pkg/api/meta"
@@ -30,7 +31,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	fabricopsv1alpha1 "github.com/LF-Decentralized-Trust-labs/FabricOps/api/v1alpha1"
 )
@@ -75,6 +78,10 @@ func (r *FabricParticipantReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
+	networkReconciler := &FabricNetworkReconciler{Client: r.Client, Scheme: r.Scheme}
+	if err := networkReconciler.recordPKCS11StateRetention(ctx, participantLocalFabricNetwork(&participant)); err != nil {
+		return ctrl.Result{}, err
+	}
 	status, reconcileErr := r.fabricParticipantStatus(ctx, &participant)
 	result := participantReconcileResult(status, reconcileErr)
 	if reflect.DeepEqual(participant.Status, status) {
@@ -96,10 +103,36 @@ func (r *FabricParticipantReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *FabricParticipantReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	enqueueParticipant := handler.EnqueueRequestsFromMapFunc(r.participantRequestsForObject)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&fabricopsv1alpha1.FabricParticipant{}).
+		Watches(&corev1.Namespace{}, enqueueParticipant).
+		Watches(&batchv1.Job{}, enqueueParticipant).
+		Watches(&corev1.Pod{}, enqueueParticipant).
 		Named("fabricparticipant").
 		Complete(r)
+}
+
+func (r *FabricParticipantReconciler) participantRequestsForObject(ctx context.Context, object client.Object) []reconcile.Request {
+	if object == nil {
+		return nil
+	}
+	annotations := object.GetAnnotations()
+	owner, namespace, uid := annotations[annotationFabricNetwork], annotations[annotationFabricNetworkNamespace], annotations[annotationFabricNetworkUID]
+	if !strings.HasPrefix(owner, "fp-") || namespace == "" || uid == "" {
+		return nil
+	}
+	var participants fabricopsv1alpha1.FabricParticipantList
+	if err := r.List(ctx, &participants, client.InNamespace(namespace)); err != nil {
+		logf.FromContext(ctx).Error(err, "Failed to find FabricParticipant for resource event")
+		return nil
+	}
+	for _, participant := range participants.Items {
+		if string(participant.UID) == uid && participantLocalNetworkName(participant.Name) == owner {
+			return []reconcile.Request{{NamespacedName: client.ObjectKeyFromObject(&participant)}}
+		}
+	}
+	return nil
 }
 
 func (r *FabricParticipantReconciler) fabricParticipantStatus(

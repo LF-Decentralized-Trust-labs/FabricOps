@@ -1340,6 +1340,184 @@ spec:
                           maximum: 50
                           minimum: 1
                           type: integer
+                        mspSigning:
+                          description: |-
+                            MSPSigning selects custody for peer MSP signing only, never TLS or admin keys.
+                            Omission retains Secret-backed signing. PKCS11 is reserved and currently
+                            blocks reconciliation until enrollment and runtime support are available.
+                          properties:
+                            pkcs11:
+                              description: |-
+                                PeerPKCS11Config identifies a token, not an exported private key. Each peer's
+                                certificate SKI must bind its own key; token slots are not stable identifiers.
+                                PINSecretKeyRef is resolved in the generated org namespace, never the CR namespace.
+                              properties:
+                                library:
+                                  description: Library is an absolute module path
+                                    shared by enrollment and peer containers.
+                                  maxLength: 1024
+                                  minLength: 2
+                                  pattern: ^/[^[:cntrl:]]+$
+                                  type: string
+                                pinSecretKeyRef:
+                                  description: PINSecretKeyRef references a required
+                                    PIN; literal PINs are not accepted.
+                                  properties:
+                                    key:
+                                      description: The key of the secret to select
+                                        from.  Must be a valid secret key.
+                                      type: string
+                                    name:
+                                      default: ""
+                                      description: |-
+                                        Name of the referent.
+                                        This field is effectively required, but due to backwards compatibility is
+                                        allowed to be empty. Instances of this type with an empty value here are
+                                        almost certainly wrong.
+                                        More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                      type: string
+                                    optional:
+                                      description: Specify whether the Secret or its
+                                        key must be defined
+                                      type: boolean
+                                  required:
+                                  - key
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                runtime:
+                                  description: |-
+                                    Runtime describes reserved pod-level provider access. It does not enable
+                                    PKCS11 reconciliation or assert image/provider capability.
+                                  properties:
+                                    configEnv:
+                                      description: ConfigEnv is the provider variable
+                                        pointing to the mounted config file.
+                                      enum:
+                                      - SOFTHSM2_CONF
+                                      type: string
+                                    configSecretKeyRef:
+                                      description: ConfigSecretKeyRef selects only
+                                        the provider's configuration file, not PIN
+                                        data.
+                                      properties:
+                                        key:
+                                          description: The key of the secret to select
+                                            from.  Must be a valid secret key.
+                                          type: string
+                                        name:
+                                          default: ""
+                                          description: |-
+                                            Name of the referent.
+                                            This field is effectively required, but due to backwards compatibility is
+                                            allowed to be empty. Instances of this type with an empty value here are
+                                            almost certainly wrong.
+                                            More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                          type: string
+                                        optional:
+                                          description: Specify whether the Secret
+                                            or its key must be defined
+                                          type: boolean
+                                      required:
+                                      - key
+                                      type: object
+                                      x-kubernetes-map-type: atomic
+                                    enrollmentImage:
+                                      maxLength: 253
+                                      minLength: 1
+                                      type: string
+                                    fsGroup:
+                                      format: int64
+                                      maximum: 2147483647
+                                      minimum: 1
+                                      type: integer
+                                    peerImage:
+                                      maxLength: 253
+                                      minLength: 1
+                                      type: string
+                                    runAsUser:
+                                      description: RunAsUser and FSGroup must match
+                                        the prepared token storage permissions.
+                                      format: int64
+                                      maximum: 2147483647
+                                      minimum: 1
+                                      type: integer
+                                    stateClaims:
+                                      description: |-
+                                        StateClaims assigns a distinct existing claim to each peer. Token state
+                                        mounts at /var/lib/fabricops-hsm/tokens; provider config is read-only.
+                                      items:
+                                        properties:
+                                          claimName:
+                                            description: ClaimName is resolved in
+                                              the generated org namespace, never the
+                                              CR namespace.
+                                            maxLength: 253
+                                            minLength: 1
+                                            type: string
+                                          peer:
+                                            maxLength: 63
+                                            minLength: 1
+                                            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                                            type: string
+                                        required:
+                                        - claimName
+                                        - peer
+                                        type: object
+                                      maxItems: 50
+                                      minItems: 1
+                                      type: array
+                                      x-kubernetes-list-map-keys:
+                                      - peer
+                                      x-kubernetes-list-type: map
+                                  required:
+                                  - configEnv
+                                  - configSecretKeyRef
+                                  - enrollmentImage
+                                  - fsGroup
+                                  - peerImage
+                                  - runAsUser
+                                  type: object
+                                  x-kubernetes-validations:
+                                  - message: provider configuration requires a Secret
+                                      name and key
+                                    rule: has(self.configSecretKeyRef.name) && size(self.configSecretKeyRef.name)
+                                      > 0 && size(self.configSecretKeyRef.key) > 0
+                                  - message: provider configuration must not be optional
+                                    rule: '!has(self.configSecretKeyRef.optional)
+                                      || !self.configSecretKeyRef.optional'
+                                tokenLabel:
+                                  description: |-
+                                    TokenLabel selects the token by label, not by slot number. Multiple peers
+                                    may use the same token, but must have distinct certificate-bound keys.
+                                  maxLength: 32
+                                  minLength: 1
+                                  pattern: ^[^[:cntrl:]]+$
+                                  type: string
+                              required:
+                              - library
+                              - pinSecretKeyRef
+                              - tokenLabel
+                              type: object
+                              x-kubernetes-validations:
+                              - message: pinSecretKeyRef.name is required
+                                rule: has(self.pinSecretKeyRef.name) && size(self.pinSecretKeyRef.name)
+                                  > 0
+                              - message: pinSecretKeyRef.key is required
+                                rule: size(self.pinSecretKeyRef.key) > 0
+                              - message: PIN Secret references must not be optional
+                                rule: '!has(self.pinSecretKeyRef.optional) || !self.pinSecretKeyRef.optional'
+                            provider:
+                              enum:
+                              - Secret
+                              - PKCS11
+                              type: string
+                          required:
+                          - provider
+                          type: object
+                          x-kubernetes-validations:
+                          - message: pkcs11 must be set only for provider PKCS11
+                            rule: 'self.provider == ''PKCS11'' ? has(self.pkcs11)
+                              : !has(self.pkcs11)'
                         prefix:
                           maxLength: 50
                           minLength: 1
@@ -3156,6 +3334,183 @@ spec:
                         maximum: 50
                         minimum: 1
                         type: integer
+                      mspSigning:
+                        description: |-
+                          MSPSigning selects custody for peer MSP signing only, never TLS or admin keys.
+                          Omission retains Secret-backed signing. PKCS11 is reserved and currently
+                          blocks reconciliation until enrollment and runtime support are available.
+                        properties:
+                          pkcs11:
+                            description: |-
+                              PeerPKCS11Config identifies a token, not an exported private key. Each peer's
+                              certificate SKI must bind its own key; token slots are not stable identifiers.
+                              PINSecretKeyRef is resolved in the generated org namespace, never the CR namespace.
+                            properties:
+                              library:
+                                description: Library is an absolute module path shared
+                                  by enrollment and peer containers.
+                                maxLength: 1024
+                                minLength: 2
+                                pattern: ^/[^[:cntrl:]]+$
+                                type: string
+                              pinSecretKeyRef:
+                                description: PINSecretKeyRef references a required
+                                  PIN; literal PINs are not accepted.
+                                properties:
+                                  key:
+                                    description: The key of the secret to select from.  Must
+                                      be a valid secret key.
+                                    type: string
+                                  name:
+                                    default: ""
+                                    description: |-
+                                      Name of the referent.
+                                      This field is effectively required, but due to backwards compatibility is
+                                      allowed to be empty. Instances of this type with an empty value here are
+                                      almost certainly wrong.
+                                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                    type: string
+                                  optional:
+                                    description: Specify whether the Secret or its
+                                      key must be defined
+                                    type: boolean
+                                required:
+                                - key
+                                type: object
+                                x-kubernetes-map-type: atomic
+                              runtime:
+                                description: |-
+                                  Runtime describes reserved pod-level provider access. It does not enable
+                                  PKCS11 reconciliation or assert image/provider capability.
+                                properties:
+                                  configEnv:
+                                    description: ConfigEnv is the provider variable
+                                      pointing to the mounted config file.
+                                    enum:
+                                    - SOFTHSM2_CONF
+                                    type: string
+                                  configSecretKeyRef:
+                                    description: ConfigSecretKeyRef selects only the
+                                      provider's configuration file, not PIN data.
+                                    properties:
+                                      key:
+                                        description: The key of the secret to select
+                                          from.  Must be a valid secret key.
+                                        type: string
+                                      name:
+                                        default: ""
+                                        description: |-
+                                          Name of the referent.
+                                          This field is effectively required, but due to backwards compatibility is
+                                          allowed to be empty. Instances of this type with an empty value here are
+                                          almost certainly wrong.
+                                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                        type: string
+                                      optional:
+                                        description: Specify whether the Secret or
+                                          its key must be defined
+                                        type: boolean
+                                    required:
+                                    - key
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                  enrollmentImage:
+                                    maxLength: 253
+                                    minLength: 1
+                                    type: string
+                                  fsGroup:
+                                    format: int64
+                                    maximum: 2147483647
+                                    minimum: 1
+                                    type: integer
+                                  peerImage:
+                                    maxLength: 253
+                                    minLength: 1
+                                    type: string
+                                  runAsUser:
+                                    description: RunAsUser and FSGroup must match
+                                      the prepared token storage permissions.
+                                    format: int64
+                                    maximum: 2147483647
+                                    minimum: 1
+                                    type: integer
+                                  stateClaims:
+                                    description: |-
+                                      StateClaims assigns a distinct existing claim to each peer. Token state
+                                      mounts at /var/lib/fabricops-hsm/tokens; provider config is read-only.
+                                    items:
+                                      properties:
+                                        claimName:
+                                          description: ClaimName is resolved in the
+                                            generated org namespace, never the CR
+                                            namespace.
+                                          maxLength: 253
+                                          minLength: 1
+                                          type: string
+                                        peer:
+                                          maxLength: 63
+                                          minLength: 1
+                                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                                          type: string
+                                      required:
+                                      - claimName
+                                      - peer
+                                      type: object
+                                    maxItems: 50
+                                    minItems: 1
+                                    type: array
+                                    x-kubernetes-list-map-keys:
+                                    - peer
+                                    x-kubernetes-list-type: map
+                                required:
+                                - configEnv
+                                - configSecretKeyRef
+                                - enrollmentImage
+                                - fsGroup
+                                - peerImage
+                                - runAsUser
+                                type: object
+                                x-kubernetes-validations:
+                                - message: provider configuration requires a Secret
+                                    name and key
+                                  rule: has(self.configSecretKeyRef.name) && size(self.configSecretKeyRef.name)
+                                    > 0 && size(self.configSecretKeyRef.key) > 0
+                                - message: provider configuration must not be optional
+                                  rule: '!has(self.configSecretKeyRef.optional) ||
+                                    !self.configSecretKeyRef.optional'
+                              tokenLabel:
+                                description: |-
+                                  TokenLabel selects the token by label, not by slot number. Multiple peers
+                                  may use the same token, but must have distinct certificate-bound keys.
+                                maxLength: 32
+                                minLength: 1
+                                pattern: ^[^[:cntrl:]]+$
+                                type: string
+                            required:
+                            - library
+                            - pinSecretKeyRef
+                            - tokenLabel
+                            type: object
+                            x-kubernetes-validations:
+                            - message: pinSecretKeyRef.name is required
+                              rule: has(self.pinSecretKeyRef.name) && size(self.pinSecretKeyRef.name)
+                                > 0
+                            - message: pinSecretKeyRef.key is required
+                              rule: size(self.pinSecretKeyRef.key) > 0
+                            - message: PIN Secret references must not be optional
+                              rule: '!has(self.pinSecretKeyRef.optional) || !self.pinSecretKeyRef.optional'
+                          provider:
+                            enum:
+                            - Secret
+                            - PKCS11
+                            type: string
+                        required:
+                        - provider
+                        type: object
+                        x-kubernetes-validations:
+                        - message: pkcs11 must be set only for provider PKCS11
+                          rule: 'self.provider == ''PKCS11'' ? has(self.pkcs11) :
+                            !has(self.pkcs11)'
                       prefix:
                         maxLength: 50
                         minLength: 1
@@ -3762,7 +4117,6 @@ rules:
   resources:
   - configmaps
   - persistentvolumeclaims
-  - secrets
   - serviceaccounts
   verbs:
   - create
@@ -3782,6 +4136,7 @@ rules:
   - ""
   resources:
   - namespaces
+  - secrets
   - services
   verbs:
   - create
@@ -3790,6 +4145,14 @@ rules:
   - list
   - patch
   - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
   - watch
 - apiGroups:
   - apps

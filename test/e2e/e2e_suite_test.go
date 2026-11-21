@@ -288,6 +288,14 @@ var _ = Describe("Kind bundle install", Ordered, func() {
 		testLocalOrgAdmission(upgradeSmokeID)
 		testRaftConsenterUpdates(upgradeSmokeID)
 	})
+
+	It("isolates orderer administration credentials and retires legacy replicas", func() {
+		if !runtimeConfig.runNodeLifecycleFlow {
+			Skip("Credential migration runs with the Node lifecycle network")
+		}
+		runCommand(30*time.Second, kubectlBin, "config", "use-context", "kind-"+kindCluster)
+		testOrdererAdminCredentialScope()
+	})
 })
 
 type fabricNetworkProbe struct {

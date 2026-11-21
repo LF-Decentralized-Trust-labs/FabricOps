@@ -51,7 +51,7 @@ func validateFabricParticipantTopology(participant *fabricopsv1alpha1.FabricPart
 }
 
 func validateFabricParticipantOrg(org fabricopsv1alpha1.Org) []string {
-	problems := []string{}
+	problems := validatePeerMSPSigning(org)
 	if strings.TrimSpace(org.Organization.Name) == "" {
 		problems = append(problems, "spec.org.organization.name is required")
 	}
