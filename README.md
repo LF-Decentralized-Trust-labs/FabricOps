@@ -834,6 +834,29 @@ Its `pkcs11` fields identify a module path, token label, and required
 private keys are not configuration fields. This setting does not change TLS,
 admin, orderer, or CA signing. Do not select PKCS11 for a running network.
 
+The custody boundary is the signer, not the certificate store. A peer's public
+MSP certificate and trust roots can live in a Secret even when its signing key
+never leaves a token. The staged peer path enrolls through a PKCS11-capable
+Fabric CA client, configures the peer's BCCSP provider, and checks that the
+token can sign for the published certificate. It does not import an existing
+software key. Other signers have distinct requirements:
+
+| Signer | Current boundary |
+| --- | --- |
+| Fabric CA | The CA server still owns a software signing key. External CA signing would require a provider-capable server, CA signing configuration and a tested bootstrap and recovery procedure. A provider-capable enrollment client does not change the CA server. |
+| Orderer | Cluster TLS and local MSP signing remain software-backed. External MSP signing needs separate orderer BCCSP configuration and restart/quorum tests; peer results do not qualify an orderer. |
+| Admin and helper Jobs | Channel and lifecycle commands use their own software admin identities. A future external admin signer needs a compatible client, scoped authorization and signing tests. Helpers must not borrow a peer's PIN or token volume. |
+| TLS | Certificate renewal and TLS private keys retain their existing lifecycle. Enabling an MSP provider would not change the TLS signer. |
+
+Vault KV or a CSI mount can deliver credentials, but delivering a private key
+to a Pod is not non-exportable signing. Vault Transit and cloud KMS could fit
+behind a compatible signing adapter or PKCS11 bridge; none is supported by
+selecting a vendor name in the manifest. Qualification requires enrollment and
+endorsement against the same certificate, restart with the same key, refusal
+on provider loss or mismatch without software fallback, and reviewed recovery.
+The SoftHSM proofs exercise that first peer integration, not vendor hardware,
+managed recovery, or production availability.
+
 `fabricopsctl status` table output and `wait` failure diagnostics show requested
 peer custody as `Gated` for PKCS11 or `Blocked` for an invalid provider combination,
 even before org status exists. The guidance omits provider paths, token labels,
