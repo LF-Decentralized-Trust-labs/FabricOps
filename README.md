@@ -215,6 +215,20 @@ resource is a `FabricParticipant`.
 
 ### Federated Channel Joins
 
+Join bundles carry public membership artifacts, not signing identities or
+provider configuration. Peer custody choices, PIN/config Secret references and
+token storage are not transferred. Each recipient must provision its own local
+identity and any future supported provider credentials/state; importing a bundle
+does not enable PKCS11, which remains gated in both public APIs. Channel admin
+signing and TLS still use software-backed identities.
+
+Exports reject custody-marked Secrets used as admin/TLS sources. MSP config must
+be a single public `NodeOUs` YAML document, without local `BCCSP` or other runtime
+settings; private-key PEM in public artifact fields is refused on export,
+validation and rendering. These checks do not authenticate a bundle or attest a
+provider. Review public roots, endpoint references and membership policies before
+using artifacts from another organization.
+
 Founder/coordinator networks can admit a participant-owned organization by
 referencing the rendered Application org JSON from a join bundle:
 

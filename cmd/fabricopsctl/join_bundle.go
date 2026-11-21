@@ -687,6 +687,9 @@ func buildParticipantJoinBundle(
 }
 
 func marshalJoinBundle(bundle joinBundle) (string, error) {
+	if err := validateJoinBundlePublicArtifacts(bundle); err != nil {
+		return "", err
+	}
 	encoded, err := json.MarshalIndent(bundle, "", "  ")
 	if err != nil {
 		return "", err
@@ -1130,6 +1133,9 @@ func buildJoinBundleApplicationOrgGroup(
 }
 
 func buildJoinBundleMSPConfig(bundle joinBundle) (map[string]any, error) {
+	if err := validateJoinBundlePublicArtifacts(bundle); err != nil {
+		return nil, err
+	}
 	nodeOUs, err := buildJoinBundleFabricNodeOUs(bundle.Exported.AdminMSP)
 	if err != nil {
 		return nil, err
@@ -1433,6 +1439,9 @@ func joinBundleTrimmedStrings(values []string) []string {
 }
 
 func validateJoinBundle(bundle joinBundle) (joinBundleValidationResult, error) {
+	if err := validateJoinBundlePublicArtifacts(bundle); err != nil {
+		return joinBundleValidationResult{}, err
+	}
 	violations := []string{}
 	addViolation := func(format string, args ...any) {
 		violations = append(violations, fmt.Sprintf(format, args...))
@@ -2346,11 +2355,7 @@ func loadJoinBundleSecretKey(
 	ref joinBundleObjectRef,
 	key string,
 ) (string, error) {
-	value, err := loadSecretKey(ctx, client, ref.Namespace, ref.Name, key)
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(value)), nil
+	return loadJoinBundlePublicSecret(ctx, client, ref, key, key == mspConfigKey)
 }
 
 func loadJoinBundleParticipantTLSRoot(
@@ -2369,6 +2374,9 @@ func loadJoinBundleParticipantTLSRoot(
 		if err != nil {
 			return nil, err
 		}
+		if err := validateJoinBundlePublicValue(string(value), false); err != nil {
+			return nil, err
+		}
 		configMapRef := joinBundleObjectRef{Namespace: namespace, Name: name}
 		return &joinBundleTLSRoot{
 			ConfigMapRef: &configMapRef,
@@ -2378,14 +2386,14 @@ func loadJoinBundleParticipantTLSRoot(
 	if ref.SecretKeyRef != nil {
 		name := strings.TrimSpace(ref.SecretKeyRef.Name)
 		key := strings.TrimSpace(ref.SecretKeyRef.Key)
-		value, err := loadSecretKey(ctx, client, namespace, name, key)
+		secretRef := joinBundleObjectRef{Namespace: namespace, Name: name}
+		value, err := loadJoinBundlePublicSecret(ctx, client, secretRef, key, false)
 		if err != nil {
 			return nil, err
 		}
-		secretRef := joinBundleObjectRef{Namespace: namespace, Name: name}
 		return &joinBundleTLSRoot{
 			SecretRef: &secretRef,
-			CACertPEM: strings.TrimSpace(string(value)),
+			CACertPEM: value,
 		}, nil
 	}
 	return nil, fmt.Errorf("artifact ref must set configMapKeyRef or secretKeyRef")
