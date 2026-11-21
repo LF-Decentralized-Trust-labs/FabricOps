@@ -78,6 +78,7 @@ func TestMetadataRestoreKind(t *testing.T) {
 		case <-time.After(time.Second):
 		}
 	}
+	testBackupCustodyKind(t, ctx, c, target, ctrlclient.ObjectKeyFromObject(manager))
 	net := &fabricopsv1alpha1.FabricNetwork{ObjectMeta: metav1.ObjectMeta{Name: "restore-smoke", Namespace: "default"},
 		Spec: fabricopsv1alpha1.FabricNetworkSpec{Global: fabricopsv1alpha1.GlobalConfig{FabricVersion: "3.1.0", TLS: true},
 			Channels: []fabricopsv1alpha1.Channel{}, Chaincodes: []fabricopsv1alpha1.Chaincode{},

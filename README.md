@@ -908,7 +908,9 @@ Export a `FabricNetwork` spec, owned ConfigMaps, and PVC inventory:
 fabricopsctl backup export -n default --out network-metadata.json fabricnetwork-sample
 ```
 
-Add `--include-secrets` to include identity private keys and credentials.
+For software-key networks, add `--include-secrets` to include identity private
+keys and credentials. Secret-inclusive export is refused when external custody
+is declared or custody evidence is found in selected metadata or identity artifacts.
 The output file must not exist and is created with mode `0600`. Archives are
 not encrypted; protect them outside Git, including exports without Secrets,
 which can still contain sensitive configuration.
@@ -919,6 +921,16 @@ outputs are included only inside UID-verified org namespaces and listed under
 needs namespace discovery and ConfigMap/PVC read access; exporting Secrets also
 requires Secret read access. Collection failures abort the command; discard any
 incomplete file after a write failure.
+
+External-custody exports preserve public provider references in the network spec
+and add a versioned `externalCustody` inventory. Retained namespace names are
+recorded, but retention receipts are not copied or rebound to new UIDs. Default
+exports do not read Secrets or copy token storage; preserve provider credentials,
+token state and verified recovery procedures separately. All automated restores
+of archives with custody evidence are blocked, including `--metadata-only`.
+This also applies to older archives whose specs or artifacts identify external
+custody. An older archive without those markers is not proof that custody was
+software-only.
 
 **This is metadata export, not a full or consistent point-in-time backup.**
 Volume contents are not copied. Separately preserve CA databases/signing state,

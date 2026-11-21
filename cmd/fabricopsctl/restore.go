@@ -173,6 +173,9 @@ func validateRestoreArchive(bundle *backupBundle) error {
 	if !namespaces[net.Namespace] {
 		return fmt.Errorf("archive omits the network namespace")
 	}
+	if err := validateBackupCustody(bundle, namespaces); err != nil {
+		return err
+	}
 	provenance := map[string]bool{}
 	for _, ref := range bundle.NamespaceScopedArtifacts {
 		if provenance[ref] {
@@ -265,6 +268,7 @@ func buildRestorePlan(
 			"Review pending operations, resume reconciliation, and verify quorum, ledger state and invoke/query results.",
 		},
 	}
+	blockExternalCustodyRestore(plan, bundle)
 	if err := checkRestoreManager(ctx, client, managerKey, plan); err != nil {
 		return nil, err
 	}
@@ -349,6 +353,8 @@ func buildMetadataRestorePlan(ctx context.Context, client ctrlclient.Reader, bun
 		return nil, err
 	}
 	plan.MetadataOnly = true
+	// Do not let dropping volume inventory erase token-state recovery evidence.
+	blockExternalCustodyRestore(plan, bundle)
 	plan.ApplySupported = len(plan.Blockers) == 0
 	plan.ManualChecks = append(plan.ManualChecks,
 		"Volume inventory is excluded from metadata staging; keep restore hold until recovery is verified.")

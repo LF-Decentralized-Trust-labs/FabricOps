@@ -51,6 +51,7 @@ type backupBundle struct {
 	Secrets                  []corev1.Secret                  `json:"secrets,omitempty"`
 	Volumes                  []corev1.PersistentVolumeClaim   `json:"volumeInventory"`
 	NamespaceScopedArtifacts []string                         `json:"namespaceScopedArtifacts,omitempty"`
+	ExternalCustody          *backupExternalCustody           `json:"externalCustody,omitempty"`
 }
 
 func runBackup(args []string, stdout, stderr io.Writer) error {
@@ -71,7 +72,8 @@ func runBackup(args []string, stdout, stderr io.Writer) error {
 	flags.SetOutput(stderr)
 	bindKubeFlags(flags, &kube)
 	flags.StringVar(&path, "out", "", "New private JSON archive file (required; never overwritten)")
-	flags.BoolVar(&includeSecrets, "include-secrets", false, "Include owned Secrets with private keys and credentials")
+	flags.BoolVar(&includeSecrets, "include-secrets", false,
+		"Include owned software identity/credential Secrets (unsupported for external custody)")
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -126,6 +128,12 @@ func collectBackup(
 		bundle.Warnings = append(bundle.Warnings,
 			"Secrets omitted: identity and credential recovery is not possible from this archive alone.")
 	}
+	if networkHasExternalCustody(net) || backupCustodyMetadata(net) {
+		recordBackupExternalCustody(bundle)
+		if includeSecrets {
+			return nil, errors.New(externalCustodyExportError)
+		}
+	}
 	bundle.Network.TypeMeta = metav1.TypeMeta{APIVersion: "fabricops.io/v1alpha1", Kind: "FabricNetwork"}
 	bundle.Network.ObjectMeta = backupMetadata(net.ObjectMeta)
 	bundle.Network.Status = fabricopsv1alpha1.FabricNetworkStatus{}
@@ -135,13 +143,25 @@ func collectBackup(
 	}
 	bundle.Namespaces = []string{net.Namespace}
 	ownedNamespaces := map[string]bool{}
+	namespaceVersions := map[string]corev1.Namespace{}
 	for _, ns := range namespaces.Items {
 		if backupOwnedBy(&ns, net) {
 			ownedNamespaces[ns.Name] = true
+			namespaceVersions[ns.Name] = ns
+			if _, retained := ns.Annotations[backupCustodyRetention]; retained {
+				recordBackupExternalCustody(bundle)
+				bundle.ExternalCustody.RetainedNamespaces = append(bundle.ExternalCustody.RetainedNamespaces, ns.Name)
+			}
 			if ns.Name != net.Namespace {
 				bundle.Namespaces = append(bundle.Namespaces, ns.Name)
 			}
 		}
+	}
+	if includeSecrets && bundle.ExternalCustody != nil {
+		return nil, errors.New(externalCustodyExportError)
+	}
+	if bundle.ExternalCustody != nil {
+		slices.Sort(bundle.ExternalCustody.RetainedNamespaces)
 	}
 	slices.Sort(bundle.Namespaces)
 	for _, namespace := range bundle.Namespaces {
@@ -149,12 +169,39 @@ func collectBackup(
 			return nil, fmt.Errorf("export namespace %s: %w", namespace, err)
 		}
 	}
+	// Inspect all selected metadata before opting into any Secret payload reads.
+	if includeSecrets {
+		for _, namespace := range bundle.Namespaces {
+			if err := collectBackupSecrets(ctx, client, net, namespace, ownedNamespaces[namespace], bundle); err != nil {
+				return nil, fmt.Errorf("export namespace %s: %w", namespace, err)
+			}
+		}
+	}
 	latest := &fabricopsv1alpha1.FabricNetwork{}
 	if err := client.Get(ctx, ctrlclient.ObjectKeyFromObject(net), latest); err != nil {
 		return nil, err
 	}
-	if latest.UID != net.UID || latest.Generation != net.Generation || latest.DeletionTimestamp != nil {
+	if latest.UID != net.UID || latest.Generation != net.Generation || latest.DeletionTimestamp != nil ||
+		backupCustodyMetadata(latest) != backupCustodyMetadata(net) {
 		return nil, fmt.Errorf("FabricNetwork changed during export; retry with topology changes paused")
+	}
+	// Refuse ownership/retention changes during collection. This is a second
+	// sequential check, not a snapshot lock or external-state attestation.
+	if err := client.List(ctx, namespaces); err != nil {
+		return nil, fmt.Errorf("recheck owned namespaces: %w", err)
+	}
+	for _, ns := range namespaces.Items {
+		if !backupOwnedBy(&ns, net) {
+			continue
+		}
+		previous, exists := namespaceVersions[ns.Name]
+		if !exists || previous.UID != ns.UID || previous.ResourceVersion != ns.ResourceVersion {
+			return nil, fmt.Errorf("owned namespace changed during export; retry with custody and topology changes paused")
+		}
+		delete(namespaceVersions, ns.Name)
+	}
+	if len(namespaceVersions) != 0 {
+		return nil, fmt.Errorf("owned namespace changed during export; retry with custody and topology changes paused")
 	}
 	bundle.CompletedAt = metav1.NewTime(time.Now().UTC())
 	return bundle, nil
@@ -172,6 +219,9 @@ func collectBackupNamespace(
 	for _, cm := range cms.Items {
 		jobOutput := ownedNamespace && backupJobArtifact(&cm)
 		if backupOwnedBy(&cm, net) || jobOutput {
+			if backupCustodyMetadata(&cm) {
+				recordBackupExternalCustody(bundle)
+			}
 			if jobOutput {
 				bundle.NamespaceScopedArtifacts = append(bundle.NamespaceScopedArtifacts, "ConfigMap/"+namespace+"/"+cm.Name)
 			}
@@ -187,13 +237,24 @@ func collectBackupNamespace(
 	slices.SortFunc(pvcs.Items, func(a, b corev1.PersistentVolumeClaim) int { return strings.Compare(a.Name, b.Name) })
 	for _, pvc := range pvcs.Items {
 		if backupOwnedBy(&pvc, net) {
+			if backupCustodyMetadata(&pvc) {
+				recordBackupExternalCustody(bundle)
+			}
 			pvc.TypeMeta = metav1.TypeMeta{APIVersion: "v1", Kind: "PersistentVolumeClaim"}
 			pvc.ObjectMeta = backupMetadata(pvc.ObjectMeta)
 			bundle.Volumes = append(bundle.Volumes, pvc)
 		}
 	}
+	return nil
+}
+
+func collectBackupSecrets(ctx context.Context, client ctrlclient.Client, net *fabricopsv1alpha1.FabricNetwork,
+	namespace string, ownedNamespace bool, bundle *backupBundle) error {
 	if !bundle.SecretsIncluded {
 		return nil
+	}
+	if bundle.ExternalCustody != nil {
+		return errors.New(externalCustodyExportError)
 	}
 	secrets := &corev1.SecretList{}
 	if err := client.List(ctx, secrets, ctrlclient.InNamespace(namespace)); err != nil {
@@ -203,6 +264,9 @@ func collectBackupNamespace(
 	for _, secret := range secrets.Items {
 		jobOutput := ownedNamespace && backupJobArtifact(&secret)
 		if (backupOwnedBy(&secret, net) || jobOutput) && secret.Type != corev1.SecretTypeServiceAccountToken {
+			if backupCustodyMetadata(&secret) {
+				return errors.New(externalCustodyExportError)
+			}
 			if jobOutput {
 				bundle.NamespaceScopedArtifacts = append(bundle.NamespaceScopedArtifacts, "Secret/"+namespace+"/"+secret.Name)
 			}
@@ -236,7 +300,7 @@ func backupJobArtifact(obj ctrlclient.Object) bool {
 	case *corev1.Secret:
 		kind := labels["fabricops.io/identity-kind"]
 		return labels["fabricops.io/identity-source"] == "fabric-ca" && labels["fabricops.io/workload"] != "" &&
-			(kind == "msp" || kind == "tls" || kind == "admin-msp" || kind == "admin-tls")
+			(kind == "msp" || kind == "tls" || kind == "admin-msp" || kind == "admin-tls" || kind == "peer-pkcs11-msp")
 	default:
 		return false
 	}
@@ -252,6 +316,7 @@ func backupOwnedBy(obj metav1.Object, net *fabricopsv1alpha1.FabricNetwork) bool
 func backupMetadata(meta metav1.ObjectMeta) metav1.ObjectMeta {
 	copy := meta.DeepCopy()
 	delete(copy.Annotations, "kubectl.kubernetes.io/last-applied-configuration")
+	delete(copy.Annotations, backupCustodyRetention)
 	return metav1.ObjectMeta{
 		Name: copy.Name, Namespace: copy.Namespace, Labels: copy.Labels, Annotations: copy.Annotations,
 	}
